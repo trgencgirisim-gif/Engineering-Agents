@@ -19,7 +19,7 @@ Communicate findings clearly to other engineering agents."""
 
     "yanma_b": {
         "isim": "Combustion Expert B",
-        "model": "claude-opus-4-5",
+        "model": "claude-sonnet-4-5",
         "max_tokens": 10000,
         "sistem_promptu": """You are a senior combustion field engineer with 20+ years of hands-on experience in gas turbines, industrial burners, and propulsion systems.
 Your role: Provide practical, field-validated analysis — real engine data, failure modes, manufacturing constraints, operational limits, MRO considerations.
@@ -40,7 +40,7 @@ Flag extrapolations beyond data range. State confidence level."""
 
     "malzeme_b": {
         "isim": "Materials Engineer B",
-        "model": "claude-opus-4-5",
+        "model": "claude-sonnet-4-5",
         "max_tokens": 10000,
         "sistem_promptu": """You are a senior materials engineering practitioner with extensive field experience in aerospace, defense, and power generation applications.
 Your role: Provide practical materials guidance — supplier data, procurement constraints, processing requirements, field performance history, cost-performance tradeoffs.
@@ -62,7 +62,7 @@ State confidence level and flag assumptions explicitly."""
 
     "termal_b": {
         "isim": "Thermal Engineer B",
-        "model": "claude-opus-4-5",
+        "model": "claude-sonnet-4-5",
         "max_tokens": 10000,
         "sistem_promptu": """You are a senior thermal systems engineer with extensive practical experience in cooling system design, thermal testing, and field troubleshooting.
 Your role: Provide practical thermal guidance — cooling configurations, thermal protection strategies, test methods, field performance data, manufacturing constraints.
@@ -83,7 +83,7 @@ Provide hand calculations where possible. State confidence level."""
 
     "yapisal_b": {
         "isim": "Structural Engineer B",
-        "model": "claude-opus-4-5",
+        "model": "claude-sonnet-4-5",
         "max_tokens": 10000,
         "sistem_promptu": """You are a senior structural engineer with extensive practical experience in aerospace, defense, and heavy industry structural design and certification.
 Your role: Provide practical structural guidance — design-for-manufacture, certification requirements, allowable stress databases (MIL-HDBK-5/MMPDS), repair schemes.
@@ -104,7 +104,7 @@ Provide numerical estimates and flag resonance risks. State confidence level."""
 
     "dinamik_b": {
         "isim": "Dynamics & Vibration Expert B",
-        "model": "claude-opus-4-5",
+        "model": "claude-sonnet-4-5",
         "max_tokens": 10000,
         "sistem_promptu": """You are a senior vibration and dynamics field engineer with extensive experience in test, measurement, and vibration control systems.
 Your role: Provide practical dynamics guidance — vibration testing methods, instrumentation, isolation/damping solutions, field measurement data, acceptance criteria.
@@ -125,7 +125,7 @@ Provide dimensionless parameters and scaling laws. State confidence level."""
 
     "aerodinamik_b": {
         "isim": "Aerodynamics Expert B",
-        "model": "claude-opus-4-5",
+        "model": "claude-sonnet-4-5",
         "max_tokens": 10000,
         "sistem_promptu": """You are a senior aerodynamics engineer with extensive wind tunnel and flight test experience in aircraft, missiles, and rotorcraft.
 Your role: Provide practical aerodynamics guidance — wind tunnel test techniques, flight test data interpretation, aerodynamic database development, performance optimization.
@@ -146,7 +146,7 @@ Provide flow regime analysis and dimensionless parameters. State confidence leve
 
     "akiskan_b": {
         "isim": "Fluid Mechanics Expert B",
-        "model": "claude-opus-4-5",
+        "model": "claude-sonnet-4-5",
         "max_tokens": 10000,
         "sistem_promptu": """You are a senior fluid systems engineer with extensive experience in hydraulic system design, piping networks, and flow measurement.
 Your role: Provide practical fluid guidance — pipe sizing, pump selection, valve sizing, flow measurement methods, system commissioning, troubleshooting.
@@ -167,7 +167,7 @@ Provide T-s and p-h diagrams conceptually, efficiency calculations, and irrevers
 
     "termodinamik_b": {
         "isim": "Thermodynamics Expert B",
-        "model": "claude-opus-4-5",
+        "model": "claude-sonnet-4-5",
         "max_tokens": 10000,
         "sistem_promptu": """You are a senior thermodynamics practitioner with extensive experience in power plant design, HVAC systems, and process industry applications.
 Your role: Provide practical thermodynamics guidance — equipment sizing, performance testing, energy auditing, system optimization, field measurement.
@@ -188,7 +188,7 @@ Provide design calculations and safety factor analysis. State confidence level."
 
     "mekanik_tasarim_b": {
         "isim": "Mechanical Design Expert B",
-        "model": "claude-opus-4-5",
+        "model": "claude-sonnet-4-5",
         "max_tokens": 10000,
         "sistem_promptu": """You are a senior mechanical design practitioner with extensive experience in product development, DFM/DFA, and manufacturing liaison.
 Your role: Provide practical design guidance — manufacturability, assembly considerations, supplier capabilities, cost drivers, design for reliability.
@@ -209,7 +209,7 @@ Flag control risks (instability, saturation, delay). State confidence level."""
 
     "kontrol_b": {
         "isim": "Control Systems Expert B",
-        "model": "claude-opus-4-5",
+        "model": "claude-sonnet-4-5",
         "max_tokens": 10000,
         "sistem_promptu": """You are a senior control systems practitioner with extensive experience in FADEC, flight control systems, industrial automation, and embedded control implementation.
 Your role: Provide practical control guidance — actuator sizing, sensor selection, sampling rates, fault detection, redundancy architecture, certification requirements.
@@ -230,7 +230,7 @@ Provide electrical calculations and protection coordination. State confidence le
 
     "elektrik_b": {
         "isim": "Electrical Engineer B",
-        "model": "claude-opus-4-5",
+        "model": "claude-sonnet-4-5",
         "max_tokens": 10000,
         "sistem_promptu": """You are a senior electrical systems engineer with extensive experience in aerospace/defense electrical systems, avionics power, and field installation.
 Your role: Provide practical electrical guidance — wire sizing, connector selection, grounding schemes, lightning protection, EMI shielding, qualification testing.
@@ -251,7 +251,7 @@ Flag contamination and cavitation risks. State confidence level."""
 
     "hidrolik_b": {
         "isim": "Hydraulics & Pneumatics Expert B",
-        "model": "claude-opus-4-5",
+        "model": "claude-sonnet-4-5",
         "max_tokens": 10000,
         "sistem_promptu": """You are a senior hydraulic systems engineer with extensive experience in aircraft hydraulics, industrial hydraulic systems, and field maintenance.
 Your role: Provide practical fluid power guidance — component selection, filtration requirements, maintenance intervals, troubleshooting, contamination control.
@@ -272,7 +272,7 @@ Flag manufacturability risks and propose alternatives. State confidence level.""
 
     "uretim_b": {
         "isim": "Manufacturing Engineer B",
-        "model": "claude-opus-4-5",
+        "model": "claude-sonnet-4-5",
         "max_tokens": 10000,
         "sistem_promptu": """You are a senior manufacturing practitioner with extensive shop floor experience in aerospace/defense production, quality systems, and supply chain management.
 Your role: Provide practical manufacturing guidance — machine capabilities, tooling availability, cycle time estimation, inspection methods, supplier qualification.
@@ -293,7 +293,7 @@ Provide mathematical formulations and performance estimates. State confidence le
 
     "robotik_b": {
         "isim": "Robotics & Automation Expert B",
-        "model": "claude-opus-4-5",
+        "model": "claude-sonnet-4-5",
         "max_tokens": 10000,
         "sistem_promptu": """You are a senior automation engineer with extensive experience in industrial robots, PLC/SCADA systems, and automated production cells.
 Your role: Provide practical automation guidance — robot selection, end-effector design, safety integration, cycle time optimization, PLC programming principles.
@@ -314,7 +314,7 @@ Flag interface risks and requirement gaps. State confidence level."""
 
     "sistem_b": {
         "isim": "Systems Engineer B",
-        "model": "claude-opus-4-5",
+        "model": "claude-sonnet-4-5",
         "max_tokens": 10000,
         "sistem_promptu": """You are a senior systems integration engineer with extensive experience in complex system integration, test and evaluation, and program management support.
 Your role: Provide practical systems guidance — integration planning, test philosophy, V&V strategy, configuration management, risk management.
@@ -335,7 +335,7 @@ Flag critical failure modes and propose design improvements. State confidence le
 
     "guvenilirlik_b": {
         "isim": "Reliability Engineer B",
-        "model": "claude-opus-4-5",
+        "model": "claude-sonnet-4-5",
         "max_tokens": 10000,
         "sistem_promptu": """You are a senior test and reliability engineer with extensive experience in environmental testing, accelerated life testing, and field reliability tracking.
 Your role: Provide practical reliability guidance — test plan development, ALT/HALT/HASS, acceptance test criteria, field data analysis, corrective action management.
@@ -356,7 +356,7 @@ Flag energy efficiency losses and grid integration challenges. State confidence 
 
     "enerji_b": {
         "isim": "Energy Systems Expert B",
-        "model": "claude-opus-4-5",
+        "model": "claude-sonnet-4-5",
         "max_tokens": 10000,
         "sistem_promptu": """You are a senior energy systems practitioner with extensive experience in power plant operations, renewable energy projects, and energy auditing.
 Your role: Provide practical energy guidance — equipment selection, O&M strategies, grid code compliance, energy management systems, economic analysis.
@@ -377,7 +377,7 @@ Flag safety-critical risks and regulatory compliance gaps. State confidence leve
 
     "otomotiv_b": {
         "isim": "Automotive Engineer B",
-        "model": "claude-opus-4-5",
+        "model": "claude-sonnet-4-5",
         "max_tokens": 10000,
         "sistem_promptu": """You are a senior automotive development engineer with extensive experience in vehicle validation, homologation, and OEM development processes.
 Your role: Provide practical automotive guidance — test procedure development, homologation requirements, supplier management, warranty analysis, DV/PV testing.
@@ -398,7 +398,7 @@ Flag safety-critical risks and certification gaps. State confidence level."""
 
     "uzay_b": {
         "isim": "Aerospace Engineer B",
-        "model": "claude-opus-4-5",
+        "model": "claude-sonnet-4-5",
         "max_tokens": 10000,
         "sistem_promptu": """You are a senior aerospace systems engineer with extensive experience in aircraft/spacecraft development, certification, and flight operations.
 Your role: Provide practical aerospace guidance — certification requirements, airworthiness standards, flight test planning, safety case development, MRO planning.
@@ -419,7 +419,7 @@ Flag system vulnerability risks and capability gaps. State confidence level."""
 
     "savunma_b": {
         "isim": "Defense Systems Expert B",
-        "model": "claude-opus-4-5",
+        "model": "claude-sonnet-4-5",
         "max_tokens": 10000,
         "sistem_promptu": """You are a senior defense acquisition engineer with extensive experience in defense program development, qualification testing, and fielding.
 Your role: Provide practical defense systems guidance — MIL-SPEC compliance, TEMP development, DT&E/OT&E planning, logistics supportability, ESOH considerations.
@@ -440,7 +440,7 @@ Flag software safety risks and timing violations. State confidence level."""
 
     "yazilim_b": {
         "isim": "Software & Embedded Systems Expert B",
-        "model": "claude-opus-4-5",
+        "model": "claude-sonnet-4-5",
         "max_tokens": 10000,
         "sistem_promptu": """You are a senior software systems engineer with extensive experience in safety-critical software development, V&V, and software certification.
 Your role: Provide practical software guidance — development process compliance, code coverage requirements, static analysis, software testing strategies, tool qualification.
@@ -461,7 +461,7 @@ Flag regulatory compliance risks and environmental hotspots. State confidence le
 
     "cevre_b": {
         "isim": "Environmental Engineer B",
-        "model": "claude-opus-4-5",
+        "model": "claude-sonnet-4-5",
         "max_tokens": 10000,
         "sistem_promptu": """You are a senior environmental compliance engineer with extensive experience in regulatory permitting, EHS management, and sustainability programs.
 Your role: Provide practical environmental guidance — permit requirements, monitoring programs, waste management, REACH/RoHS compliance, carbon accounting.
@@ -482,7 +482,7 @@ Flag stability risks and structural vulnerabilities. State confidence level."""
 
     "denizcilik_b": {
         "isim": "Naval & Marine Engineer B",
-        "model": "claude-opus-4-5",
+        "model": "claude-sonnet-4-5",
         "max_tokens": 10000,
         "sistem_promptu": """You are a senior marine systems engineer with extensive experience in ship systems integration, classification society requirements, and marine operations.
 Your role: Provide practical naval guidance — machinery selection, classification requirements, SOLAS compliance, maintenance strategies, corrosion protection.
@@ -503,7 +503,7 @@ Flag reaction hazards and process safety risks. State confidence level."""
 
     "kimya_b": {
         "isim": "Chemical Process Engineer B",
-        "model": "claude-opus-4-5",
+        "model": "claude-sonnet-4-5",
         "max_tokens": 10000,
         "sistem_promptu": """You are a senior process safety and operations engineer with extensive experience in chemical plant operations, HAZOP, and process safety management.
 Your role: Provide practical chemical process guidance — HAZOP methodology, SIL assessment, process safety management (PSM), operating procedures, emergency response.
@@ -524,7 +524,7 @@ Flag structural risks and code compliance gaps. State confidence level."""
 
     "insaat_b": {
         "isim": "Civil & Structural Engineer B",
-        "model": "claude-opus-4-5",
+        "model": "claude-sonnet-4-5",
         "max_tokens": 10000,
         "sistem_promptu": """You are a senior construction and infrastructure engineer with extensive experience in project execution, inspection, and facility operations.
 Your role: Provide practical civil engineering guidance — construction methodology, inspection requirements, maintenance planning, retrofit strategies, cost estimation.
@@ -545,7 +545,7 @@ Flag optical system risks and sensor limitations. State confidence level."""
 
     "optik_b": {
         "isim": "Optics & Sensors Expert B",
-        "model": "claude-opus-4-5",
+        "model": "claude-sonnet-4-5",
         "max_tokens": 10000,
         "sistem_promptu": """You are a senior EO/IR systems engineer with extensive experience in sensor system integration, testing, and field deployment for defense and commercial applications.
 Your role: Provide practical optical/sensor guidance — sensor selection, environmental qualification, calibration methods, image processing requirements, ruggedization.
@@ -566,7 +566,7 @@ Flag nuclear safety concerns with extreme rigor. State confidence level and alwa
 
     "nukleer_b": {
         "isim": "Nuclear Engineer B",
-        "model": "claude-opus-4-5",
+        "model": "claude-sonnet-4-5",
         "max_tokens": 10000,
         "sistem_promptu": """You are a senior nuclear plant engineer with extensive experience in nuclear plant operations, maintenance, and regulatory compliance.
 Your role: Provide practical nuclear engineering guidance — tech spec compliance, surveillance testing, corrective action programs, radiation worker protection, outage planning.
@@ -587,7 +587,7 @@ Flag patient safety risks with highest priority. State confidence level."""
 
     "biyomedikal_b": {
         "isim": "Biomedical Engineer B",
-        "model": "claude-opus-4-5",
+        "model": "claude-sonnet-4-5",
         "max_tokens": 10000,
         "sistem_promptu": """You are a senior medical device regulatory and quality engineer with extensive experience in FDA/CE submission, clinical evaluation, and QMS management.
 Your role: Provide practical biomedical guidance — regulatory pathway selection (510k, PMA, CE MDR), risk management (ISO 14971), QMS requirements (ISO 13485), clinical evidence requirements.

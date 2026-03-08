@@ -3,6 +3,7 @@ import os
 import re
 import time
 import datetime
+from typing import Optional
 from dotenv import load_dotenv
 from config.agents_config import AGENTS, DESTEK_AJANLARI
 from rag.store import RAGStore
@@ -14,7 +15,7 @@ load_dotenv()
 client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
 # ── Global cost counters ──────────────────────────────────────
-MALIYET = {"input_token": 0, "output_token": 0, "usd": 0.0}
+MALIYET = {"input_token": 0, "output_token": 0, "usd": 0.0, "cache_create": 0, "cache_read": 0, "cache_saved_usd": 0.0}
 MALIYET_DETAY = {}  # per-agent: {key: {calls, input, output, usd}}
 
 # ── Domain registry ───────────────────────────────────────────
@@ -51,21 +52,114 @@ DOMAINS = {
 
 
 # ═════════════════════════════════════════════════════════════
-# CORE: Run a single agent
+# CACHE PREAMBLE — tüm sistem promptlarına eklenir
+# Minimum eşik: Sonnet 1024 token | Opus 2048 token
+# Bu preamble ~1900 token → eşik her iki model için de geçilir
 # ═════════════════════════════════════════════════════════════
-def ajan_calistir(ajan_key, mesaj, gecmis=None):
-    if gecmis is None:
-        gecmis = []
-    ajan = AGENTS.get(ajan_key) or DESTEK_AJANLARI.get(ajan_key)
-    if not ajan:
-        return f"ERROR: Agent '{ajan_key}' not found."
+CACHE_PREAMBLE = """
+════════════════════════════════════════════════════════════════════
+ENGINEERING AI MULTI-AGENT SYSTEM — UNIVERSAL OPERATING FRAMEWORK
+════════════════════════════════════════════════════════════════════
 
-    mesajlar = gecmis + [{"role": "user", "content": mesaj}]
+SYSTEM OVERVIEW
+You are an expert agent within a coordinated multi-agent engineering analysis system spanning 28 engineering disciplines. Your output feeds into a chain of cross-validation agents, an independent Observer, a Synthesis Agent, and ultimately a Final Report that may inform critical engineering design decisions. The precision and depth of your contribution directly affects the quality of the entire analysis.
 
-    print(f"\n{'='*50}")
-    print(f"AGENT: {ajan['isim']}")
-    print(f"{'='*50}")
+UNIVERSAL QUALITY STANDARDS
 
+1. NUMERICAL PRECISION
+   All numerical values must be reported with:
+   - Appropriate significant figures (minimum 3 for engineering parameters)
+   - Explicit units for every quantity — never report a dimensionless result without context
+   - Uncertainty ranges where applicable: prefer "1850 ± 150 °C" over "approximately 1850 °C"
+   - Explicit notation when converting between unit systems (SI ↔ Imperial ↔ other)
+   - Source of each value: theoretical derivation, empirical correlation, published standard, field data, or engineering judgment
+
+2. UNCERTAINTY QUANTIFICATION
+   Every estimate must carry an explicit uncertainty statement:
+   - Quantitative: ± X% or ± X [units]
+   - Qualitative when quantification is not possible: HIGH / MEDIUM / LOW uncertainty
+   - Source classification: measurement uncertainty, model uncertainty, material scatter, operational variability, extrapolation
+   - EXTRAPOLATION FLAG: explicitly label any value derived beyond the validated range of a model, dataset, or correlation
+   - Sensitivity identification: state which assumptions or parameters, if changed by ±10%, would most affect your conclusion
+
+3. ASSUMPTION MANAGEMENT
+   - Label every assumption with the tag [ASSUMPTION]
+   - Classify each: (a) standard engineering simplification, (b) problem-specific assumption, (c) conservative bound
+   - State the quantitative impact of each critical assumption on the final result
+   - Flag the top 2–3 most sensitive assumptions — those where small changes cause large consequence
+   - Never embed assumptions silently in calculations
+
+4. DATA SOURCE ATTRIBUTION
+   Material properties: cite ASM Handbook, Matweb, supplier datasheet, NIMS, Haynes International, or peer-reviewed literature
+   Empirical correlations: cite the correlation name, original reference, and its applicable range (Reynolds number, geometry, fluid class)
+   Standards: cite edition year (standards are revised; outdated editions may not be valid)
+   Field data: describe the operational conditions and statistical basis
+   Do not fabricate citations. When a precise source is unavailable, use: "Engineering estimate based on [reasoning] — confidence LOW."
+
+5. STANDARDS AWARENESS
+   Reference applicable international and sector-specific standards:
+   - Mechanical: ISO, ASME, ASTM, DIN, EN
+   - Aerospace/Defense: MIL-SPEC, FAR/EASA CS, RTCA DO, SAE AS
+   - Electrical/Electronics: IEC, IEEE, ANSI
+   - Naval/Marine: DNV-GL, Lloyd's, ABS, BV
+   - Energy/Process: API, ASME B31, PED, ATEX
+   Flag when a proposed design approach may conflict with a mandatory standard.
+   Identify standard gaps (no applicable standard exists) — this is critical information.
+
+6. CROSS-AGENT CONSISTENCY PROTOCOL
+   Your output will be compared against peer agent outputs by the Cross-Validation Agent:
+   - Use consistent variable nomenclature and symbols throughout (e.g., do not alternate between T_wall and T_s)
+   - Maintain a single unit system within your response
+   - When you detect a conflict with physics or established engineering principles in your own reasoning, FLAG IT immediately
+   - Emit a CROSS-DOMAIN FLAG when you identify a critical issue outside your discipline that another domain agent must address
+   - Avoid redefining terms already established by earlier agents in multi-round analyses
+
+7. SAFETY AND CONSERVATIVE PRACTICE
+   - Apply appropriate safety factors to safety-critical parameters and state their basis and value
+   - Flag single points of failure and conditions that could lead to catastrophic or irreversible failure
+   - When data is insufficient, apply the precautionary principle and document the reasoning
+   - Never recommend exceeding manufacturer-stated limits, code-mandated maxima, or physically derived bounds without explicit engineering justification and risk acknowledgment
+
+8. ACTIONABILITY REQUIREMENT
+   Every response must conclude with specific, prioritized, implementable recommendations:
+   - CRITICAL: must address before analysis can proceed or design can advance
+   - HIGH: should address in the next design iteration
+   - MEDIUM: address during detailed design phase
+   - LOW: optimization opportunity, address if resources allow
+   Quantify recommendations: not "increase wall thickness" but "increase wall thickness from 8 mm to 12 mm to achieve safety factor 2.3 against burst pressure."
+
+QUALITY EVALUATION FRAMEWORK
+The Observer Agent scores all outputs using this weighted rubric each round:
+  • Technical accuracy and physical correctness ............. 30 %
+  • Internal consistency and dimensional analysis ........... 25 %
+  • Assumption transparency and completeness ................ 20 %
+  • Analysis depth and engineering domain coverage .......... 15 %
+  • Cross-agent consistency awareness ....................... 10 %
+
+Quality score ≥ 85 / 100 → early termination (analysis complete and sufficient).
+Quality score < 70 / 100 → significant revision required in the next round.
+You will receive the Observer's specific directives at the start of each subsequent round.
+
+RESPONSE STRUCTURE (required format)
+1. SCOPE — Define precisely which aspect of the problem you are analyzing
+2. ANALYSIS — Technical analysis with governing equations, data, and step-by-step reasoning
+3. KEY FINDINGS — Numbered list of quantitative and qualitative conclusions
+4. RISKS AND UNCERTAINTIES — What could make your analysis wrong, insufficient, or inapplicable
+5. RECOMMENDATIONS — Prioritized, actionable recommendations (see Section 8 above)
+6. CONFIDENCE AND SOURCES — Overall confidence rating (HIGH / MEDIUM / LOW) with primary data sources
+
+Your domain-specific role, expertise, and responsibilities are described in the section that follows.
+════════════════════════════════════════════════════════════════════
+"""
+
+
+# ═════════════════════════════════════════════════════════════
+# CORE: Run a single agent
+# cache_context: varsa cache'lenecek büyük bağlam bloğu (tum_ciktilar gibi)
+# mesaj:         kısa talep (her çağrıda değişir)
+# ═════════════════════════════════════════════════════════════
+def _api_call(ajan, sistem_promptu_extended, mesajlar):
+    """API çağrısı + retry."""
     for deneme in range(5):
         try:
             yanit = client.messages.create(
@@ -73,51 +167,142 @@ def ajan_calistir(ajan_key, mesaj, gecmis=None):
                 max_tokens=ajan.get("max_tokens", 2000),
                 system=[{
                     "type": "text",
-                    "text": ajan["sistem_promptu"],
+                    "text": sistem_promptu_extended,
                     "cache_control": {"type": "ephemeral"}
                 }],
-                messages=mesajlar
+                messages=mesajlar,
+                betas=["prompt-caching-2024-07-31"],
             )
-            break
+            return yanit
         except Exception as e:
-            if "rate_limit" in str(e).lower() or "429" in str(e):
+            err = str(e)
+            # beta parametresi desteklenmiyorsa tekrar dene (beta olmadan)
+            if "betas" in err or "beta" in err.lower():
+                try:
+                    yanit = client.messages.create(
+                        model=ajan["model"],
+                        max_tokens=ajan.get("max_tokens", 2000),
+                        system=[{
+                            "type": "text",
+                            "text": sistem_promptu_extended,
+                            "cache_control": {"type": "ephemeral"}
+                        }],
+                        messages=mesajlar,
+                    )
+                    return yanit
+                except Exception as e2:
+                    raise e2
+            elif "rate_limit" in err.lower() or "429" in err:
                 bekleme = 60 * (deneme + 1)
                 print(f"\n⏳ Rate limit — {bekleme}s bekleniyor (deneme {deneme+1}/5)...")
                 time.sleep(bekleme)
             else:
                 raise e
+    return None
+
+
+def _maliyet_kaydet(ajan_key, ajan, yanit):
+    """Token kullanımını ve maliyeti kaydet. Cache tasarrufunu da izle."""
+    model = ajan["model"]
+    usage = yanit.usage
+
+    inp   = usage.input_tokens
+    out   = usage.output_tokens
+    # Anthropic cache alanları (varsa)
+    c_cre = getattr(usage, "cache_creation_input_tokens", 0) or 0
+    c_rd  = getattr(usage, "cache_read_input_tokens",     0) or 0
+
+    if "opus" in model:
+        r_in, r_out = 15/1_000_000, 75/1_000_000      # normal input/output
+        r_cre       = 18.75/1_000_000                  # cache write +25%
+        r_rd        = 1.5/1_000_000                    # cache read  -90%
+    elif "sonnet" in model:
+        r_in, r_out = 3/1_000_000,  15/1_000_000
+        r_cre       = 3.75/1_000_000
+        r_rd        = 0.3/1_000_000
     else:
+        r_in, r_out = 0.8/1_000_000, 4/1_000_000
+        r_cre       = 1.0/1_000_000
+        r_rd        = 0.08/1_000_000
+
+    # Gerçek maliyet (cache dahil)
+    actual_cost = (inp * r_in) + (out * r_out) + (c_cre * r_cre) + (c_rd * r_rd)
+    # Cache olmasaydı ödenecek maliyet (tüm tokenlar normal fiyattan)
+    full_cost   = ((inp + c_cre + c_rd) * r_in) + (out * r_out)
+    saved       = max(0.0, full_cost - actual_cost)
+
+    MALIYET["input_token"]   += inp
+    MALIYET["output_token"]  += out
+    MALIYET["cache_create"]  += c_cre
+    MALIYET["cache_read"]    += c_rd
+    MALIYET["usd"]           += actual_cost
+    MALIYET["cache_saved_usd"] += saved
+
+    if ajan_key not in MALIYET_DETAY:
+        MALIYET_DETAY[ajan_key] = {"calls": 0, "input": 0, "output": 0, "usd": 0.0}
+    MALIYET_DETAY[ajan_key]["calls"]  += 1
+    MALIYET_DETAY[ajan_key]["input"]  += inp
+    MALIYET_DETAY[ajan_key]["output"] += out
+    MALIYET_DETAY[ajan_key]["usd"]    += actual_cost
+
+    cache_info = ""
+    if c_cre: cache_info += f" | cache_write={c_cre:,}"
+    if c_rd:  cache_info += f" | cache_read={c_rd:,} (saved ~${saved:.4f})"
+
+    print(f"\nToken: {inp:,} in / {out:,} out{cache_info}")
+    print(f"Cost:  ${actual_cost:.4f} (~{actual_cost*44:.2f} TL)")
+
+    return actual_cost
+
+
+def ajan_calistir(ajan_key, mesaj, gecmis=None, cache_context: Optional[str] = None):
+    """
+    Tek ajan çalıştırır.
+
+    cache_context: varsa, mesajdan ÖNCE cache'lenebilir bir content block olarak
+                   gönderilir (tum_ciktilar gibi büyük bağlamlar için idealdir).
+                   Bu blok Anthropic tarafından 5 dakika cache'lenir ve aynı
+                   oturumda başka ajanlara gönderildiğinde token ücreti alınmaz.
+    """
+    if gecmis is None:
+        gecmis = []
+
+    ajan = AGENTS.get(ajan_key) or DESTEK_AJANLARI.get(ajan_key)
+    if not ajan:
+        return f"ERROR: Agent '{ajan_key}' not found."
+
+    # Sistem promptunu preamble ile genişlet → cache eşiğini geç
+    sistem_promptu_extended = CACHE_PREAMBLE + "\n" + ajan["sistem_promptu"]
+
+    # Mesaj yapısı: cache_context varsa ayrı block olarak ekle
+    if cache_context and len(cache_context) > 800:
+        user_content = [
+            {
+                "type": "text",
+                "text": cache_context,
+                "cache_control": {"type": "ephemeral"}
+            },
+            {
+                "type": "text",
+                "text": mesaj
+            }
+        ]
+    else:
+        user_content = mesaj
+
+    mesajlar = gecmis + [{"role": "user", "content": user_content}]
+
+    print(f"\n{'='*50}")
+    print(f"AGENT: {ajan['isim']}")
+    print(f"{'='*50}")
+
+    yanit = _api_call(ajan, sistem_promptu_extended, mesajlar)
+    if yanit is None:
         return "ERROR: Rate limit aşıldı, maksimum deneme sayısına ulaşıldı."
 
     cevap = yanit.content[0].text
     print(cevap)
-
-    model = ajan["model"]
-    if "opus" in model:
-        input_maliyet  = yanit.usage.input_tokens  * 5  / 1_000_000
-        output_maliyet = yanit.usage.output_tokens * 25 / 1_000_000
-    elif "sonnet" in model:
-        input_maliyet  = yanit.usage.input_tokens  * 3  / 1_000_000
-        output_maliyet = yanit.usage.output_tokens * 15 / 1_000_000
-    else:
-        input_maliyet  = yanit.usage.input_tokens  * 1  / 1_000_000
-        output_maliyet = yanit.usage.output_tokens * 5  / 1_000_000
-
-    toplam = input_maliyet + output_maliyet
-    print(f"\nToken: {yanit.usage.input_tokens} input, {yanit.usage.output_tokens} output")
-    print(f"Cost:  ${toplam:.4f} / ~{toplam*44:.2f} TL")
-
-    MALIYET["input_token"]  += yanit.usage.input_tokens
-    MALIYET["output_token"] += yanit.usage.output_tokens
-    MALIYET["usd"]          += toplam
-
-    # Per-agent cost tracking
-    if ajan_key not in MALIYET_DETAY:
-        MALIYET_DETAY[ajan_key] = {"calls": 0, "input": 0, "output": 0, "usd": 0.0}
-    MALIYET_DETAY[ajan_key]["calls"]  += 1
-    MALIYET_DETAY[ajan_key]["input"]  += yanit.usage.input_tokens
-    MALIYET_DETAY[ajan_key]["output"] += yanit.usage.output_tokens
-    MALIYET_DETAY[ajan_key]["usd"]    += toplam
+    _maliyet_kaydet(ajan_key, ajan, yanit)
 
     return cevap
 
@@ -173,12 +358,15 @@ def kaydet(brief, mod, sonuc, aktif_alanlar=[], tur_ozeti=[]):
         f.write("="*60 + "\n")
         f.write(sonuc)
 
-    print(f"\n{'='*40}")
+    print(f"\n{'='*50}")
     print(f"TOTAL SESSION COST")
-    print(f"Input : {MALIYET['input_token']:,} tokens")
-    print(f"Output: {MALIYET['output_token']:,} tokens")
-    print(f"Total : ${MALIYET['usd']:.4f} / ~{MALIYET['usd']*44:.2f} TL")
-    print(f"{'='*40}")
+    print(f"Input tokens  : {MALIYET['input_token']:,}")
+    print(f"Output tokens : {MALIYET['output_token']:,}")
+    print(f"Cache writes  : {MALIYET['cache_create']:,} tokens")
+    print(f"Cache reads   : {MALIYET['cache_read']:,} tokens")
+    print(f"Cache savings : ${MALIYET['cache_saved_usd']:.4f} USD")
+    print(f"Actual cost   : ${MALIYET['usd']:.4f} USD / ~{MALIYET['usd']*44:.2f} TL")
+    print(f"{'='*50}")
     print(f"\n💾 Saved: {dosya_adi}")
 
     # RAG: analizi knowledge base'e kaydet
@@ -408,33 +596,29 @@ def _feedback_loop_core(brief, guclendirilmis_brief, aktif_alanlar, max_tur, mod
         # Validasyon katmanı
         print(f"\n--- VALIDATION LAYER ---")
 
-        capraz_cevap = ajan_calistir("capraz_dogrulama", f"""
-ROUND {tur} AGENT OUTPUTS:
-{tum_ciktilar}
+        capraz_cevap = ajan_calistir(
+            "capraz_dogrulama",
+            f"ROUND {tur}: Check all numerical values for physical and mathematical consistency.",
+            cache_context=tum_ciktilar,
+        )
 
-Check all numerical values for physical and mathematical consistency.
-""")
+        varsayim_cevap = ajan_calistir(
+            "varsayim_denetcisi",
+            f"ROUND {tur}: Identify hidden and unstated assumptions in all agent outputs.",
+            cache_context=tum_ciktilar,
+        )
 
-        varsayim_cevap = ajan_calistir("varsayim_denetcisi", f"""
-ROUND {tur} AGENT OUTPUTS:
-{tum_ciktilar}
+        belirsizlik_cevap = ajan_calistir(
+            "belirsizlik_takipcisi",
+            f"ROUND {tur}: List all missing, ambiguous, or conflicting points.",
+            cache_context=tum_ciktilar,
+        )
 
-Identify hidden and unstated assumptions in all outputs.
-""")
-
-        belirsizlik_cevap = ajan_calistir("belirsizlik_takipcisi", f"""
-ROUND {tur} AGENT OUTPUTS:
-{tum_ciktilar}
-
-List all missing, ambiguous, or conflicting points.
-""")
-
-        literatur_cevap = ajan_calistir("literatur_patent", f"""
-ROUND {tur} AGENT OUTPUTS:
-{tum_ciktilar}
-
-Check standards and references cited. Flag unverifiable references and IP risks.
-""")
+        literatur_cevap = ajan_calistir(
+            "literatur_patent",
+            f"ROUND {tur}: Check cited standards and references. Flag unverifiable citations and IP risks.",
+            cache_context=tum_ciktilar,
+        )
 
         # Observer
         print(f"\n--- OBSERVER ---")
@@ -458,23 +642,19 @@ Specify what each agent must correct in the next round.
         gozlemci_notu = gozlemci_cevabi
 
         # Risk & Reliability
-        ajan_calistir("risk_guvenilirlik", f"""
-ROUND {tur} AGENT OUTPUTS:
-{tum_ciktilar}
-
-Conduct FMEA. Identify critical failure scenarios and RPN values.
-""")
+        ajan_calistir(
+            "risk_guvenilirlik",
+            f"ROUND {tur}: Conduct FMEA on all proposed designs. Identify critical failure scenarios and RPN values.",
+            cache_context=tum_ciktilar,
+        )
 
         # Conflict Resolution
-        ajan_calistir("celisiki_cozum", f"""
-ROUND {tur} OBSERVER REPORT:
-{gozlemci_cevabi}
-
-ROUND {tur} AGENT OUTPUTS:
-{tum_ciktilar}
-
-Resolve conflicts identified by Observer. Determine which agent is correct for each.
-""")
+        ajan_calistir(
+            "celisiki_cozum",
+            f"ROUND {tur} OBSERVER REPORT:\n{gozlemci_cevabi}\n\n"
+            f"Resolve all conflicts identified by the Observer. Determine which agent position is better supported for each conflict.",
+            cache_context=tum_ciktilar,
+        )
 
         tur_ozeti.append({"tur": tur, "puan": puan})
 
@@ -500,76 +680,67 @@ Resolve conflicts identified by Observer. Determine which agent is correct for e
     print(f"{'='*60}")
 
     print(f"\n--- QUESTION GENERATOR ---")
-    soru_cevap = ajan_calistir("soru_uretici", f"""
-Problem: {guclendirilmis_brief}
-Last round outputs:
-{tum_ciktilar}
-List unanswered critical questions requiring further analysis or testing.
-""")
+    soru_cevap = ajan_calistir(
+        "soru_uretici",
+        f"Problem: {guclendirilmis_brief}\n\nList unanswered critical questions requiring further analysis or testing.",
+        cache_context=tum_ciktilar,
+    )
 
     print(f"\n--- ALTERNATIVE SCENARIOS ---")
-    alt_cevap = ajan_calistir("alternatif_senaryo", f"""
-Problem: {guclendirilmis_brief}
-Main approach from agents:
-{tum_ciktilar}
-Evaluate at least 3 alternative design/solution approaches.
-""")
+    alt_cevap = ajan_calistir(
+        "alternatif_senaryo",
+        f"Problem: {guclendirilmis_brief}\n\nEvaluate at least 3 alternative design/solution approaches.",
+        cache_context=tum_ciktilar,
+    )
 
     print(f"\n--- CALIBRATION ---")
-    kalibrasyon_cevap = ajan_calistir("kalibrasyon", f"""
-Problem: {guclendirilmis_brief}
-Agent outputs:
-{tum_ciktilar}
-Compare proposed parameters against known benchmarks. Flag anomalies and over-conservative estimates.
-""")
+    kalibrasyon_cevap = ajan_calistir(
+        "kalibrasyon",
+        f"Problem: {guclendirilmis_brief}\n\nCompare proposed parameters against known benchmarks. Flag anomalies and over-conservative estimates.",
+        cache_context=tum_ciktilar,
+    )
 
     print(f"\n--- VERIFICATION & STANDARDS ---")
-    standart_cevap = ajan_calistir("dogrulama_standartlar", f"""
-Problem: {guclendirilmis_brief}
-Agent outputs:
-{tum_ciktilar}
-Assess compliance with relevant industry standards. Identify certification roadblocks.
-""")
+    standart_cevap = ajan_calistir(
+        "dogrulama_standartlar",
+        f"Problem: {guclendirilmis_brief}\n\nAssess compliance with relevant industry standards. Identify certification roadblocks.",
+        cache_context=tum_ciktilar,
+    )
 
     print(f"\n--- INTEGRATION & INTERFACE ---")
-    entegrasyon_cevap = ajan_calistir("entegrasyon_arayuz", f"""
-Problem: {guclendirilmis_brief}
-Agent outputs:
-{tum_ciktilar}
-Identify interface risks between subsystems and adjacent systems.
-""")
+    entegrasyon_cevap = ajan_calistir(
+        "entegrasyon_arayuz",
+        f"Problem: {guclendirilmis_brief}\n\nIdentify interface risks between subsystems and adjacent systems.",
+        cache_context=tum_ciktilar,
+    )
 
     print(f"\n--- SIMULATION COORDINATOR ---")
-    simulasyon_cevap = ajan_calistir("simulasyon_koordinator", f"""
-Problem: {guclendirilmis_brief}
-Agent outputs:
-{tum_ciktilar}
-Recommend simulation strategy. Identify which analyses require CFD, FEA, or other high-fidelity simulation.
-""")
+    simulasyon_cevap = ajan_calistir(
+        "simulasyon_koordinator",
+        f"Problem: {guclendirilmis_brief}\n\nRecommend simulation strategy. Identify which analyses require CFD, FEA, or other high-fidelity simulation.",
+        cache_context=tum_ciktilar,
+    )
 
     print(f"\n--- COST & MARKET ANALYST ---")
-    maliyet_cevap = ajan_calistir("maliyet_pazar", f"""
-Problem: {guclendirilmis_brief}
-Agent outputs:
-{tum_ciktilar}
-Provide cost estimation, market context, and supply chain assessment.
-""")
+    maliyet_cevap = ajan_calistir(
+        "maliyet_pazar",
+        f"Problem: {guclendirilmis_brief}\n\nProvide cost estimation, market context, and supply chain assessment.",
+        cache_context=tum_ciktilar,
+    )
 
     print(f"\n--- DATA ANALYST ---")
-    veri_cevap = ajan_calistir("veri_analisti", f"""
-Problem: {guclendirilmis_brief}
-Agent outputs:
-{tum_ciktilar}
-Analyze numerical data quality, identify statistical patterns, and flag data gaps.
-""")
+    veri_cevap = ajan_calistir(
+        "veri_analisti",
+        f"Problem: {guclendirilmis_brief}\n\nAnalyze numerical data quality, identify statistical patterns, and flag data gaps.",
+        cache_context=tum_ciktilar,
+    )
 
     print(f"\n--- CONTEXT MANAGER ---")
-    baglam_cevap = ajan_calistir("baglan_yoneticisi", f"""
-Problem: {guclendirilmis_brief}
-Agent outputs:
-{tum_ciktilar}
-Summarize key context, confirmed parameters, and decisions for future reference.
-""")
+    baglam_cevap = ajan_calistir(
+        "baglan_yoneticisi",
+        f"Problem: {guclendirilmis_brief}\n\nSummarize key context, confirmed parameters, and decisions for future reference.",
+        cache_context=tum_ciktilar,
+    )
 
     print(f"\n--- SYNTHESIS AGENT ---")
     sentez_cevap = ajan_calistir("sentez", f"""

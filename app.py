@@ -8,9 +8,25 @@ import requests
 from dotenv import load_dotenv
 from config.agents_config import AGENTS, DESTEK_AJANLARI
 from rag.store import RAGStore
+try:
+    from report_generator import generate_pdf_report
+    PDF_OK = True
+except ImportError:
+    PDF_OK = False
 
 load_dotenv()
 
+
+@st.cache_data(ttl=3600)
+def kur_getir():
+    try:
+        r = requests.get("https://api.frankfurter.app/latest?from=USD&to=TRY", timeout=3)
+        kur = r.json()["rates"]["TRY"]
+        return round(kur, 2)
+    except Exception:
+        return 44.0
+
+KUR = kur_getir()
 
 # ═════════════════════════════════════════════════════════════
 # PAGE CONFIG
@@ -51,14 +67,10 @@ st.markdown("""
 }
 
 /* Global reset */
-html, body {
+html, body, [class*="css"] {
     font-family: var(--sans) !important;
     background-color: var(--bg-primary) !important;
     color: var(--text-primary) !important;
-}
-/* Streamlit main container */
-.main .block-container {
-    background-color: var(--bg-primary) !important;
 }
 
 .stApp {
@@ -66,9 +78,7 @@ html, body {
 }
 
 /* ── Hide Streamlit Branding ── */
-#MainMenu { visibility: hidden; }
-footer { visibility: hidden; }
-/* header GİZLENMİYOR - sidebar toggle butonu header içinde! */
+#MainMenu, footer, header { visibility: hidden; }
 .stDeployButton { display: none; }
 
 /* ── Sidebar ── */
@@ -77,16 +87,8 @@ footer { visibility: hidden; }
     border-right: 1px solid var(--border) !important;
 }
 
-[data-testid="stSidebar"] > div:first-child {
+[data-testid="stSidebar"] > div {
     padding: 1.5rem 1rem !important;
-}
-
-/* Sidebar collapse/expand toggle her zaman görünür */
-button[data-testid="collapsedControl"],
-[data-testid="stSidebarCollapsedControl"] {
-    visibility: visible !important;
-    display: flex !important;
-    opacity: 1 !important;
 }
 
 /* ── Buttons ── */
@@ -514,6 +516,7 @@ def init_state():
         "current_round":      0,
         "max_rounds":         3,
         "error":              "",
+        "pdf_bytes":          None,
         "running":            False,
     }
     for k, v in defaults.items():
@@ -1288,12 +1291,37 @@ elif st.session_state.step == "done":
                 use_container_width=True
             )
         with col2:
-            st.button(
-                "📑 PDF İndir (Faz D'de)",
-                disabled=True,
-                use_container_width=True,
-                key="pdf_btn"
-            )
+            if PDF_OK:
+                if not st.session_state.get("pdf_bytes"):
+                    with st.spinner("PDF oluşturuluyor..."):
+                        try:
+                            pdf_bytes = generate_pdf_report(
+                                brief        = st.session_state.brief,
+                                final_report = st.session_state.final_report,
+                                domains      = alan_isimleri,
+                                round_scores = tur_ozeti,
+                                agent_log    = st.session_state.agent_log,
+                                total_cost   = st.session_state.total_cost,
+                                kur          = KUR,
+                                mode         = st.session_state.mode,
+                            )
+                            st.session_state.pdf_bytes = pdf_bytes
+                        except Exception as e:
+                            st.session_state.pdf_bytes = None
+                            st.error(f"PDF hatası: {e}")
+                if st.session_state.get("pdf_bytes"):
+                    zaman = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                    st.download_button(
+                        label="📑 PDF İndir",
+                        data=st.session_state.pdf_bytes,
+                        file_name=f"analiz_{zaman}.pdf",
+                        mime="application/pdf",
+                        use_container_width=True,
+                        key="pdf_dl_btn"
+                    )
+            else:
+                st.button("📑 PDF İndir (report_generator.py eksik)", disabled=True,
+                          use_container_width=True, key="pdf_btn")
 
         # Ajan log detayı
         with st.expander("🔍 Ajan Aktivite Logu"):

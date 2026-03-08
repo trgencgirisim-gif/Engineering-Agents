@@ -22,6 +22,11 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, StreamingResponse, PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+try:
+    from report_generator import generate_pdf_report
+    PDF_OK = True
+except ImportError:
+    PDF_OK = False
 from typing import Optional, List
 import uvicorn
 
@@ -591,6 +596,41 @@ async def download(sid: str):
 
     return PlainTextResponse(
         content=sess.txt_output,
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'}
+    )
+
+
+# ── PDF İndir ─────────────────────────────────────────────────
+@app.get("/api/download_pdf/{sid}")
+async def download_pdf(sid: str):
+    sess = sessions.get(sid)
+    if not sess or not sess.final_report:
+        raise HTTPException(404, "Rapor henüz hazır değil.")
+    if not PDF_OK:
+        raise HTTPException(501, "report_generator.py bulunamadı.")
+
+    try:
+        kur = get_kur()
+        pdf_bytes = generate_pdf_report(
+            brief        = sess.brief,
+            final_report = sess.final_report,
+            domains      = [n for _, n in sess.domains],
+            round_scores = sess.round_scores,
+            agent_log    = sess.agent_log,
+            total_cost   = sess.total_cost,
+            kur          = kur,
+            mode         = sess.mode,
+        )
+    except Exception as e:
+        raise HTTPException(500, f"PDF oluşturma hatası: {e}")
+
+    import datetime
+    zaman = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    fname = f"analiz_{zaman}.pdf"
+    from fastapi.responses import Response
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{fname}"'}
     )
 

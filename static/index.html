@@ -586,7 +586,7 @@ textarea:focus { border-color: var(--accent); }
 
       <div style="margin-top:1.2rem;display:flex;gap:0.8rem;flex-wrap:wrap">
         <button class="btn-primary" id="dl-btn" onclick="downloadTxt()">📄 TXT İndir</button>
-        <button class="btn-secondary" disabled style="opacity:0.5;cursor:not-allowed">📑 PDF İndir (Faz D)</button>
+        <button class="btn-primary" id="pdf-dl-btn" onclick="downloadPdf()" style="background:var(--card);border:1px solid var(--accent);color:var(--accent)">📑 PDF İndir</button>
       </div>
 
       <div style="margin-top:1.5rem">
@@ -1024,6 +1024,26 @@ function updateCostDisplay() {
 
 async function downloadTxt() {
   window.location.href = `/api/download/${S.sid}`;
+}
+
+async function downloadPdf() {
+  const btn = document.getElementById('pdf-dl-btn');
+  if(btn) { btn.disabled = true; btn.textContent = '⏳ PDF Oluşturuluyor...'; }
+  try {
+    const r = await fetch(`/api/download_pdf/${S.sid}`);
+    if(!r.ok) { alert('PDF oluşturulamadı: ' + (await r.text())); return; }
+    const blob = await r.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = `analiz_${new Date().toISOString().slice(0,10)}.pdf`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch(e) {
+    alert('PDF indirme hatası: ' + e.message);
+  } finally {
+    if(btn) { btn.disabled = false; btn.textContent = '📑 PDF İndir'; }
+  }
 }
 
 function resetApp() {
