@@ -54,37 +54,22 @@ html, body {
   flex-direction: column;
   overflow-y: auto;
   padding: 1.5rem 1rem;
-  transition: width 0.25s ease, min-width 0.25s ease, padding 0.25s ease;
+  /* transition kaldırıldı — sidebar sabit */
   position: relative;
 }
 
+/* collapsed class artık etkisiz — sidebar sabit kalır */
 .sidebar.collapsed {
-  width: 0;
-  min-width: 0;
-  padding: 0;
-  overflow: hidden;
+  width: 260px !important;
+  min-width: 260px !important;
+  padding: 1.5rem 1rem !important;
+  overflow-y: auto !important;
 }
 
+/* Toggle butonu gizli */
 .sidebar-toggle {
-  position: fixed;
-  top: 12px;
-  left: 260px;
-  z-index: 100;
-  background: var(--bg2);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  width: 28px;
-  height: 28px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--fg2);
-  font-size: 14px;
-  transition: left 0.25s ease;
+  display: none !important;
 }
-.sidebar-toggle:hover { border-color: var(--accent); color: var(--accent); }
-.sidebar.collapsed ~ .sidebar-toggle { left: 8px; }
 
 /* ── Main ────────────────────────────────────────────────── */
 .main {
@@ -494,7 +479,7 @@ textarea:focus { border-color: var(--accent); }
   </nav>
 
   <!-- Toggle -->
-  <button class="sidebar-toggle" id="sidebar-toggle" onclick="toggleSidebar()">☰</button>
+  <!-- sidebar-toggle kaldırıldı — sidebar sabit -->
 
   <!-- ═══════════════ MAIN ═══════════════ -->
   <main class="main" id="main">
@@ -674,10 +659,7 @@ async function loadDomains() {
 
 /* ══ Sidebar ═══════════════════════════════════════════════════ */
 function toggleSidebar() {
-  const sb = document.getElementById('sidebar');
-  sb.classList.toggle('collapsed');
-  const btn = document.getElementById('sidebar-toggle');
-  btn.textContent = sb.classList.contains('collapsed') ? '☰' : '✕';
+  /* devre dışı — sidebar sabit */
 }
 
 /* ══ Mode ══════════════════════════════════════════════════════ */
