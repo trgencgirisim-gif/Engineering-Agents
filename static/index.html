@@ -1,0 +1,1048 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Engineering AI — Multi-Agent System</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+/* ══ Variables ═══════════════════════════════════════════════ */
+:root {
+  --bg:        #0C0C0E;
+  --bg2:       #131316;
+  --card:      #18181C;
+  --hover:     #1E1E24;
+  --border:    #2A2A32;
+  --accent:    #E05A2B;
+  --accent-s:  rgba(224,90,43,0.12);
+  --accent-g:  rgba(224,90,43,0.25);
+  --fg:        #F0EFED;
+  --fg2:       #9998A3;
+  --fg3:       #5A5A65;
+  --ok:        #2DB87A;
+  --warn:      #E8A838;
+  --mono: 'JetBrains Mono', monospace;
+  --sans: 'Syne', sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--sans);
+  overflow: hidden;
+}
+
+/* ══ Layout ══════════════════════════════════════════════════ */
+.shell { display: flex; height: 100vh; overflow: hidden; }
+
+/* ── Sidebar ─────────────────────────────────────────────── */
+.sidebar {
+  width: 260px;
+  min-width: 260px;
+  background: var(--bg2);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  padding: 1.5rem 1rem;
+  transition: width 0.25s ease, min-width 0.25s ease, padding 0.25s ease;
+  position: relative;
+}
+
+.sidebar.collapsed {
+  width: 0;
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.sidebar-toggle {
+  position: fixed;
+  top: 12px;
+  left: 260px;
+  z-index: 100;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--fg2);
+  font-size: 14px;
+  transition: left 0.25s ease;
+}
+.sidebar-toggle:hover { border-color: var(--accent); color: var(--accent); }
+.sidebar.collapsed ~ .sidebar-toggle { left: 8px; }
+
+/* ── Main ────────────────────────────────────────────────── */
+.main {
+  flex: 1;
+  overflow-y: auto;
+  padding: 2rem 2.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+/* ══ Sidebar içerik ══════════════════════════════════════════ */
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 1.5rem;
+}
+.logo-icon { font-size: 1.5rem; }
+.logo-title { font-size: 1rem; font-weight: 800; letter-spacing: -0.02em; }
+.logo-sub { font-size: 0.65rem; color: var(--fg3); letter-spacing: 0.1em; text-transform: uppercase; margin-top: 1px; }
+
+.label {
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  color: var(--fg3);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 0.5rem;
+  margin-top: 1.2rem;
+}
+
+.mode-btn {
+  width: 100%;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.65rem 0.9rem;
+  margin-bottom: 0.4rem;
+  cursor: pointer;
+  text-align: left;
+  color: var(--fg);
+  font-family: var(--sans);
+  font-size: 0.85rem;
+  font-weight: 600;
+  transition: all 0.15s;
+}
+.mode-btn:hover { border-color: var(--accent); background: var(--hover); }
+.mode-btn.active { border-color: var(--accent); background: var(--accent-s); color: var(--accent); }
+.mode-desc { font-size: 0.68rem; color: var(--fg2); margin: -0.15rem 0 0.5rem 0.2rem; }
+
+.slider-wrap { margin: 0.5rem 0 1rem; }
+.slider-wrap label { font-size: 0.75rem; color: var(--fg2); display: flex; justify-content: space-between; }
+input[type=range] {
+  width: 100%;
+  accent-color: var(--accent);
+  margin-top: 0.4rem;
+}
+
+.divider { border: none; border-top: 1px solid var(--border); margin: 1rem 0; }
+
+.stat-mini {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.65rem 0.9rem;
+  margin-bottom: 0.5rem;
+}
+.stat-mini .val { font-family: var(--mono); font-size: 1rem; font-weight: 500; color: var(--accent); }
+.stat-mini .lbl { font-size: 0.6rem; color: var(--fg3); text-transform: uppercase; letter-spacing: 0.08em; margin-top: 2px; }
+
+.sidebar-btn {
+  width: 100%;
+  background: var(--accent);
+  border: none;
+  border-radius: 8px;
+  padding: 0.6rem 1rem;
+  color: #fff;
+  font-family: var(--sans);
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s;
+  margin-top: 0.5rem;
+}
+.sidebar-btn:hover { background: #c44d22; }
+
+/* ══ Main içerik ══════════════════════════════════════════════ */
+.page-title { font-size: 1.7rem; font-weight: 800; letter-spacing: -0.03em; }
+.page-meta { font-family: var(--mono); font-size: 0.6rem; color: var(--fg3); letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 0.3rem; }
+
+/* ── Input area ─────────────────────────────────────────── */
+textarea {
+  width: 100%;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1rem;
+  color: var(--fg);
+  font-family: var(--mono);
+  font-size: 0.83rem;
+  line-height: 1.6;
+  resize: vertical;
+  min-height: 150px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+textarea:focus { border-color: var(--accent); }
+
+.btn-primary {
+  background: var(--accent);
+  border: none;
+  border-radius: 8px;
+  padding: 0.65rem 1.8rem;
+  color: #fff;
+  font-family: var(--sans);
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s;
+  letter-spacing: 0.02em;
+}
+.btn-primary:hover { background: #c44d22; transform: translateY(-1px); box-shadow: 0 4px 16px var(--accent-g); }
+.btn-primary:disabled { background: var(--hover); color: var(--fg3); cursor: not-allowed; transform: none; box-shadow: none; }
+
+.btn-secondary {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.65rem 1.4rem;
+  color: var(--fg);
+  font-family: var(--sans);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ── Chips ───────────────────────────────────────────────── */
+.chip {
+  display: inline-block;
+  background: var(--accent-s);
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  border-radius: 20px;
+  padding: 3px 10px;
+  font-size: 0.7rem;
+  font-family: var(--mono);
+  margin: 2px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.chip.removable:hover { background: rgba(224,90,43,0.25); }
+.chip.add {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--fg3);
+}
+.chip.add:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ── Domain confirm ──────────────────────────────────────── */
+.domain-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+.domain-item {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.5rem 0.8rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--fg2);
+}
+.domain-item:hover { border-color: var(--accent); }
+.domain-item.selected { border-color: var(--accent); background: var(--accent-s); color: var(--accent); }
+.domain-item .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--border); flex-shrink: 0; }
+.domain-item.selected .dot { background: var(--accent); }
+
+/* ── QA boxes ────────────────────────────────────────────── */
+.qa-box {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1rem 1.2rem;
+  margin-bottom: 0.8rem;
+}
+.qa-num { font-family: var(--mono); font-size: 0.6rem; color: var(--accent); letter-spacing: 0.08em; margin-bottom: 5px; }
+.qa-q { font-size: 0.85rem; font-weight: 600; margin-bottom: 0.6rem; }
+.qa-input {
+  width: 100%;
+  background: var(--hover);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.5rem 0.8rem;
+  color: var(--fg);
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  outline: none;
+}
+.qa-input:focus { border-color: var(--accent); }
+
+/* ── Agent log ───────────────────────────────────────────── */
+.agent-log {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.8rem;
+  height: 320px;
+  overflow-y: auto;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+}
+.agent-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 7px;
+  border-radius: 5px;
+  margin-bottom: 2px;
+}
+.agent-row.running { background: var(--accent-s); border-left: 2px solid var(--accent); }
+.agent-row.done { color: var(--fg2); }
+.agent-row.waiting { color: var(--warn); }
+.agent-status { min-width: 14px; text-align: center; }
+.agent-name { flex: 1; }
+.agent-cost { color: var(--fg3); font-size: 0.68rem; }
+
+/* ── Stats bar ───────────────────────────────────────────── */
+.stats-row {
+  display: flex;
+  gap: 0.8rem;
+  flex-wrap: wrap;
+  margin: 0.5rem 0;
+}
+.stat-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.6rem 1rem;
+  flex: 1;
+  min-width: 90px;
+}
+.stat-card .v { font-family: var(--mono); font-size: 1.05rem; font-weight: 500; color: var(--accent); }
+.stat-card .l { font-size: 0.6rem; color: var(--fg3); text-transform: uppercase; letter-spacing: 0.08em; margin-top: 2px; }
+
+/* ── Round badges ────────────────────────────────────────── */
+.round-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 3px 10px;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  color: var(--fg2);
+  margin-right: 5px;
+  margin-bottom: 5px;
+}
+.round-badge.active { border-color: var(--accent); color: var(--accent); }
+.round-badge.done { border-color: var(--ok); color: var(--ok); }
+.round-badge.good { border-color: var(--ok); color: var(--ok); }
+.round-badge.mid  { border-color: var(--warn); color: var(--warn); }
+.round-badge.low  { border-color: var(--accent); color: var(--accent); }
+
+/* ── Output box ──────────────────────────────────────────── */
+.output-box {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.5rem;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  line-height: 1.75;
+  color: var(--fg);
+  white-space: pre-wrap;
+  max-height: 560px;
+  overflow-y: auto;
+}
+
+/* ── Spinner ─────────────────────────────────────────────── */
+.spinner {
+  display: inline-block;
+  width: 14px; height: 14px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Alert ───────────────────────────────────────────────── */
+.alert {
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  border-left: 3px solid;
+}
+.alert.error { background: rgba(224,90,43,0.1); border-color: var(--accent); color: #f0a090; }
+.alert.info  { background: rgba(45,184,122,0.08); border-color: var(--ok); color: #7dd4b2; }
+
+/* ── Scrollbar ───────────────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: var(--bg2); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--fg3); }
+
+/* ── Select (domain) ─────────────────────────────────────── */
+.select-all-btn, .clear-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-size: 0.72rem;
+  color: var(--fg2);
+  cursor: pointer;
+  margin-right: 5px;
+}
+.select-all-btn:hover, .clear-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ── Responsive ──────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .sidebar { width: 100%; position: absolute; z-index: 50; height: 100%; }
+  .main { padding: 1.2rem; }
+}
+</style>
+</head>
+<body>
+
+<div class="shell">
+
+  <!-- ═══════════════ SIDEBAR ═══════════════ -->
+  <nav class="sidebar" id="sidebar">
+    <div class="logo">
+      <div class="logo-icon">⚙️</div>
+      <div>
+        <div class="logo-title">Engineering AI</div>
+        <div class="logo-sub">Multi-Agent System</div>
+      </div>
+    </div>
+
+    <div class="label">Analiz Modu</div>
+
+    <button class="mode-btn active" id="m1" onclick="setMode(1)">Tekli Ajan</button>
+    <div class="mode-desc">Hızlı analiz · Her alandan 1 perspektif</div>
+
+    <button class="mode-btn" id="m2" onclick="setMode(2)">Çift Ajan</button>
+    <div class="mode-desc">Teori vs pratik · Döngü yok</div>
+
+    <button class="mode-btn" id="m3" onclick="setMode(3)">Yarı Otomatik</button>
+    <div class="mode-desc">Eksik parametreleri sorar · Tam döngü</div>
+
+    <button class="mode-btn" id="m4" onclick="setMode(4)">Tam Otomatik</button>
+    <div class="mode-desc">Hands-off · Maksimum derinlik</div>
+
+    <div id="round-wrap" style="display:none">
+      <div class="slider-wrap">
+        <label>
+          <span>Maksimum Tur</span>
+          <span id="round-val">3</span>
+        </label>
+        <input type="range" min="1" max="5" value="3" id="round-slider" oninput="document.getElementById('round-val').textContent=this.value">
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <div class="label">Oturum Maliyeti</div>
+    <div class="stat-mini">
+      <div class="val" id="sb-cost">$0.0000</div>
+      <div class="lbl">USD</div>
+    </div>
+    <div class="stat-mini">
+      <div class="val" id="sb-tl">~0.00 ₺</div>
+      <div class="lbl">TRY (<span id="sb-kur">...</span>)</div>
+    </div>
+
+    <hr class="divider">
+
+    <div class="label">Knowledge Base</div>
+    <div class="stat-mini">
+      <div class="val" id="sb-kb">🧠 …</div>
+      <div class="lbl">Kayıtlı Analiz</div>
+    </div>
+
+    <div id="new-btn-wrap" style="display:none;margin-top:0.5rem">
+      <button class="sidebar-btn" onclick="resetApp()">🔄 Yeni Analiz</button>
+    </div>
+  </nav>
+
+  <!-- Toggle -->
+  <button class="sidebar-toggle" id="sidebar-toggle" onclick="toggleSidebar()">☰</button>
+
+  <!-- ═══════════════ MAIN ═══════════════ -->
+  <main class="main" id="main">
+
+    <!-- ── INPUT ──────────────────────────── -->
+    <div id="step-input">
+      <div class="page-meta" id="mode-meta">MOD 1 · TEKLİ AJAN</div>
+      <h1 class="page-title">Mühendislik Analizi</h1>
+
+      <div class="label" style="margin-top:1.5rem">Problem Brief</div>
+      <textarea id="brief-input" placeholder="Analiz etmek istediğiniz mühendislik problemini detaylıca açıklayın...
+
+Örnek: Hipersonik füze için malzeme seçimi ve termal koruma sistemi tasarımı. Mach 8 hız, 25km irtifa, 300 saniyelik uçuş süresi hedefleniyor." rows="7"></textarea>
+
+      <div style="margin-top:1rem;display:flex;gap:0.8rem;align-items:center">
+        <button class="btn-primary" id="start-btn" onclick="startAnalysis()">⚡ Analizi Başlat</button>
+        <span id="input-error" style="color:#f0a090;font-size:0.8rem"></span>
+      </div>
+    </div>
+
+    <!-- ── PREP (spinner) ─────────────────── -->
+    <div id="step-prep" style="display:none">
+      <div class="page-meta">HAZIRLIK AŞAMASI</div>
+      <h1 class="page-title">Analiz Hazırlanıyor</h1>
+      <div style="margin-top:1.5rem">
+        <div class="alert info"><span class="spinner"></span>Prompt Engineer ve Domain Selector çalışıyor...</div>
+      </div>
+      <div class="label" style="margin-top:1.5rem">Ajan Aktivitesi</div>
+      <div class="agent-log" id="prep-log"></div>
+    </div>
+
+    <!-- ── DOMAIN CONFIRM ─────────────────── -->
+    <div id="step-domains" style="display:none">
+      <div class="page-meta">ALAN SEÇİMİ</div>
+      <h1 class="page-title">Domain Onayı</h1>
+      <p style="color:var(--fg2);font-size:0.85rem;margin-top:0.5rem">
+        AI aşağıdaki alanları seçti. Onaylayın ya da değiştirin.
+      </p>
+      <div style="margin:0.8rem 0;display:flex;gap:0.4rem;flex-wrap:wrap;align-items:center">
+        <button class="select-all-btn" onclick="selectAllDomains()">Tümünü Seç</button>
+        <button class="clear-btn" onclick="clearDomains()">Temizle</button>
+      </div>
+      <div class="domain-grid" id="domain-grid"></div>
+      <div style="margin-top:1rem;display:flex;gap:0.8rem">
+        <button class="btn-primary" onclick="confirmDomains()">✓ Onayla ve Analizi Başlat</button>
+        <span id="domain-count" style="color:var(--fg3);font-size:0.8rem;align-self:center"></span>
+      </div>
+    </div>
+
+    <!-- ── QA ────────────────────────────── -->
+    <div id="step-qa" style="display:none">
+      <div class="page-meta">EKSİK PARAMETRELER</div>
+      <h1 class="page-title">Parametreler</h1>
+      <p style="color:var(--fg2);font-size:0.85rem;margin-top:0.5rem">
+        Cevaplayamadığınız sorular için boş bırakın — ajan varsayım yapacak.
+      </p>
+      <div id="qa-list" style="margin-top:1.2rem"></div>
+      <div style="margin-top:1rem">
+        <button class="btn-primary" onclick="submitQA()">✓ Cevapları Gönder ve Analizi Başlat</button>
+      </div>
+    </div>
+
+    <!-- ── RUNNING ────────────────────────── -->
+    <div id="step-running" style="display:none">
+      <div class="page-meta" id="running-meta">ANALİZ ÇALIŞIYOR</div>
+      <h1 class="page-title">Multi-Agent Analiz</h1>
+
+      <div id="running-chips" style="margin:0.8rem 0"></div>
+
+      <div id="round-badges" style="margin-bottom:0.8rem"></div>
+
+      <div style="display:grid;grid-template-columns:1fr 240px;gap:1.2rem;margin-top:1rem">
+        <div>
+          <div class="label">Ajan Aktivitesi</div>
+          <div class="agent-log" id="running-log"></div>
+        </div>
+        <div>
+          <div class="label">İlerleme</div>
+          <div class="stats-row" style="flex-direction:column">
+            <div class="stat-card"><div class="v" id="r-cost">$0.0000</div><div class="l">Maliyet</div></div>
+            <div class="stat-card"><div class="v" id="r-agents">0</div><div class="l">Çalışan Ajan</div></div>
+            <div class="stat-card"><div class="v" id="r-round">–</div><div class="l">Aktif Tur</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── DONE ───────────────────────────── -->
+    <div id="step-done" style="display:none">
+      <div class="page-meta">ANALİZ TAMAMLANDI</div>
+      <h1 class="page-title">Sonuçlar</h1>
+
+      <div class="stats-row" id="done-stats" style="margin-top:1rem"></div>
+      <div id="done-round-badges" style="margin:0.5rem 0 1rem"></div>
+      <div id="done-chips" style="margin-bottom:1rem"></div>
+
+      <div class="label">Final Rapor</div>
+      <div class="output-box" id="done-report"></div>
+
+      <div style="margin-top:1.2rem;display:flex;gap:0.8rem;flex-wrap:wrap">
+        <button class="btn-primary" id="dl-btn" onclick="downloadTxt()">📄 TXT İndir</button>
+        <button class="btn-secondary" disabled style="opacity:0.5;cursor:not-allowed">📑 PDF İndir (Faz D)</button>
+      </div>
+
+      <div style="margin-top:1.5rem">
+        <details>
+          <summary style="cursor:pointer;color:var(--fg2);font-size:0.82rem;margin-bottom:0.8rem">🔍 Ajan Aktivite Logu</summary>
+          <div id="done-log" style="font-family:var(--mono);font-size:0.75rem"></div>
+        </details>
+      </div>
+    </div>
+
+    <!-- ── ERROR ──────────────────────────── -->
+    <div id="step-error" style="display:none">
+      <div class="alert error" id="error-msg"></div>
+      <button class="btn-secondary" onclick="resetApp()" style="margin-top:1rem">Tekrar Dene</button>
+    </div>
+
+  </main>
+</div>
+
+<script>
+/* ══════════════════════════════════════════════════════════════
+   STATE
+══════════════════════════════════════════════════════════════ */
+const S = {
+  mode: 1,
+  maxRounds: 3,
+  sid: null,
+  totalCost: 0,
+  kur: 44,
+  agentLog: [],
+  roundScores: [],
+  domains: [],        // [{key,name}]
+  allDomains: [],     // [{key,name}] — tam liste
+  qaQuestions: [],
+  qaAnswers: {},
+  selectedDomains: new Set(),
+};
+
+const modeLabels = {1:"TEKLİ AJAN", 2:"ÇİFT AJAN", 3:"YARI OTOMATİK", 4:"TAM OTOMATİK"};
+
+/* ══ Init ══════════════════════════════════════════════════════ */
+window.addEventListener('DOMContentLoaded', async () => {
+  await loadKur();
+  await loadKB();
+  await loadDomains();
+  showStep('input');
+});
+
+async function loadKur() {
+  try {
+    const r = await fetch('/api/kur');
+    const d = await r.json();
+    S.kur = d.kur;
+    document.getElementById('sb-kur').textContent = `×${d.kur.toFixed(1)}`;
+  } catch(e) {}
+}
+
+async function loadKB() {
+  try {
+    const r = await fetch('/api/kb/stats');
+    const d = await r.json();
+    document.getElementById('sb-kb').textContent = `🧠 ${d.toplam}`;
+  } catch(e) {}
+}
+
+async function loadDomains() {
+  try {
+    const r = await fetch('/api/domains');
+    const d = await r.json();
+    S.allDomains = d.domains;
+  } catch(e) {}
+}
+
+/* ══ Sidebar ═══════════════════════════════════════════════════ */
+function toggleSidebar() {
+  const sb = document.getElementById('sidebar');
+  sb.classList.toggle('collapsed');
+  const btn = document.getElementById('sidebar-toggle');
+  btn.textContent = sb.classList.contains('collapsed') ? '☰' : '✕';
+}
+
+/* ══ Mode ══════════════════════════════════════════════════════ */
+function setMode(n) {
+  S.mode = n;
+  [1,2,3,4].forEach(i => {
+    document.getElementById(`m${i}`).classList.toggle('active', i === n);
+  });
+  document.getElementById('round-wrap').style.display = (n>=3) ? 'block' : 'none';
+  const lbl = document.getElementById('mode-meta');
+  if(lbl) lbl.textContent = `MOD ${n} · ${modeLabels[n]}`;
+}
+// Mode 1 aktif başla
+document.addEventListener('DOMContentLoaded', () => setMode(1));
+
+/* ══ Step Manager ══════════════════════════════════════════════ */
+const STEPS = ['input','prep','domains','qa','running','done','error'];
+function showStep(name) {
+  STEPS.forEach(s => {
+    const el = document.getElementById(`step-${s}`);
+    if(el) el.style.display = (s === name) ? '' : 'none';
+  });
+  if(name === 'done' || name === 'error') {
+    document.getElementById('new-btn-wrap').style.display = '';
+  }
+}
+
+/* ══ Start Analysis ════════════════════════════════════════════ */
+async function startAnalysis() {
+  const brief = document.getElementById('brief-input').value.trim();
+  const errEl = document.getElementById('input-error');
+
+  if (!brief) { errEl.textContent = 'Lütfen bir problem brief girin.'; return; }
+  errEl.textContent = '';
+
+  S.maxRounds = parseInt(document.getElementById('round-slider').value);
+
+  const btn = document.getElementById('start-btn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Başlatılıyor...';
+
+  try {
+    const r = await fetch('/api/start', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({brief, mode: S.mode, max_rounds: S.maxRounds})
+    });
+    if (!r.ok) {
+      const e = await r.json();
+      errEl.textContent = e.detail || 'Sunucu hatası.';
+      btn.disabled = false; btn.textContent = '⚡ Analizi Başlat';
+      return;
+    }
+    const d = await r.json();
+    S.sid = d.sid;
+    S.agentLog = [];
+    S.totalCost = 0;
+    S.roundScores = [];
+    showStep('prep');
+    openSSE();
+  } catch(e) {
+    errEl.textContent = 'Bağlantı hatası: ' + e.message;
+    btn.disabled = false; btn.textContent = '⚡ Analizi Başlat';
+  }
+}
+
+/* ══ SSE ═══════════════════════════════════════════════════════ */
+let _es = null;
+
+function openSSE() {
+  if (_es) _es.close();
+  _es = new EventSource(`/api/stream/${S.sid}`);
+
+  _es.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    handleEvent(msg);
+  };
+
+  _es.onerror = () => {
+    // Bağlantı kesildiyse ve analiz bitmemişse
+    if (S.sid && !['done','error'].includes(getCurrentStep())) {
+      setTimeout(openSSE, 2000);
+    }
+  };
+}
+
+function getCurrentStep() {
+  for(const s of STEPS) {
+    const el = document.getElementById(`step-${s}`);
+    if(el && el.style.display !== 'none') return s;
+  }
+  return 'input';
+}
+
+function handleEvent(msg) {
+  switch(msg.type) {
+
+    case 'agent_start':
+      S.agentLog.push({...msg.data, status:'running', cost:0});
+      renderAgentLog();
+      break;
+
+    case 'agent_wait':
+      updateLastAgent({status:'waiting', name: `⏳ ${msg.data.name} (${msg.data.seconds}s bekliyor)`});
+      renderAgentLog();
+      break;
+
+    case 'agent_error':
+      updateLastAgent({status:'error'});
+      renderAgentLog();
+      break;
+
+    case 'agent_done':
+      updateLastAgent({status:'done', cost: msg.data.cost});
+      S.totalCost = msg.data.total_cost;
+      updateCostDisplay();
+      renderAgentLog();
+      // running adımında da güncelle
+      const rc = document.getElementById('r-cost');
+      const ra = document.getElementById('r-agents');
+      if(rc) rc.textContent = `$${S.totalCost.toFixed(4)}`;
+      if(ra) ra.textContent = msg.data.agent_count;
+      break;
+
+    case 'step_domains':
+      S.domains = msg.data.domains;
+      showDomainStep(msg.data.domains);
+      break;
+
+    case 'step_qa':
+      S.qaQuestions = msg.data.questions;
+      showQAStep(msg.data.questions);
+      break;
+
+    case 'step_running':
+      showRunningStep();
+      break;
+
+    case 'round_start':
+      const rr = document.getElementById('r-round');
+      if(rr) rr.textContent = `Tur ${msg.data.tur}`;
+      S.roundScores.push({tur: msg.data.tur, puan: null});
+      renderRoundBadges('round-badges');
+      break;
+
+    case 'round_score':
+      const idx = S.roundScores.findIndex(r => r.tur === msg.data.tur);
+      if(idx >= 0) S.roundScores[idx].puan = msg.data.puan;
+      else S.roundScores.push(msg.data);
+      renderRoundBadges('round-badges');
+      break;
+
+    case 'early_stop':
+      const eb = document.getElementById('round-badges');
+      if(eb) eb.insertAdjacentHTML('beforeend', `<span class="round-badge done" style="margin-top:4px">✓ Erken Tamamlandı — Tur ${msg.data.tur} · ${msg.data.puan}/100</span>`);
+      break;
+
+    case 'step_done':
+      showDoneStep(msg.data);
+      if(_es) _es.close();
+      break;
+
+    case 'step_error':
+      document.getElementById('error-msg').textContent = '⚠ Hata: ' + msg.data.error;
+      showStep('error');
+      if(_es) _es.close();
+      break;
+
+    case '__end__':
+      if(_es) _es.close();
+      break;
+  }
+}
+
+function updateLastAgent(patch) {
+  if(S.agentLog.length === 0) return;
+  Object.assign(S.agentLog[S.agentLog.length - 1], patch);
+}
+
+/* ══ Agent Log Render ══════════════════════════════════════════ */
+function renderAgentLog(containerId) {
+  const step = getCurrentStep();
+  const id = containerId || (step === 'prep' ? 'prep-log' : 'running-log');
+  const el = document.getElementById(id);
+  if(!el) return;
+
+  const recent = S.agentLog.slice(-40).reverse();
+  el.innerHTML = recent.map(a => {
+    let icon = '⟳', cls = 'running';
+    if(a.status === 'done')    { icon='✓'; cls='done'; }
+    if(a.status === 'error')   { icon='✗'; cls='done'; }
+    if(a.status === 'waiting') { icon='⏳'; cls='waiting'; }
+    const costStr = a.cost > 0 ? `$${a.cost.toFixed(4)}` : '';
+    return `<div class="agent-row ${cls}">
+      <span class="agent-status">${icon}</span>
+      <span class="agent-name">${a.name || a.key}</span>
+      <span class="agent-cost">${costStr}</span>
+    </div>`;
+  }).join('');
+}
+
+/* ══ Domain Step ═══════════════════════════════════════════════ */
+function showDomainStep(aiDomains) {
+  showStep('domains');
+  S.selectedDomains = new Set(aiDomains.map(d => d.key));
+
+  const grid = document.getElementById('domain-grid');
+  grid.innerHTML = S.allDomains.map(d => {
+    const sel = S.selectedDomains.has(d.key);
+    return `<div class="domain-item ${sel?'selected':''}" id="di-${d.key}" onclick="toggleDomain('${d.key}')">
+      <span class="dot"></span>
+      <span>${d.name}</span>
+    </div>`;
+  }).join('');
+  updateDomainCount();
+}
+
+function toggleDomain(key) {
+  if(S.selectedDomains.has(key)) S.selectedDomains.delete(key);
+  else S.selectedDomains.add(key);
+  const el = document.getElementById(`di-${key}`);
+  if(el) el.classList.toggle('selected', S.selectedDomains.has(key));
+  el.querySelector('.dot').style.background = S.selectedDomains.has(key) ? 'var(--accent)' : 'var(--border)';
+  updateDomainCount();
+}
+
+function selectAllDomains() {
+  S.allDomains.forEach(d => {
+    S.selectedDomains.add(d.key);
+    const el = document.getElementById(`di-${d.key}`);
+    if(el) { el.classList.add('selected'); el.querySelector('.dot').style.background='var(--accent)'; }
+  });
+  updateDomainCount();
+}
+
+function clearDomains() {
+  S.selectedDomains.clear();
+  S.allDomains.forEach(d => {
+    const el = document.getElementById(`di-${d.key}`);
+    if(el) { el.classList.remove('selected'); el.querySelector('.dot').style.background='var(--border)'; }
+  });
+  updateDomainCount();
+}
+
+function updateDomainCount() {
+  const el = document.getElementById('domain-count');
+  if(el) el.textContent = `${S.selectedDomains.size} alan seçili`;
+}
+
+async function confirmDomains() {
+  if(S.selectedDomains.size === 0) { alert('En az 1 alan seçin.'); return; }
+  const domains = S.allDomains.filter(d => S.selectedDomains.has(d.key));
+
+  const r = await fetch('/api/confirm_domains', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({sid: S.sid, domains})
+  });
+  if(r.ok) {
+    S.domains = domains;
+    // QA adımı backend'den gelecek, ya da running
+    // Burada bekleme — SSE event'i tetikleyecek
+  }
+}
+
+/* ══ QA Step ═══════════════════════════════════════════════════ */
+function showQAStep(questions) {
+  showStep('qa');
+  const list = document.getElementById('qa-list');
+  list.innerHTML = questions.map((q, i) => `
+    <div class="qa-box">
+      <div class="qa-num">SORU ${i+1}/${questions.length}</div>
+      <div class="qa-q">${q}</div>
+      <input class="qa-input" id="qa-${i+1}" placeholder="Cevabınız... (boş = ajan varsayım yapar)">
+    </div>
+  `).join('');
+}
+
+async function submitQA() {
+  const answers = {};
+  S.qaQuestions.forEach((_, i) => {
+    const inp = document.getElementById(`qa-${i+1}`);
+    answers[i+1] = inp ? inp.value : '';
+  });
+  await fetch('/api/submit_qa', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({sid: S.sid, answers})
+  });
+}
+
+/* ══ Running Step ══════════════════════════════════════════════ */
+function showRunningStep() {
+  showStep('running');
+  document.getElementById('running-meta').textContent = `MOD ${S.mode} · ${modeLabels[S.mode]} — ÇALIŞIYOR`;
+  // Domain chips
+  const chips = S.domains.map(d => `<span class="chip">${d.name}</span>`).join('');
+  document.getElementById('running-chips').innerHTML = chips;
+  renderAgentLog();
+}
+
+/* ══ Round Badges ══════════════════════════════════════════════ */
+function renderRoundBadges(id) {
+  const el = document.getElementById(id);
+  if(!el) return;
+  el.innerHTML = S.roundScores.map(r => {
+    if(r.puan === null) return `<span class="round-badge active">Tur ${r.tur} ...</span>`;
+    const cls = r.puan>=85?'good':r.puan>=70?'mid':'low';
+    return `<span class="round-badge ${cls}">Tur ${r.tur} · ${r.puan}/100</span>`;
+  }).join('');
+}
+
+/* ══ Done Step ══════════════════════════════════════════════════ */
+function showDoneStep(data) {
+  showStep('done');
+  document.getElementById('new-btn-wrap').style.display = '';
+  S.totalCost = data.total_cost;
+
+  // Stats
+  document.getElementById('done-stats').innerHTML = `
+    <div class="stat-card"><div class="v">$${data.total_cost.toFixed(4)}</div><div class="l">Toplam Maliyet</div></div>
+    <div class="stat-card"><div class="v">~${data.total_cost_tl.toFixed(2)} ₺</div><div class="l">TL Karşılığı</div></div>
+    <div class="stat-card"><div class="v">${data.agent_count}</div><div class="l">Çalışan Ajan</div></div>
+    <div class="stat-card"><div class="v">${data.domains.length}</div><div class="l">Aktif Alan</div></div>
+  `;
+
+  S.roundScores = data.round_scores || [];
+  renderRoundBadges('done-round-badges');
+
+  // Domain chips
+  document.getElementById('done-chips').innerHTML = data.domains.map(d =>
+    `<span class="chip">${d.name}</span>`).join('');
+
+  // Rapor
+  document.getElementById('done-report').textContent = data.final_report;
+
+  // Ajan log detayı
+  document.getElementById('done-log').innerHTML = S.agentLog.map(a => `
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:0.7rem 1rem;margin-bottom:0.5rem">
+      <div style="display:flex;justify-content:space-between;margin-bottom:0.4rem">
+        <span style="font-weight:600;color:var(--fg)">${a.name||a.key}</span>
+        <span style="color:var(--fg3)">$${(a.cost||0).toFixed(4)}</span>
+      </div>
+      <div style="color:var(--fg2);font-size:0.72rem;white-space:pre-wrap;max-height:120px;overflow-y:auto">${(a.output||'').slice(0,500)}</div>
+    </div>
+  `).join('');
+
+  updateCostDisplay();
+}
+
+/* ══ Utilities ══════════════════════════════════════════════════ */
+function updateCostDisplay() {
+  document.getElementById('sb-cost').textContent = `$${S.totalCost.toFixed(4)}`;
+  document.getElementById('sb-tl').textContent = `~${(S.totalCost * S.kur).toFixed(2)} ₺`;
+}
+
+async function downloadTxt() {
+  window.location.href = `/api/download/${S.sid}`;
+}
+
+function resetApp() {
+  S.sid = null;
+  S.totalCost = 0;
+  S.agentLog = [];
+  S.roundScores = [];
+  S.domains = [];
+  S.selectedDomains = new Set();
+  if(_es) { _es.close(); _es = null; }
+
+  document.getElementById('brief-input').value = '';
+  document.getElementById('start-btn').disabled = false;
+  document.getElementById('start-btn').textContent = '⚡ Analizi Başlat';
+  document.getElementById('input-error').textContent = '';
+  document.getElementById('new-btn-wrap').style.display = 'none';
+  updateCostDisplay();
+  showStep('input');
+}
+</script>
+</body>
+</html>
