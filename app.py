@@ -354,7 +354,12 @@ button[kind="header"] {
 .agent-name { flex: 1; }
 .agent-cost {
     color: var(--text-muted);
-    font-size: 0.72rem;
+    font-size: 0.68rem;
+}
+.agent-cost:nth-child(3) {
+    color: #5A5A75;
+    font-size: 0.63rem;
+    letter-spacing: 0.04em;
 }
 
 .output-box {
@@ -412,6 +417,51 @@ button[kind="header"] {
     font-size: 0.73rem;
     font-family: var(--mono);
     margin: 3px;
+}
+
+/* ── Tıklanabilir domain kartları ── */
+.domain-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 1rem 0 1.5rem 0;
+}
+
+.domain-tile {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 7px 14px;
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+    user-select: none;
+    transition: all 0.15s ease;
+}
+
+.domain-tile:hover {
+    border-color: var(--accent);
+    color: var(--text-primary);
+    background: var(--bg-hover);
+}
+
+.domain-tile.selected {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.domain-tile.selected::before {
+    content: "✓ ";
+    font-size: 0.68rem;
+}
+
+.domain-count {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    margin-bottom: 0.8rem;
 }
 
 .qa-box {
@@ -661,41 +711,37 @@ rag = get_rag()
 _APP_COST_LOCK = threading.Lock()
 
 # ═════════════════════════════════════════════════════════════
-# CORE: Ajan çalıştır (Streamlit callback ile)
+# CORE: Saf API çağrısı — session_state KULLANMAZ
+# Thread'lerden güvenle çağrılabilir
 # ═════════════════════════════════════════════════════════════
-def ajan_calistir(ajan_key, mesaj, gecmis=None, log_container=None, cache_context=None):
+def _ajan_api(ajan_key: str, mesaj: str,
+              gecmis: list = None, cache_context: str = None,
+              domain_model: str = "sonnet") -> dict:
     """
-    cache_context: varsa, büyük bağlam (tum_ciktilar gibi) cache_control block
-                   olarak mesajdan ÖNCE gönderilir. Anthropic bu bloğu 5 dakika
-                   cache'ler; aynı oturumda tekrar gönderilirse sadece 1/10 token
-                   ücreti alınır.
+    Sadece API çağrısı yapar, session_state'e dokunmaz.
+    Dönüş: {key, name, model, cevap, dusunce, cost, inp, out, c_cre, c_rd, saved}
     """
     if gecmis is None:
         gecmis = []
 
     ajan = AGENTS.get(ajan_key) or DESTEK_AJANLARI.get(ajan_key)
     if not ajan:
-        return f"ERROR: Agent '{ajan_key}' not found."
+        return {"key": ajan_key, "name": ajan_key, "model": "?",
+                "cevap": f"ERROR: Agent '{ajan_key}' not found.",
+                "dusunce": "", "cost": 0, "inp": 0, "out": 0,
+                "c_cre": 0, "c_rd": 0, "saved": 0}
 
-    # Domain model override — sidebar toggle'a göre
-    # final_rapor ve sentez her zaman Opus kalır
-    ajan = dict(ajan)  # shallow copy — orijinali değiştirme
-    _is_domain = ajan_key in AGENTS  # domain ajan mı?
-    _protected = ajan_key in ("final_rapor", "sentez")  # Opus korumalı
+    ajan = dict(ajan)
+    _is_domain  = ajan_key in AGENTS
+    _protected  = ajan_key in ("final_rapor", "sentez")
     if _is_domain and not _protected:
-        chosen = st.session_state.get("domain_model", "sonnet")
-        if chosen == "sonnet":
-            ajan["model"] = "claude-sonnet-4-6"
-        else:
-            ajan["model"] = "claude-opus-4-6"
+        ajan["model"] = "claude-sonnet-4-6" if domain_model == "sonnet" else "claude-opus-4-6"
 
-    # FIX: CACHE_PREAMBLE + sistem_promptu — cache eşiğini geçmek için şart
     sistem_promptu_extended = (
         (CACHE_PREAMBLE + "\n" + ajan["sistem_promptu"]) if CACHE_PREAMBLE
         else ajan["sistem_promptu"]
     )
 
-    # FIX: cache_context varsa ayrı cache_control block olarak gönder
     if cache_context and len(cache_context) > 800:
         user_content = [
             {"type": "text", "text": cache_context, "cache_control": {"type": "ephemeral"}},
@@ -706,32 +752,21 @@ def ajan_calistir(ajan_key, mesaj, gecmis=None, log_container=None, cache_contex
 
     mesajlar = gecmis + [{"role": "user", "content": user_content}]
 
-    # Canlı log güncelle
-    st.session_state.current_agent = ajan["isim"]
-    st.session_state.agent_log.append({
-        "key":    ajan_key,
-        "name":   ajan["isim"],
-        "status": "running",
-        "cost":    0.0,
-        "output":  "",
-        "thinking": ""
-    })
+    thinking_budget = ajan.get("thinking_budget", 0)
+    extra_kwargs = {}
+    if thinking_budget:
+        extra_kwargs["thinking"] = {"type": "enabled", "budget_tokens": thinking_budget}
 
+    yanit = None
     for deneme in range(5):
         try:
-            # Thinking modu — sadece ilgili ajanlarda
-            thinking_budget = ajan.get("thinking_budget", 0)
-            extra_kwargs = {}
-            if thinking_budget:
-                extra_kwargs["thinking"] = {"type": "enabled", "budget_tokens": thinking_budget}
-
             yanit = client.messages.create(
                 model=ajan["model"],
                 max_tokens=ajan.get("max_tokens", 2000),
                 system=[{
                     "type": "text",
                     "text": sistem_promptu_extended,
-                    "cache_control": {"type": "ephemeral"}
+                    "cache_control": {"type": "ephemeral"},
                 }],
                 messages=mesajlar,
                 betas=["prompt-caching-2024-07-31"],
@@ -741,7 +776,6 @@ def ajan_calistir(ajan_key, mesaj, gecmis=None, log_container=None, cache_contex
         except Exception as e:
             err = str(e)
             if "betas" in err or "beta" in err.lower():
-                # Beta desteklenmiyorsa betas olmadan dene
                 try:
                     yanit = client.messages.create(
                         model=ajan["model"],
@@ -749,87 +783,156 @@ def ajan_calistir(ajan_key, mesaj, gecmis=None, log_container=None, cache_contex
                         system=[{
                             "type": "text",
                             "text": sistem_promptu_extended,
-                            "cache_control": {"type": "ephemeral"}
+                            "cache_control": {"type": "ephemeral"},
                         }],
                         messages=mesajlar,
                         **extra_kwargs,
                     )
                     break
                 except Exception as e2:
-                    st.session_state.agent_log[-1]["status"] = "error"
-                    raise e2
+                    return {"key": ajan_key, "name": ajan["isim"], "model": ajan["model"],
+                            "cevap": f"ERROR: {e2}", "dusunce": "",
+                            "cost": 0, "inp": 0, "out": 0, "c_cre": 0, "c_rd": 0, "saved": 0}
             elif "thinking" in err.lower() and thinking_budget:
-                # Thinking desteklenmiyorsa devam et
                 extra_kwargs = {}
                 continue
             elif "rate_limit" in err.lower() or "429" in err:
-                bekleme = 60 * (deneme + 1)
-                st.session_state.agent_log[-1]["status"] = f"⏳ rate limit ({bekleme}s)"
-                time.sleep(bekleme)
+                time.sleep(60 * (deneme + 1))
             else:
-                st.session_state.agent_log[-1]["status"] = "error"
-                raise e
+                return {"key": ajan_key, "name": ajan["isim"], "model": ajan["model"],
+                        "cevap": f"ERROR: {e}", "dusunce": "",
+                        "cost": 0, "inp": 0, "out": 0, "c_cre": 0, "c_rd": 0, "saved": 0}
     else:
-        st.session_state.agent_log[-1]["status"] = "error"
-        return "ERROR: Rate limit aşıldı."
+        return {"key": ajan_key, "name": ajan["isim"], "model": ajan["model"],
+                "cevap": "ERROR: Rate limit aşıldı.", "dusunce": "",
+                "cost": 0, "inp": 0, "out": 0, "c_cre": 0, "c_rd": 0, "saved": 0}
 
-    # Thinking modu varsa content karışık bloklar içerir
     text_blocks     = [b.text     for b in yanit.content if b.type == "text"]
     thinking_blocks = [b.thinking for b in yanit.content if b.type == "thinking"]
     cevap   = "\n".join(text_blocks).strip()
     dusunce = "\n".join(thinking_blocks).strip() if thinking_blocks else ""
     usage   = yanit.usage
+    inp     = usage.input_tokens
+    out     = usage.output_tokens
+    c_cre   = getattr(usage, "cache_creation_input_tokens", 0) or 0
+    c_rd    = getattr(usage, "cache_read_input_tokens",     0) or 0
 
-    # FIX: Cache token'ları oku
-    inp   = usage.input_tokens
-    out   = usage.output_tokens
-    c_cre = getattr(usage, "cache_creation_input_tokens", 0) or 0
-    c_rd  = getattr(usage, "cache_read_input_tokens",     0) or 0
-
-    # FIX: Doğru fiyatlandırma + cache pricing
     model = ajan["model"]
     if "opus" in model:
         r_in, r_out = 15/1_000_000, 75/1_000_000
-        r_cre       = 18.75/1_000_000   # cache write (+25%)
-        r_rd        = 1.5/1_000_000     # cache read  (-90%)
+        r_cre, r_rd = 18.75/1_000_000, 1.5/1_000_000
     elif "sonnet" in model:
         r_in, r_out = 3/1_000_000, 15/1_000_000
-        r_cre       = 3.75/1_000_000
-        r_rd        = 0.3/1_000_000
-    else:  # haiku
+        r_cre, r_rd = 3.75/1_000_000, 0.3/1_000_000
+    else:
         r_in, r_out = 0.8/1_000_000, 4/1_000_000
-        r_cre       = 1.0/1_000_000
-        r_rd        = 0.08/1_000_000
+        r_cre, r_rd = 1.0/1_000_000, 0.08/1_000_000
 
     actual_cost = (inp * r_in) + (out * r_out) + (c_cre * r_cre) + (c_rd * r_rd)
     full_cost   = ((inp + c_cre + c_rd) * r_in) + (out * r_out)
     saved       = max(0.0, full_cost - actual_cost)
 
-    # Log güncelle
-    with _APP_COST_LOCK:
-        # Bu agent'ın log entry'sini key ile bul (sıra değişmiş olabilir)
-        for entry in reversed(st.session_state.agent_log):
-            if entry["key"] == ajan_key and entry["status"] == "running":
-                entry["status"]   = "done"
-                entry["cost"]     = actual_cost
-                entry["output"]   = cevap
-                entry["thinking"] = dusunce
-                break
+    return {
+        "key": ajan_key, "name": ajan["isim"], "model": ajan["model"],
+        "cevap": cevap, "dusunce": dusunce,
+        "cost": actual_cost, "inp": inp, "out": out,
+        "c_cre": c_cre, "c_rd": c_rd, "saved": saved
+    }
 
-    with _APP_COST_LOCK:
-        st.session_state.total_cost          += actual_cost
-        st.session_state.total_input         += inp
-        st.session_state.total_output        += out
-        st.session_state.cache_write_tokens  += c_cre
-        st.session_state.cache_read_tokens   += c_rd
-        st.session_state.cache_saved_usd     += saved
 
-    return cevap
+def _session_update(r: dict):
+    """_ajan_api sonucunu session_state'e yaz — SADECE ana thread'den çağır."""
+    st.session_state.agent_log.append({
+        "key":     r["key"],
+        "name":    r["name"],
+        "model":   r["model"],
+        "status":  "error" if r["cevap"].startswith("ERROR") else "done",
+        "cost":    r["cost"],
+        "output":  r["cevap"],
+        "thinking": r["dusunce"],
+    })
+    st.session_state.total_cost         += r["cost"]
+    st.session_state.total_input        += r["inp"]
+    st.session_state.total_output       += r["out"]
+    st.session_state.cache_write_tokens += r["c_cre"]
+    st.session_state.cache_read_tokens  += r["c_rd"]
+    st.session_state.cache_saved_usd    += r["saved"]
+
+
+# ═════════════════════════════════════════════════════════════
+# CORE: Ajan çalıştır — ana thread için (session_state günceller)
+# ═════════════════════════════════════════════════════════════
+def ajan_calistir(ajan_key, mesaj, gecmis=None, log_container=None, cache_context=None):
+    domain_model = st.session_state.get("domain_model", "sonnet")
+    r = _ajan_api(ajan_key, mesaj, gecmis, cache_context, domain_model)
+    _session_update(r)
+    return r["cevap"]
+
+
+# ═════════════════════════════════════════════════════════════
+# PARALEL AJAN ÇALIŞTIRICI — thread'de API, ana thread'de session güncelle
+# ═════════════════════════════════════════════════════════════
+def ajan_calistir_paralel(gorevler: List[Tuple], max_workers: int = 6) -> List[str]:
+    n = len(gorevler)
+    if n == 0:
+        return []
+
+    domain_model = st.session_state.get("domain_model", "sonnet")
+
+    # Tek görev — paralel overhead yok
+    if n == 1:
+        g = gorevler[0]
+        return [ajan_calistir(g[0], g[1],
+                              g[2] if len(g) > 2 else None,
+                              None,
+                              g[3] if len(g) > 3 else None)]
+
+    sonuclar = [None] * n
+
+    # Thread'ler sadece _ajan_api çağırır — session_state YOK
+    def _worker(idx_gorev):
+        idx, g = idx_gorev
+        r = _ajan_api(
+            g[0], g[1],
+            g[2] if len(g) > 2 else None,
+            g[3] if len(g) > 3 else None,
+            domain_model,
+        )
+        return idx, r
+
+    with ThreadPoolExecutor(max_workers=min(n, max_workers)) as ex:
+        futures = {ex.submit(_worker, (i, g)): i for i, g in enumerate(gorevler)}
+        results_map = {}
+        for fut in as_completed(futures):
+            try:
+                idx, r = fut.result()
+                results_map[idx] = r
+            except Exception as e:
+                idx = futures[fut]
+                results_map[idx] = {
+                    "key": gorevler[idx][0], "name": gorevler[idx][0], "model": "?",
+                    "cevap": f"ERROR: {e}", "dusunce": "",
+                    "cost": 0, "inp": 0, "out": 0, "c_cre": 0, "c_rd": 0, "saved": 0
+                }
+
+    # ANA THREAD: session_state'i sırayla güncelle
+    for idx in range(n):
+        r = results_map[idx]
+        _session_update(r)
+        sonuclar[idx] = r["cevap"]
+
+    return sonuclar
 
 
 # ═════════════════════════════════════════════════════════════
 # HELPERS
 # ═════════════════════════════════════════════════════════════
+def model_etiketi(model: str) -> str:
+    if "opus" in model:   return "Opus"
+    if "sonnet" in model: return "Sonnet"
+    if "haiku" in model:  return "Haiku"
+    return model.split("-")[1].capitalize() if "-" in model else model
+
 def kalite_puani_oku(metin):
     eslesme = re.search(r'(\d{1,3})\s*/\s*100', metin)
     if eslesme:
@@ -1360,10 +1463,14 @@ elif st.session_state.step == "running_prep":
                 icon, cls = "✓", "done"
             else:
                 icon, cls = "✗", "done"
-            cost_str = f"${entry['cost']:.4f}" if entry["cost"] > 0 else ""
-            html += f'<div class="agent-row {cls}"><span class="agent-status">{icon}</span><span class="agent-name">{entry["name"]}</span><span class="agent-cost">{cost_str}</span></div>'
-        if st.session_state.current_agent:
-            pass
+            cost_str  = f"${entry['cost']:.4f}" if entry["cost"] > 0 else ""
+            model_str = model_etiketi(entry.get("model", ""))
+            html += (f'<div class="agent-row {cls}">'
+                     f'<span class="agent-status">{icon}</span>'
+                     f'<span class="agent-name">{entry["name"]}</span>'
+                     f'<span class="agent-cost">{model_str}</span>'
+                     f'<span class="agent-cost">{cost_str}</span>'
+                     f'</div>')
         html += '</div>'
         return html
 
@@ -1398,33 +1505,62 @@ elif st.session_state.step == "running_prep":
 elif st.session_state.step == "domains":
 
     st.markdown('<div class="section-label">Alan Seçimi</div>', unsafe_allow_html=True)
-    st.markdown("Domain Selector aşağıdaki alanları seçti. Onaylayın veya düzenleyin:")
+    st.markdown("Domain Selector aşağıdaki alanları seçti. Tıklayarak ekleyin veya çıkarın:")
 
-    all_domain_names = [v[1] for v in DOMAINS.values()]
-    selected_names   = [name for _, name in st.session_state.active_domains]
+    # Seçili domain'leri session_state'te set olarak tut
+    if "domain_selected_set" not in st.session_state:
+        st.session_state.domain_selected_set = set(
+            name for _, name in st.session_state.active_domains
+        )
 
-    new_selection = st.multiselect(
-        label="Aktif Mühendislik Alanları",
-        options=all_domain_names,
-        default=selected_names,
-        key="domain_multiselect"
-    )
+    all_domains_ordered = [(v[0], v[1]) for v in DOMAINS.values()]
+    name_to_key = {v[1]: v[0] for v in DOMAINS.values()}
 
-    col1, col2 = st.columns([2, 1])
+    # Her domain için toggle butonu
+    sel = st.session_state.domain_selected_set
+    count = len(sel)
+    st.markdown(f'<div class="domain-count">{count} alan seçili</div>', unsafe_allow_html=True)
+
+    # Tüm domainleri satır satır buton olarak göster (3 kolon)
+    cols_per_row = 4
+    all_d = all_domains_ordered
+    for row_start in range(0, len(all_d), cols_per_row):
+        row = all_d[row_start:row_start + cols_per_row]
+        cols = st.columns(len(row))
+        for ci, (dkey, dname) in enumerate(row):
+            is_sel = dname in sel
+            label = f"✓ {dname}" if is_sel else dname
+            btn_type = "primary" if is_sel else "secondary"
+            if cols[ci].button(label, key=f"dtile_{dkey}", use_container_width=True):
+                if dname in sel:
+                    sel.discard(dname)
+                else:
+                    sel.add(dname)
+                st.session_state.domain_selected_set = sel
+                st.rerun()
+
+    st.markdown("---")
+    col1, col2 = st.columns([3, 1])
+    with col2:
+        if st.button("✕ Temizle", use_container_width=True, key="domain_clear"):
+            st.session_state.domain_selected_set = set()
+            st.rerun()
     with col1:
-        if st.button("✓ Onayla ve Analizi Başlat", use_container_width=True):
-            # Seçilen isimleri key'e çevir
-            name_to_key = {v[1]: v[0] for v in DOMAINS.values()}
+        can_start = len(st.session_state.domain_selected_set) > 0
+        if st.button(
+            f"✓ Onayla ve Analizi Başlat ({len(st.session_state.domain_selected_set)} alan)",
+            use_container_width=True,
+            disabled=not can_start,
+            key="domain_confirm"
+        ):
             st.session_state.active_domains = [
-                (name_to_key[n], n) for n in new_selection if n in name_to_key
+                (name_to_key[n], n)
+                for n in [v[1] for v in DOMAINS.values()]
+                if n in st.session_state.domain_selected_set
             ]
+            del st.session_state["domain_selected_set"]
             st.session_state.step = "running"
             st.rerun()
-
-    # Seçilen alanları chip olarak göster
-    if new_selection:
-        chips = "".join(f'<span class="domain-chip">{n}</span>' for n in new_selection)
-        st.markdown(f'<div style="margin-top:1rem">{chips}</div>', unsafe_allow_html=True)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -1511,8 +1647,14 @@ elif st.session_state.step == "running":
                 icon, cls = "✓", "done"
             else:
                 icon, cls = "✗", "done"
-            cost_str = f"${entry['cost']:.4f}" if entry["cost"] > 0 else ""
-            html += f'<div class="agent-row {cls}"><span class="agent-status">{icon}</span><span class="agent-name">{entry["name"]}</span><span class="agent-cost">{cost_str}</span></div>'
+            cost_str  = f"${entry['cost']:.4f}" if entry["cost"] > 0 else ""
+            model_str = model_etiketi(entry.get("model", ""))
+            html += (f'<div class="agent-row {cls}">'
+                     f'<span class="agent-status">{icon}</span>'
+                     f'<span class="agent-name">{entry["name"]}</span>'
+                     f'<span class="agent-cost">{model_str}</span>'
+                     f'<span class="agent-cost">{cost_str}</span>'
+                     f'</div>')
         html += '</div>'
         return html
 
