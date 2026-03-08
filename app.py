@@ -6,7 +6,6 @@ import datetime
 import anthropic
 from dotenv import load_dotenv
 from config.agents_config import AGENTS, DESTEK_AJANLARI
-from rag.store import RAGStore
 
 load_dotenv()
 
@@ -517,13 +516,6 @@ def get_client():
 client = get_client()
 
 
-@st.cache_resource
-def get_rag():
-    return RAGStore()
-
-rag = get_rag()
-
-
 # ═════════════════════════════════════════════════════════════
 # CORE: Ajan çalıştır (Streamlit callback ile)
 # ═════════════════════════════════════════════════════════════
@@ -608,9 +600,7 @@ def kalite_puani_oku(metin):
 
 
 def prompt_engineer_auto(brief):
-    rag_context = rag.benzer_getir(brief, n=3)
-    mesaj = f"{brief}\n\n{rag_context}" if rag_context else brief
-    sonuc = ajan_calistir("prompt_muhendisi", mesaj)
+    sonuc = ajan_calistir("prompt_muhendisi", brief)
     if "GÜÇLENDİRİLMİŞ BRIEF:" in sonuc:
         return sonuc.split("GÜÇLENDİRİLMİŞ BRIEF:")[-1].strip()
     return brief
@@ -875,24 +865,6 @@ with st.sidebar:
                     del st.session_state[key]
             init_state()
             st.rerun()
-
-    # Knowledge base istatistiği
-    st.markdown("---")
-    st.markdown('<div class="section-label">Knowledge Base</div>', unsafe_allow_html=True)
-    try:
-        kb_stats = rag.istatistik()
-        toplam = kb_stats["toplam"]
-        st.markdown(f"""
-        <div class="stat-item">
-            <div class="stat-val">🧠 {toplam}</div>
-            <div class="stat-lbl">Kayıtlı Analiz</div>
-        </div>
-        """, unsafe_allow_html=True)
-        if toplam > 0 and kb_stats["analizler"]:
-            son = kb_stats["analizler"][0]
-            st.markdown(f'<div style="font-size:0.7rem;color:#5A5A65;margin-top:0.4rem">Son: {son["date"][:10]}</div>', unsafe_allow_html=True)
-    except Exception:
-        pass
 
 
 # ═════════════════════════════════════════════════════════════
@@ -1236,17 +1208,6 @@ elif st.session_state.step == "done":
             alan_isimleri,
             tur_ozeti
         )
-
-        # RAG: analizi knowledge base'e kaydet (bir kez)
-        if not st.session_state.get("rag_saved", False):
-            rag.kaydet(
-                brief=st.session_state.brief,
-                domains=alan_isimleri,
-                final_report=st.session_state.final_report,
-                mode=st.session_state.mode,
-                cost=st.session_state.total_cost
-            )
-            st.session_state.rag_saved = True
 
         col1, col2 = st.columns(2)
         with col1:
