@@ -181,6 +181,16 @@ def kaydet(brief, mod, sonuc, aktif_alanlar=[], tur_ozeti=[]):
     print(f"{'='*40}")
     print(f"\n💾 Saved: {dosya_adi}")
 
+    # RAG: analizi knowledge base'e kaydet
+    rag.kaydet(
+        brief=brief,
+        domains=aktif_alanlar,
+        final_report=sonuc,
+        mode=mod,
+        cost=MALIYET["usd"]
+    )
+    print(f"🧠 Knowledge base'e kaydedildi.")
+
 
 def domain_sec(guclendirilmis_brief):
     """
@@ -245,19 +255,21 @@ def domain_sec(guclendirilmis_brief):
 
 # ── Yardımcı: Prompt Engineer otomatik mod ───────────────────
 def _prompt_engineer_auto(brief):
-    """
-    Prompt Engineer'ı tam otomatik çalıştırır.
-    Güçlendirilmiş brief metnini döndürür.
-    """
     print(f"\n{'#'*60}")
     print("PROMPT ENGINEER: Brief güçlendiriliyor...")
     print(f"{'#'*60}")
 
-    guclendirilmis = ajan_calistir("prompt_muhendisi", brief)
+    # RAG: geçmiş benzer analizleri getir
+    rag_context = rag.benzer_getir(brief, n=3)
+    if rag_context:
+        mesaj = f"{brief}\n\n{rag_context}"
+    else:
+        mesaj = brief
+
+    guclendirilmis = ajan_calistir("prompt_muhendisi", mesaj)
     if "GÜÇLENDİRİLMİŞ BRIEF:" in guclendirilmis:
         return guclendirilmis.split("GÜÇLENDİRİLMİŞ BRIEF:")[-1].strip()
     return brief
-
 
 # ── Yardımcı: Prompt Engineer yarı otomatik (Mod 3) ──────────
 def _prompt_engineer_soru_cevap(brief):
