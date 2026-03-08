@@ -12,17 +12,6 @@ from rag.store import RAGStore
 load_dotenv()
 
 
-@st.cache_data(ttl=3600)
-def kur_getir():
-    try:
-        r = requests.get("https://api.frankfurter.app/latest?from=USD&to=TRY", timeout=3)
-        kur = r.json()["rates"]["TRY"]
-        return round(kur, 2)
-    except Exception:
-        return 44.0
-
-KUR = kur_getir()
-
 # ═════════════════════════════════════════════════════════════
 # PAGE CONFIG
 # ═════════════════════════════════════════════════════════════
