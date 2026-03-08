@@ -603,13 +603,13 @@ def _feedback_loop_core(brief, guclendirilmis_brief, aktif_alanlar, max_tur, mod
         )
 
         varsayim_cevap = ajan_calistir(
-            "varsayim_denetcisi",
+            "varsayim_belirsizlik",
             f"ROUND {tur}: Identify hidden and unstated assumptions in all agent outputs.",
             cache_context=tum_ciktilar,
         )
 
         belirsizlik_cevap = ajan_calistir(
-            "belirsizlik_takipcisi",
+            "varsayim_belirsizlik",
             f"ROUND {tur}: List all missing, ambiguous, or conflicting points.",
             cache_context=tum_ciktilar,
         )
@@ -730,14 +730,14 @@ Specify what each agent must correct in the next round.
 
     print(f"\n--- DATA ANALYST ---")
     veri_cevap = ajan_calistir(
-        "veri_analisti",
+        "capraz_dogrulama",
         f"Problem: {guclendirilmis_brief}\n\nAnalyze numerical data quality, identify statistical patterns, and flag data gaps.",
         cache_context=tum_ciktilar,
     )
 
     print(f"\n--- CONTEXT MANAGER ---")
     baglam_cevap = ajan_calistir(
-        "baglan_yoneticisi",
+        "sentez",
         f"Problem: {guclendirilmis_brief}\n\nSummarize key context, confirmed parameters, and decisions for future reference.",
         cache_context=tum_ciktilar,
     )
@@ -789,7 +789,7 @@ Produce a comprehensive, professional final engineering report.
 
     # Dokümantasyon ve öğrenme — final rapordan sonra
     print(f"\n--- DOCUMENTATION ---")
-    ajan_calistir("dokumantasyon", f"""
+    ajan_calistir("dokumantasyon_hafiza", f"""
 Problem: {guclendirilmis_brief}
 Final report:
 {final}
@@ -797,7 +797,7 @@ Identify required documentation tree and traceability requirements.
 """)
 
     print(f"\n--- LEARNING & MEMORY ---")
-    ajan_calistir("ogrenme_hafiza", f"""
+    ajan_calistir("dokumantasyon_hafiza", f"""
 Problem: {guclendirilmis_brief}
 Final report:
 {final}
@@ -932,7 +932,7 @@ AGENT OUTPUTS:
 Check all numerical values for physical and mathematical consistency.
 """)
 
-    varsayim_cevap = ajan_calistir("varsayim_denetcisi", f"""
+    varsayim_cevap = ajan_calistir("varsayim_belirsizlik", f"""
 AGENT OUTPUTS:
 {tum_ciktilar}
 

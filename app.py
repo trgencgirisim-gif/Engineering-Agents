@@ -14,8 +14,24 @@ try:
 except ImportError:
     PDF_OK = False
 
+try:
+    from orchestrator import CACHE_PREAMBLE
+except ImportError:
+    CACHE_PREAMBLE = ""  # orchestrator.py yoksa boş
+
 load_dotenv()
 
+
+@st.cache_data(ttl=3600)
+def kur_getir():
+    try:
+        r = requests.get("https://api.frankfurter.app/latest?from=USD&to=TRY", timeout=3)
+        kur = r.json()["rates"]["TRY"]
+        return round(kur, 2)
+    except Exception:
+        return 44.0
+
+KUR = kur_getir()
 
 # ═════════════════════════════════════════════════════════════
 # PAGE CONFIG
@@ -496,6 +512,9 @@ def init_state():
         "qa_questions":       [],
         "qa_answers":         {},
         "agent_log":          [],            # [{name, status, cost, output}]
+        "cache_write_tokens": 0,
+        "cache_read_tokens":  0,
+        "cache_saved_usd":    0.0,
         "current_agent":      "",
         "final_report":       "",
         "total_cost":         0.0,
@@ -505,7 +524,7 @@ def init_state():
         "current_round":      0,
         "max_rounds":         3,
         "error":              "",
-        "docx_bytes":          None,
+        "docx_bytes":         None,
         "running":            False,
     }
     for k, v in defaults.items():
@@ -549,16 +568,13 @@ rag = get_rag()
 # ═════════════════════════════════════════════════════════════
 # CORE: Ajan çalıştır (Streamlit callback ile)
 # ═════════════════════════════════════════════════════════════
-
-# ═════════════════════════════════════════════════════════════
-# CACHE PREAMBLE — orchestrator.py ile senkron
-# ═════════════════════════════════════════════════════════════
-try:
-    from orchestrator import CACHE_PREAMBLE
-except ImportError:
-    CACHE_PREAMBLE = ""  # orchestrator.py yoksa boş geç
-
-def ajan_calistir(ajan_key, mesaj, gecmis=None, log_container=None):
+def ajan_calistir(ajan_key, mesaj, gecmis=None, log_container=None, cache_context=None):
+    """
+    cache_context: varsa, büyük bağlam (tum_ciktilar gibi) cache_control block
+                   olarak mesajdan ÖNCE gönderilir. Anthropic bu bloğu 5 dakika
+                   cache'ler; aynı oturumda tekrar gönderilirse sadece 1/10 token
+                   ücreti alınır.
+    """
     if gecmis is None:
         gecmis = []
 
@@ -566,7 +582,22 @@ def ajan_calistir(ajan_key, mesaj, gecmis=None, log_container=None):
     if not ajan:
         return f"ERROR: Agent '{ajan_key}' not found."
 
-    mesajlar = gecmis + [{"role": "user", "content": mesaj}]
+    # FIX: CACHE_PREAMBLE + sistem_promptu — cache eşiğini geçmek için şart
+    sistem_promptu_extended = (
+        (CACHE_PREAMBLE + "\n" + ajan["sistem_promptu"]) if CACHE_PREAMBLE
+        else ajan["sistem_promptu"]
+    )
+
+    # FIX: cache_context varsa ayrı cache_control block olarak gönder
+    if cache_context and len(cache_context) > 800:
+        user_content = [
+            {"type": "text", "text": cache_context, "cache_control": {"type": "ephemeral"}},
+            {"type": "text", "text": mesaj}
+        ]
+    else:
+        user_content = mesaj
+
+    mesajlar = gecmis + [{"role": "user", "content": user_content}]
 
     # Canlı log güncelle
     st.session_state.current_agent = ajan["isim"]
@@ -580,19 +611,39 @@ def ajan_calistir(ajan_key, mesaj, gecmis=None, log_container=None):
 
     for deneme in range(5):
         try:
+            # FIX: betas parametresi — caching için zorunlu
             yanit = client.messages.create(
                 model=ajan["model"],
                 max_tokens=ajan.get("max_tokens", 2000),
                 system=[{
                     "type": "text",
-                    "text": (CACHE_PREAMBLE + "\n" + ajan["sistem_promptu"]) if CACHE_PREAMBLE else ajan["sistem_promptu"],
+                    "text": sistem_promptu_extended,
                     "cache_control": {"type": "ephemeral"}
                 }],
-                messages=mesajlar
+                messages=mesajlar,
+                betas=["prompt-caching-2024-07-31"],
             )
             break
         except Exception as e:
-            if "rate_limit" in str(e).lower() or "429" in str(e):
+            err = str(e)
+            if "betas" in err or "beta" in err.lower():
+                # Beta desteklenmiyorsa betas olmadan dene
+                try:
+                    yanit = client.messages.create(
+                        model=ajan["model"],
+                        max_tokens=ajan.get("max_tokens", 2000),
+                        system=[{
+                            "type": "text",
+                            "text": sistem_promptu_extended,
+                            "cache_control": {"type": "ephemeral"}
+                        }],
+                        messages=mesajlar,
+                    )
+                    break
+                except Exception as e2:
+                    st.session_state.agent_log[-1]["status"] = "error"
+                    raise e2
+            elif "rate_limit" in err.lower() or "429" in err:
                 bekleme = 60 * (deneme + 1)
                 st.session_state.agent_log[-1]["status"] = f"⏳ rate limit ({bekleme}s)"
                 time.sleep(bekleme)
@@ -604,24 +655,45 @@ def ajan_calistir(ajan_key, mesaj, gecmis=None, log_container=None):
         return "ERROR: Rate limit aşıldı."
 
     cevap = yanit.content[0].text
+    usage = yanit.usage
 
+    # FIX: Cache token'ları oku
+    inp   = usage.input_tokens
+    out   = usage.output_tokens
+    c_cre = getattr(usage, "cache_creation_input_tokens", 0) or 0
+    c_rd  = getattr(usage, "cache_read_input_tokens",     0) or 0
+
+    # FIX: Doğru fiyatlandırma + cache pricing
     model = ajan["model"]
     if "opus" in model:
-        maliyet = yanit.usage.input_tokens * 15 / 1_000_000 + yanit.usage.output_tokens * 75 / 1_000_000
+        r_in, r_out = 15/1_000_000, 75/1_000_000
+        r_cre       = 18.75/1_000_000   # cache write (+25%)
+        r_rd        = 1.5/1_000_000     # cache read  (-90%)
     elif "sonnet" in model:
-        maliyet = yanit.usage.input_tokens * 3 / 1_000_000 + yanit.usage.output_tokens * 15 / 1_000_000
-    else:
-        maliyet = yanit.usage.input_tokens * 0.8 / 1_000_000 + yanit.usage.output_tokens * 4 / 1_000_000
+        r_in, r_out = 3/1_000_000, 15/1_000_000
+        r_cre       = 3.75/1_000_000
+        r_rd        = 0.3/1_000_000
+    else:  # haiku
+        r_in, r_out = 0.8/1_000_000, 4/1_000_000
+        r_cre       = 1.0/1_000_000
+        r_rd        = 0.08/1_000_000
+
+    actual_cost = (inp * r_in) + (out * r_out) + (c_cre * r_cre) + (c_rd * r_rd)
+    full_cost   = ((inp + c_cre + c_rd) * r_in) + (out * r_out)
+    saved       = max(0.0, full_cost - actual_cost)
 
     # Log güncelle
     st.session_state.agent_log[-1]["status"] = "done"
-    st.session_state.agent_log[-1]["cost"]   = maliyet
+    st.session_state.agent_log[-1]["cost"]   = actual_cost
     st.session_state.agent_log[-1]["output"] = cevap
 
-    # Toplam maliyet
-    st.session_state.total_cost   += maliyet
-    st.session_state.total_input  += yanit.usage.input_tokens
-    st.session_state.total_output += yanit.usage.output_tokens
+    # Toplam istatistikler
+    st.session_state.total_cost          += actual_cost
+    st.session_state.total_input         += inp
+    st.session_state.total_output        += out
+    st.session_state.cache_write_tokens  += c_cre
+    st.session_state.cache_read_tokens   += c_rd
+    st.session_state.cache_saved_usd     += saved
 
     return cevap
 
@@ -707,16 +779,27 @@ def run_tekli(brief, aktif_alanlar):
 
     tum_ciktilar = "\n\n".join(tum_ciktilar_parts)
 
-    capraz = ajan_calistir("capraz_dogrulama", f"AGENT OUTPUTS:\n{tum_ciktilar}\n\nCheck numerical consistency.")
-    gozlemci = ajan_calistir("gozlemci", f"Problem: {brief}\nActive domains: {', '.join(alan_isimleri)}\n\nAGENT OUTPUTS:\n{tum_ciktilar}\n\nCROSS-VALIDATION: {capraz}\n\nEvaluate. Assign KALİTE PUANI: XX/100.")
-    sorular = ajan_calistir("soru_uretici", f"Problem: {brief}\nAgent outputs:\n{tum_ciktilar}\nList unanswered critical questions.")
+    capraz = ajan_calistir("capraz_dogrulama",
+        "Check all numerical values for physical and mathematical consistency.",
+        cache_context=tum_ciktilar)
 
-    final = ajan_calistir("final_rapor", f"""Single-agent analysis. Domains: {', '.join(alan_isimleri)}
+    gozlemci = ajan_calistir("gozlemci",
+        f"Problem: {brief}\nActive domains: {', '.join(alan_isimleri)}\n\nCROSS-VALIDATION: {capraz}\n\nEvaluate outputs. Assign KALİTE PUANI: XX/100.",
+        cache_context=tum_ciktilar)
+
+    sorular = ajan_calistir("soru_uretici",
+        f"Problem: {brief}\nList unanswered critical questions.",
+        cache_context=tum_ciktilar)
+
+    final = ajan_calistir("final_rapor",
+        f"""Single-agent analysis. Domains: {', '.join(alan_isimleri)}
 PROBLEM: {brief}
-OUTPUTS: {tum_ciktilar}
 OBSERVER: {gozlemci}
 QUESTIONS: {sorular}
-Produce a concise professional engineering report.""")
+Each domain agent's technical findings are in the context above.
+Write a professional engineering report: lead with what each agent found (preserve numbers/calculations),
+then observer evaluation, then recommendations (max 25% of report).""",
+        cache_context=tum_ciktilar)
 
     return final, []
 
@@ -732,21 +815,41 @@ def run_cift(brief, aktif_alanlar):
 
     tum_ciktilar = "\n\n".join(tum_ciktilar_parts)
 
-    capraz   = ajan_calistir("capraz_dogrulama",  f"AGENT OUTPUTS:\n{tum_ciktilar}\n\nCheck numerical consistency.")
-    varsayim = ajan_calistir("varsayim_denetcisi", f"AGENT OUTPUTS:\n{tum_ciktilar}\n\nIdentify hidden assumptions.")
-    gozlemci = ajan_calistir("gozlemci", f"Problem: {brief}\nDomains: {', '.join(alan_isimleri)}\n\nOUTPUTS:\n{tum_ciktilar}\n\nCROSS-VAL: {capraz}\nASSUMPTIONS: {varsayim}\n\nEvaluate. KALİTE PUANI: XX/100.")
-    celiski  = ajan_calistir("celisiki_cozum",     f"OBSERVER:\n{gozlemci}\n\nOUTPUTS:\n{tum_ciktilar}\n\nResolve A vs B conflicts.")
-    sorular  = ajan_calistir("soru_uretici",       f"Problem: {brief}\nOutputs:\n{tum_ciktilar}\nList critical questions.")
-    alternatif = ajan_calistir("alternatif_senaryo", f"Problem: {brief}\nOutputs:\n{tum_ciktilar}\nEvaluate 3 alternatives.")
+    capraz   = ajan_calistir("capraz_dogrulama",
+        "Check all numerical values for physical and mathematical consistency.",
+        cache_context=tum_ciktilar)
 
-    final = ajan_calistir("final_rapor", f"""Dual-agent analysis. Domains: {', '.join(alan_isimleri)}
+    varsayim = ajan_calistir("varsayim_belirsizlik",
+        "Identify all hidden and unstated assumptions across expert outputs.",
+        cache_context=tum_ciktilar)
+
+    gozlemci = ajan_calistir("gozlemci",
+        f"Problem: {brief}\nDomains: {', '.join(alan_isimleri)}\n\nCROSS-VAL: {capraz}\nASSUMPTIONS: {varsayim}\n\nEvaluate. KALİTE PUANI: XX/100. Identify key A vs B conflicts.",
+        cache_context=tum_ciktilar)
+
+    celiski  = ajan_calistir("celisiki_cozum",
+        f"OBSERVER:\n{gozlemci}\n\nResolve A vs B expert conflicts. Which position is better supported?",
+        cache_context=tum_ciktilar)
+
+    sorular  = ajan_calistir("soru_uretici",
+        f"Problem: {brief}\nList unanswered critical questions.",
+        cache_context=tum_ciktilar)
+
+    alternatif = ajan_calistir("alternatif_senaryo",
+        f"Problem: {brief}\nEvaluate at least 3 alternative design/solution approaches.",
+        cache_context=tum_ciktilar)
+
+    final = ajan_calistir("final_rapor",
+        f"""Dual-agent analysis. Domains: {', '.join(alan_isimleri)}
 PROBLEM: {brief}
-OUTPUTS: {tum_ciktilar}
 OBSERVER: {gozlemci}
-CONFLICTS: {celiski}
+CONFLICTS RESOLVED: {celiski}
 QUESTIONS: {sorular}
 ALTERNATIVES: {alternatif}
-Produce professional engineering report.""")
+Domain agent technical findings are in the context above.
+Write a professional engineering report: lead with each domain's technical findings (preserve numbers),
+then conflicts, then recommendations (max 25% of report).""",
+        cache_context=tum_ciktilar)
 
     return final, []
 
@@ -781,26 +884,43 @@ def run_full_loop(brief, aktif_alanlar, max_tur):
             for key, name in aktif_alanlar
         )
 
-        capraz    = ajan_calistir("capraz_dogrulama",   f"ROUND {tur} OUTPUTS:\n{tum_ciktilar}\n\nCheck numerical consistency.")
-        varsayim  = ajan_calistir("varsayim_denetcisi", f"ROUND {tur} OUTPUTS:\n{tum_ciktilar}\n\nIdentify hidden assumptions.")
-        belirsiz  = ajan_calistir("belirsizlik_takipcisi", f"ROUND {tur} OUTPUTS:\n{tum_ciktilar}\n\nList ambiguous points.")
-        literatur = ajan_calistir("literatur_patent",   f"ROUND {tur} OUTPUTS:\n{tum_ciktilar}\n\nCheck standards and IP risks.")
+        capraz    = ajan_calistir("capraz_dogrulama",
+            f"ROUND {tur}: Check all numerical values for physical and mathematical consistency.",
+            cache_context=tum_ciktilar)
 
-        gozlemci_cevabi = ajan_calistir("gozlemci", f"""Problem: {brief}
-Domains: {', '.join(alan_isimleri)}
-ROUND {tur} RESULTS: {tum_ciktilar}
+        varsayim  = ajan_calistir("varsayim_belirsizlik",
+            f"ROUND {tur}: Identify all hidden and unstated assumptions.",
+            cache_context=tum_ciktilar)
+
+        belirsiz  = ajan_calistir("varsayim_belirsizlik",
+            f"ROUND {tur}: List all missing, ambiguous, or conflicting points.",
+            cache_context=tum_ciktilar)
+
+        literatur = ajan_calistir("literatur_patent",
+            f"ROUND {tur}: Check cited standards and references. Flag IP risks.",
+            cache_context=tum_ciktilar)
+
+        gozlemci_cevabi = ajan_calistir("gozlemci",
+            f"""Problem: {brief}
+Domains: {', '.join(alan_isimleri)} — ROUND {tur}
 CROSS-VAL: {capraz}
 ASSUMPTIONS: {varsayim}
 UNCERTAINTY: {belirsiz}
 LITERATURE: {literatur}
-Evaluate. KALİTE PUANI: XX/100. Specify corrections for next round.""")
+Evaluate all outputs. KALİTE PUANI: XX/100. Specify corrections for next round.""",
+            cache_context=tum_ciktilar)
 
         puan = kalite_puani_oku(gozlemci_cevabi)
         gozlemci_notu = gozlemci_cevabi
         st.session_state.round_scores[-1]["puan"] = puan
 
-        ajan_calistir("risk_guvenilirlik", f"ROUND {tur} OUTPUTS:\n{tum_ciktilar}\n\nFMEA. RPN values.")
-        ajan_calistir("celisiki_cozum",    f"OBSERVER:\n{gozlemci_cevabi}\n\nOUTPUTS:\n{tum_ciktilar}\n\nResolve conflicts.")
+        ajan_calistir("risk_guvenilirlik",
+            f"ROUND {tur}: FMEA on all proposed designs. Identify critical failure scenarios and RPN values.",
+            cache_context=tum_ciktilar)
+
+        ajan_calistir("celisiki_cozum",
+            f"OBSERVER REPORT:\n{gozlemci_cevabi}\n\nResolve all conflicts. Which agent position is better supported?",
+            cache_context=tum_ciktilar)
 
         tur_ozeti.append({"tur": tur, "puan": puan})
 
@@ -808,19 +928,44 @@ Evaluate. KALİTE PUANI: XX/100. Specify corrections for next round.""")
             break
 
     # Post-loop
-    soru_cevap  = ajan_calistir("soru_uretici",      f"Problem: {brief}\nOutputs:\n{tum_ciktilar}\nList critical unanswered questions.")
-    alt_cevap   = ajan_calistir("alternatif_senaryo", f"Problem: {brief}\nOutputs:\n{tum_ciktilar}\nEvaluate 3 alternatives.")
-    kalib_cevap = ajan_calistir("kalibrasyon",        f"Problem: {brief}\nOutputs:\n{tum_ciktilar}\nBenchmark comparison.")
-    std_cevap   = ajan_calistir("dogrulama_standartlar", f"Problem: {brief}\nOutputs:\n{tum_ciktilar}\nStandards compliance.")
-    enteg_cevap = ajan_calistir("entegrasyon_arayuz", f"Problem: {brief}\nOutputs:\n{tum_ciktilar}\nInterface risks.")
-    sim_cevap   = ajan_calistir("simulasyon_koordinator", f"Problem: {brief}\nOutputs:\n{tum_ciktilar}\nSimulation strategy.")
-    maliyet_cevap = ajan_calistir("maliyet_pazar",    f"Problem: {brief}\nOutputs:\n{tum_ciktilar}\nCost and market analysis.")
-    veri_cevap  = ajan_calistir("veri_analisti",      f"Problem: {brief}\nOutputs:\n{tum_ciktilar}\nData quality analysis.")
-    baglam_cevap = ajan_calistir("baglan_yoneticisi", f"Problem: {brief}\nOutputs:\n{tum_ciktilar}\nContext summary.")
+    soru_cevap   = ajan_calistir("soru_uretici",
+        f"Problem: {brief}\nList unanswered critical questions requiring further analysis.",
+        cache_context=tum_ciktilar)
 
-    sentez_cevap = ajan_calistir("sentez", f"""Problem: {brief}
-Domains: {', '.join(alan_isimleri)}
-OUTPUTS: {tum_ciktilar}
+    alt_cevap    = ajan_calistir("alternatif_senaryo",
+        f"Problem: {brief}\nEvaluate at least 3 alternative design/solution approaches.",
+        cache_context=tum_ciktilar)
+
+    kalib_cevap  = ajan_calistir("kalibrasyon",
+        f"Problem: {brief}\nCompare proposed parameters against benchmarks. Flag anomalies.",
+        cache_context=tum_ciktilar)
+
+    std_cevap    = ajan_calistir("dogrulama_standartlar",
+        f"Problem: {brief}\nAssess compliance with industry standards. Identify certification roadblocks.",
+        cache_context=tum_ciktilar)
+
+    enteg_cevap  = ajan_calistir("entegrasyon_arayuz",
+        f"Problem: {brief}\nIdentify interface risks between subsystems.",
+        cache_context=tum_ciktilar)
+
+    sim_cevap    = ajan_calistir("simulasyon_koordinator",
+        f"Problem: {brief}\nRecommend simulation strategy. Which analyses need CFD/FEA?",
+        cache_context=tum_ciktilar)
+
+    maliyet_cevap = ajan_calistir("maliyet_pazar",
+        f"Problem: {brief}\nCost estimation, market context, supply chain assessment.",
+        cache_context=tum_ciktilar)
+
+    veri_cevap   = ajan_calistir("capraz_dogrulama",
+        f"Problem: {brief}\nAnalyze data quality. Flag gaps and statistical anomalies.",
+        cache_context=tum_ciktilar)
+
+    baglam_cevap = ajan_calistir("sentez",
+        f"Problem: {brief}\nSummarize confirmed parameters and key decisions.",
+        cache_context=tum_ciktilar)
+
+    sentez_cevap = ajan_calistir("sentez",
+        f"""Problem: {brief} — Domains: {', '.join(alan_isimleri)}
 OBSERVER: {gozlemci_cevabi}
 QUESTIONS: {soru_cevap}
 ALTERNATIVES: {alt_cevap}
@@ -828,23 +973,31 @@ CALIBRATION: {kalib_cevap}
 STANDARDS: {std_cevap}
 INTEGRATION: {enteg_cevap}
 SIMULATION: {sim_cevap}
-COST: {maliyet_cevap}
+COST & MARKET: {maliyet_cevap}
 DATA: {veri_cevap}
 CONTEXT: {baglam_cevap}
-Synthesize all. Resolve conflicts. Summary for Final Report Writer.""")
+Synthesize all findings. Resolve conflicts. Produce clean summary for Final Report Writer.""",
+        cache_context=tum_ciktilar)
 
-    final = ajan_calistir("final_rapor", f"""Analysis in {len(tur_ozeti)} round(s). Domains: {', '.join(alan_isimleri)}
+    final = ajan_calistir("final_rapor",
+        f"""Analysis completed in {len(tur_ozeti)} round(s). Domains: {', '.join(alan_isimleri)}
 PROBLEM: {brief}
-LAST ROUND OUTPUTS: {tum_ciktilar}
-OBSERVER: {gozlemci_cevabi}
+OBSERVER EVALUATION: {gozlemci_cevabi}
 QUESTIONS: {soru_cevap}
 ALTERNATIVES: {alt_cevap}
-SYNTHESIS: {sentez_cevap}
-Produce comprehensive professional engineering report.""")
+SYNTHESIZED FINDINGS: {sentez_cevap}
+Domain agent technical findings are in the context above.
+REPORT STRUCTURE REQUIRED:
+1. For each active domain: heading + full technical findings (preserve all numbers, calculations, safety factors)
+2. Cross-domain conflicts and resolutions
+3. Observer quality assessment
+4. Recommendations (max 25% of total report)
+5. Next steps and open questions""",
+        cache_context=tum_ciktilar)
 
-    ajan_calistir("dokumantasyon",  f"Problem: {brief}\nReport: {final}\nDocumentation tree.")
-    ajan_calistir("ogrenme_hafiza", f"Problem: {brief}\nReport: {final}\nLessons learned.")
-    ajan_calistir("ozet_ve_sunum",  f"Report: {final}\nExecutive summary for management.")
+    ajan_calistir("dokumantasyon_hafiza",  f"Problem: {brief}\nFinal report: {final}\nIdentify documentation tree and traceability requirements.")
+    ajan_calistir("dokumantasyon_hafiza", f"Problem: {brief}\nFinal report: {final}\nCapture key decisions, lessons learned, reusable insights.")
+    ajan_calistir("ozet_ve_sunum",  f"Final report:\n{final}\nProduce executive summary for non-technical stakeholders.")
 
     return final, tur_ozeti
 
@@ -1174,8 +1327,8 @@ elif st.session_state.step == "running":
     # Monkey-patch ajan_calistir to update UI after each agent
     original_ajan_calistir = ajan_calistir
 
-    def ajan_calistir_live(ajan_key, mesaj, gecmis=None, log_container=None):
-        result = original_ajan_calistir(ajan_key, mesaj, gecmis)
+    def ajan_calistir_live(ajan_key, mesaj, gecmis=None, log_container=None, cache_context=None):
+        result = original_ajan_calistir(ajan_key, mesaj, gecmis, cache_context=cache_context)
         update_ui()
         return result
 
@@ -1291,9 +1444,9 @@ elif st.session_state.step == "done":
         with col2:
             if PDF_OK:
                 if not st.session_state.get("docx_bytes"):
-                    with st.spinner("PDF oluşturuluyor..."):
+                    with st.spinner("DOCX oluşturuluyor..."):
                         try:
-                            pdf_bytes = generate_pdf_report(
+                            docx_bytes = generate_pdf_report(
                                 brief        = st.session_state.brief,
                                 final_report = st.session_state.final_report,
                                 domains      = alan_isimleri,
@@ -1303,10 +1456,10 @@ elif st.session_state.step == "done":
                                 kur          = KUR,
                                 mode         = st.session_state.mode,
                             )
-                            st.session_state.docx_bytes = pdf_bytes
+                            st.session_state.docx_bytes = docx_bytes
                         except Exception as e:
                             st.session_state.docx_bytes = None
-                            st.error(f"PDF hatası: {e}")
+                            st.error(f"DOCX hatası: {e}")
                 if st.session_state.get("docx_bytes"):
                     zaman = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
                     st.download_button(
@@ -1319,7 +1472,7 @@ elif st.session_state.step == "done":
                     )
             else:
                 st.button("📄 DOCX İndir (report_generator.py eksik)", disabled=True,
-                          use_container_width=True, key="pdf_btn")
+                          use_container_width=True, key="docx_btn")
 
         # Ajan log detayı
         with st.expander("🔍 Ajan Aktivite Logu"):
