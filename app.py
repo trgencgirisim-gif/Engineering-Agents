@@ -25,17 +25,6 @@ except ImportError:
 load_dotenv()
 
 
-@st.cache_data(ttl=3600)
-def kur_getir():
-    try:
-        r = requests.get("https://api.frankfurter.app/latest?from=USD&to=TRY", timeout=3)
-        kur = r.json()["rates"]["TRY"]
-        return round(kur, 2)
-    except Exception:
-        return 44.0
-
-KUR = kur_getir()
-
 # ═════════════════════════════════════════════════════════════
 # PAGE CONFIG
 # ═════════════════════════════════════════════════════════════
@@ -86,8 +75,16 @@ html, body, [class*="css"] {
 }
 
 /* ── Hide Streamlit Branding ── */
-#MainMenu, footer, header { visibility: hidden; }
+#MainMenu, footer { visibility: hidden; }
+header { visibility: hidden; }
 .stDeployButton { display: none; }
+
+/* ── Sidebar collapse/expand button — görünür tut ── */
+[data-testid="collapsedControl"] {
+    visibility: visible !important;
+    opacity: 1 !important;
+    display: flex !important;
+}
 
 /* ── Sidebar ── */
 [data-testid="stSidebar"] {
@@ -637,6 +634,9 @@ def get_rag():
 rag = get_rag()
 
 
+# ── Thread-safe maliyet lock ─────────────────────────────────
+_APP_COST_LOCK = threading.Lock()
+
 # ═════════════════════════════════════════════════════════════
 # CORE: Ajan çalıştır (Streamlit callback ile)
 # ═════════════════════════════════════════════════════════════
@@ -774,20 +774,20 @@ def ajan_calistir(ajan_key, mesaj, gecmis=None, log_container=None, cache_contex
     with _APP_COST_LOCK:
         # Bu agent'ın log entry'sini key ile bul (sıra değişmiş olabilir)
         for entry in reversed(st.session_state.agent_log):
-            if entry["key"] == ajan_key and entry["status"] == "pending":
+            if entry["key"] == ajan_key and entry["status"] == "running":
                 entry["status"]   = "done"
                 entry["cost"]     = actual_cost
                 entry["output"]   = cevap
                 entry["thinking"] = dusunce
                 break
 
-    # Toplam istatistikler
-    st.session_state.total_cost          += actual_cost
-    st.session_state.total_input         += inp
-    st.session_state.total_output        += out
-    st.session_state.cache_write_tokens  += c_cre
-    st.session_state.cache_read_tokens   += c_rd
-    st.session_state.cache_saved_usd     += saved
+    with _APP_COST_LOCK:
+        st.session_state.total_cost          += actual_cost
+        st.session_state.total_input         += inp
+        st.session_state.total_output        += out
+        st.session_state.cache_write_tokens  += c_cre
+        st.session_state.cache_read_tokens   += c_rd
+        st.session_state.cache_saved_usd     += saved
 
     return cevap
 
@@ -866,8 +866,6 @@ def kaydet_txt(brief, mod, final, alan_isimleri, tur_ozeti):
     return "\n".join(satirlar), f"analiz_{mod_etiket.get(mod,'unknown')}_{zaman}.txt"
 
 
-# ── Thread-safe maliyet lock ──────────────────────────────────
-_APP_COST_LOCK = threading.Lock()
 
 # ═════════════════════════════════════════════════════════════
 # PARALEL AJAN ÇALIŞTIRICI (app.py versiyonu)
