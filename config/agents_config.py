@@ -785,7 +785,8 @@ Provide specific directives to each agent for the next round. Be precise and dem
     "final_rapor": {
         "isim": "Final Report Writer",
         "model": "claude-opus-4-6",
-        "max_tokens": 4000,
+        "thinking_budget": 3000,
+        "max_tokens": 7000,
         "sistem_promptu": """You are a senior engineering report writer. Your sole task is to faithfully document what the domain agents found and analyzed — not to replace their findings with generic advice.
 
 STRICT REPORT STRUCTURE (follow this order, do not deviate):
@@ -899,7 +900,8 @@ Produce a conflict resolution report that definitively closes resolved issues an
     "risk_guvenilirlik": {
         "isim": "Risk & Reliability Agent",
         "model": "claude-sonnet-4-6",
-        "max_tokens": 2500,
+        "thinking_budget": 2000,
+        "max_tokens": 4500,
         "sistem_promptu": """You are a risk and reliability analysis specialist.
 Your role: Conduct a systematic FMEA on the proposed design/solution based on agent outputs.
 For each failure mode: identify the failure mechanism, severity (1-10), occurrence probability (1-10), detectability (1-10), and RPN (S×O×D).
@@ -931,7 +933,8 @@ Provide a clear recommendation matrix for alternative selection."""
     "sentez": {
         "isim": "Synthesis Agent",
         "model": "claude-opus-4-6",
-        "max_tokens": 3000,
+        "thinking_budget": 2000,
+        "max_tokens": 5000,
         "sistem_promptu": """You are a technical synthesis specialist responsible for consolidating multi-agent analysis into a coherent, consistent knowledge base.
 Your role: Synthesize all agent outputs into a clean, conflict-free summary that:
 - Establishes consensus values for all key parameters
@@ -1048,10 +1051,9 @@ Rules:
         "isim": "Domain Selector",
         "model": "claude-sonnet-4-6",
         "max_tokens": 1000,
-        "sistem_promptu": """You are an engineering domain classification specialist.
-Your task: Analyze the given engineering problem brief and determine which engineering domains are required for a thorough analysis.
+        "sistem_promptu": """You are an engineering domain classifier. Select the MINIMUM number of domains genuinely necessary — not every loosely related domain.
 
-Available domains and their numbers:
+Available domains:
 1=Combustion, 2=Materials, 3=Thermal & Heat Transfer, 4=Structural & Static,
 5=Dynamics & Vibration, 6=Aerodynamics, 7=Fluid Mechanics, 8=Thermodynamics,
 9=Mechanical Design, 10=Control Systems, 11=Electrical & Electronics,
@@ -1061,13 +1063,15 @@ Available domains and their numbers:
 22=Environment & Sustainability, 23=Naval & Marine, 24=Chemical & Process,
 25=Civil & Structural, 26=Optics & Sensors, 27=Nuclear, 28=Biomedical
 
-Rules:
-- Select ONLY domains directly relevant to the problem
-- Minimum 1, maximum 6 domains
-- Prefer fewer, more relevant domains over many loosely related ones
+Selection rules:
+- Select ONLY domains where specific expertise is DIRECTLY required to analyze the problem
+- Prefer 2-4 domains for most problems; use 5-6 only for genuinely multi-disciplinary systems
+- Do NOT select a domain because it is tangentially related
+- Do NOT select overlapping domains (e.g. both Thermodynamics and Thermal if one suffices)
+- Narrow problems (single component or phenomenon) → 1-3 domains maximum
 
-Output format (EXACTLY like this, nothing else):
+Output format (EXACTLY this, nothing else):
 SELECTED_DOMAINS: 1,2,3
-REASONING: Brief explanation of why each domain was selected."""
+REASONING: One sentence per domain explaining why it is essential."""
     },
 }

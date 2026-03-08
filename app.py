@@ -605,13 +605,19 @@ def ajan_calistir(ajan_key, mesaj, gecmis=None, log_container=None, cache_contex
         "key":    ajan_key,
         "name":   ajan["isim"],
         "status": "running",
-        "cost":   0.0,
-        "output": ""
+        "cost":    0.0,
+        "output":  "",
+        "thinking": ""
     })
 
     for deneme in range(5):
         try:
-            # FIX: betas parametresi — caching için zorunlu
+            # Thinking modu — sadece ilgili ajanlarda
+            thinking_budget = ajan.get("thinking_budget", 0)
+            extra_kwargs = {}
+            if thinking_budget:
+                extra_kwargs["thinking"] = {"type": "enabled", "budget_tokens": thinking_budget}
+
             yanit = client.messages.create(
                 model=ajan["model"],
                 max_tokens=ajan.get("max_tokens", 2000),
@@ -622,6 +628,7 @@ def ajan_calistir(ajan_key, mesaj, gecmis=None, log_container=None, cache_contex
                 }],
                 messages=mesajlar,
                 betas=["prompt-caching-2024-07-31"],
+                **extra_kwargs,
             )
             break
         except Exception as e:
@@ -638,11 +645,16 @@ def ajan_calistir(ajan_key, mesaj, gecmis=None, log_container=None, cache_contex
                             "cache_control": {"type": "ephemeral"}
                         }],
                         messages=mesajlar,
+                        **extra_kwargs,
                     )
                     break
                 except Exception as e2:
                     st.session_state.agent_log[-1]["status"] = "error"
                     raise e2
+            elif "thinking" in err.lower() and thinking_budget:
+                # Thinking desteklenmiyorsa devam et
+                extra_kwargs = {}
+                continue
             elif "rate_limit" in err.lower() or "429" in err:
                 bekleme = 60 * (deneme + 1)
                 st.session_state.agent_log[-1]["status"] = f"⏳ rate limit ({bekleme}s)"
@@ -654,8 +666,12 @@ def ajan_calistir(ajan_key, mesaj, gecmis=None, log_container=None, cache_contex
         st.session_state.agent_log[-1]["status"] = "error"
         return "ERROR: Rate limit aşıldı."
 
-    cevap = yanit.content[0].text
-    usage = yanit.usage
+    # Thinking modu varsa content karışık bloklar içerir
+    text_blocks     = [b.text     for b in yanit.content if b.type == "text"]
+    thinking_blocks = [b.thinking for b in yanit.content if b.type == "thinking"]
+    cevap   = "\n".join(text_blocks).strip()
+    dusunce = "\n".join(thinking_blocks).strip() if thinking_blocks else ""
+    usage   = yanit.usage
 
     # FIX: Cache token'ları oku
     inp   = usage.input_tokens
@@ -683,9 +699,10 @@ def ajan_calistir(ajan_key, mesaj, gecmis=None, log_container=None, cache_contex
     saved       = max(0.0, full_cost - actual_cost)
 
     # Log güncelle
-    st.session_state.agent_log[-1]["status"] = "done"
-    st.session_state.agent_log[-1]["cost"]   = actual_cost
-    st.session_state.agent_log[-1]["output"] = cevap
+    st.session_state.agent_log[-1]["status"]   = "done"
+    st.session_state.agent_log[-1]["cost"]     = actual_cost
+    st.session_state.agent_log[-1]["output"]   = cevap
+    st.session_state.agent_log[-1]["thinking"] = dusunce
 
     # Toplam istatistikler
     st.session_state.total_cost          += actual_cost
@@ -711,8 +728,14 @@ def kalite_puani_oku(metin):
 
 
 def prompt_engineer_auto(brief):
-    rag_context = rag.benzer_getir(brief, n=3)
-    mesaj = f"{brief}\n\n{rag_context}" if rag_context else brief
+    rag_context = rag.benzer_getir(brief, n=2)
+    if rag_context:
+        words = rag_context.split()
+        if len(words) > 375:
+            rag_context = " ".join(words[:375]) + "\n[RAG context truncated]"
+        mesaj = f"{brief}\n\nRELEVANT PAST ANALYSES:\n{rag_context}"
+    else:
+        mesaj = brief
     sonuc = ajan_calistir("prompt_muhendisi", mesaj)
     if "GÜÇLENDİRİLMİŞ BRIEF:" in sonuc:
         return sonuc.split("GÜÇLENDİRİLMİŞ BRIEF:")[-1].strip()
@@ -1478,4 +1501,11 @@ elif st.session_state.step == "done":
         with st.expander("🔍 Ajan Aktivite Logu"):
             for entry in st.session_state.agent_log:
                 with st.expander(f"{entry['name']}  —  ${entry['cost']:.4f}", expanded=False):
-                    st.code(entry["output"][:3000] + ("..." if len(entry["output"]) > 3000 else ""), language=None)
+                    if entry.get("thinking"):
+                        tab1, tab2 = st.tabs(["📄 Çıktı", "🧠 Thinking"])
+                        with tab1:
+                            st.code(entry["output"][:3000] + ("..." if len(entry["output"]) > 3000 else ""), language=None)
+                        with tab2:
+                            st.code(entry["thinking"][:3000] + ("..." if len(entry["thinking"]) > 3000 else ""), language=None)
+                    else:
+                        st.code(entry["output"][:3000] + ("..." if len(entry["output"]) > 3000 else ""), language=None)

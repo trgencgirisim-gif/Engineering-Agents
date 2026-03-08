@@ -27,6 +27,11 @@ try:
     PDF_OK = True
 except ImportError:
     PDF_OK = False
+
+try:
+    from orchestrator import CACHE_PREAMBLE
+except ImportError:
+    CACHE_PREAMBLE = ""
 from typing import Optional, List
 import uvicorn
 
@@ -131,9 +136,12 @@ class Session:
 
         self.agent_log: list   = []
         self.round_scores: list = []
-        self.total_cost   = 0.0
-        self.total_input  = 0
-        self.total_output = 0
+        self.total_cost        = 0.0
+        self.total_input       = 0
+        self.total_output      = 0
+        self.cache_write_tokens = 0
+        self.cache_read_tokens  = 0
+        self.cache_saved_usd    = 0.0
 
         self.final_report = ""
         self.txt_output   = ""
@@ -151,7 +159,8 @@ class Session:
         self.queue.put({"type": etype, "data": data})
 
     # ── Ajan çalıştır ─────────────────────────────────────────
-    def ajan_calistir(self, ajan_key: str, mesaj: str, gecmis: list = None) -> str:
+    def ajan_calistir(self, ajan_key: str, mesaj: str,
+                      gecmis: list = None, cache_context: str = None) -> str:
         if gecmis is None:
             gecmis = []
 
@@ -159,8 +168,29 @@ class Session:
         if not ajan:
             return f"ERROR: Agent '{ajan_key}' not found."
 
-        mesajlar = gecmis + [{"role": "user", "content": mesaj}]
+        # CACHE_PREAMBLE sistem promptunu genişletir — cache eşiğini aşmak için
+        sistem_promptu_extended = (
+            (CACHE_PREAMBLE + "\n" + ajan["sistem_promptu"]) if CACHE_PREAMBLE
+            else ajan["sistem_promptu"]
+        )
+
+        # cache_context büyük bağlamı cache_control block olarak gönder
+        if cache_context and len(cache_context) > 800:
+            user_content = [
+                {"type": "text", "text": cache_context, "cache_control": {"type": "ephemeral"}},
+                {"type": "text", "text": mesaj}
+            ]
+        else:
+            user_content = mesaj
+
+        mesajlar = gecmis + [{"role": "user", "content": user_content}]
         self.emit("agent_start", {"key": ajan_key, "name": ajan["isim"]})
+
+        # Thinking modu — sadece ilgili ajanlarda
+        thinking_budget = ajan.get("thinking_budget", 0)
+        extra_kwargs = {}
+        if thinking_budget:
+            extra_kwargs["thinking"] = {"type": "enabled", "budget_tokens": thinking_budget}
 
         for deneme in range(5):
             try:
@@ -169,15 +199,37 @@ class Session:
                     max_tokens=ajan.get("max_tokens", 2000),
                     system=[{
                         "type": "text",
-                        "text": ajan["sistem_promptu"],
+                        "text": sistem_promptu_extended,
                         "cache_control": {"type": "ephemeral"},
                     }],
                     messages=mesajlar,
+                    betas=["prompt-caching-2024-07-31"],
+                    **extra_kwargs,
                 )
                 break
             except Exception as e:
                 err_str = str(e)
-                if "rate_limit" in err_str.lower() or "429" in err_str:
+                if "betas" in err_str or "beta" in err_str.lower():
+                    try:
+                        yanit = self.client.messages.create(
+                            model=ajan["model"],
+                            max_tokens=ajan.get("max_tokens", 2000),
+                            system=[{
+                                "type": "text",
+                                "text": sistem_promptu_extended,
+                                "cache_control": {"type": "ephemeral"},
+                            }],
+                            messages=mesajlar,
+                            **extra_kwargs,
+                        )
+                        break
+                    except Exception as e2:
+                        self.emit("agent_error", {"key": ajan_key, "name": ajan["isim"], "error": str(e2)})
+                        raise e2
+                elif "thinking" in err_str.lower() and thinking_budget:
+                    extra_kwargs = {}
+                    continue
+                elif "rate_limit" in err_str.lower() or "429" in err_str:
                     bekleme = 60 * (deneme + 1)
                     self.emit("agent_wait", {"key": ajan_key, "name": ajan["isim"], "seconds": bekleme})
                     time.sleep(bekleme)
@@ -187,26 +239,51 @@ class Session:
         else:
             return "ERROR: Rate limit aşıldı."
 
-        cevap = yanit.content[0].text
+        # Thinking + text bloklarını ayır
+        text_blocks     = [b.text     for b in yanit.content if b.type == "text"]
+        thinking_blocks = [b.thinking for b in yanit.content if b.type == "thinking"]
+        cevap   = "\n".join(text_blocks).strip()
+        dusunce = "\n".join(thinking_blocks).strip() if thinking_blocks else ""
+
+        usage = yanit.usage
+        inp   = usage.input_tokens
+        out   = usage.output_tokens
+        c_cre = getattr(usage, "cache_creation_input_tokens", 0) or 0
+        c_rd  = getattr(usage, "cache_read_input_tokens",     0) or 0
 
         model = ajan["model"]
-        if "opus"   in model: maliyet = yanit.usage.input_tokens*15/1e6 + yanit.usage.output_tokens*75/1e6
-        elif "sonnet" in model: maliyet = yanit.usage.input_tokens*3/1e6  + yanit.usage.output_tokens*15/1e6
-        else:                   maliyet = yanit.usage.input_tokens*0.8/1e6+ yanit.usage.output_tokens*4/1e6
+        if "opus" in model:
+            r_in, r_out = 15/1_000_000, 75/1_000_000
+            r_cre, r_rd_ = 18.75/1_000_000, 1.5/1_000_000
+        elif "sonnet" in model:
+            r_in, r_out = 3/1_000_000, 15/1_000_000
+            r_cre, r_rd_ = 3.75/1_000_000, 0.3/1_000_000
+        else:
+            r_in, r_out = 0.8/1_000_000, 4/1_000_000
+            r_cre, r_rd_ = 1.0/1_000_000, 0.08/1_000_000
 
-        self.total_cost   += maliyet
-        self.total_input  += yanit.usage.input_tokens
-        self.total_output += yanit.usage.output_tokens
+        actual_cost = (inp * r_in) + (out * r_out) + (c_cre * r_cre) + (c_rd * r_rd_)
+        full_cost   = ((inp + c_cre + c_rd) * r_in) + (out * r_out)
+        saved       = max(0.0, full_cost - actual_cost)
+
+        self.total_cost         += actual_cost
+        self.total_input        += inp
+        self.total_output       += out
+        self.cache_write_tokens += c_cre
+        self.cache_read_tokens  += c_rd
+        self.cache_saved_usd    += saved
 
         self.agent_log.append({
             "key": ajan_key, "name": ajan["isim"],
-            "cost": maliyet, "output": cevap[:3000],
+            "cost": actual_cost, "output": cevap[:3000],
+            "thinking": dusunce[:2000] if dusunce else "",
         })
 
         self.emit("agent_done", {
             "key": ajan_key, "name": ajan["isim"],
-            "cost": round(maliyet, 6),
+            "cost": round(actual_cost, 6),
             "total_cost": round(self.total_cost, 4),
+            "cache_saved": round(self.cache_saved_usd, 4),
             "agent_count": len(self.agent_log),
         })
         return cevap
@@ -262,10 +339,22 @@ class Session:
             c = self.ajan_calistir(f"{key}_a", self.enhanced_brief)
             parts.append(f"{name.upper()} EXPERT:\n{c}")
         tum = "\n\n".join(parts)
-        capraz   = self.ajan_calistir("capraz_dogrulama",  f"AGENT OUTPUTS:\n{tum}\n\nCheck numerical consistency.")
-        gozlemci = self.ajan_calistir("gozlemci", f"Problem: {self.enhanced_brief}\nDomains: {', '.join(alan_isimleri)}\n\nOUTPUTS:\n{tum}\n\nCROSS-VAL: {capraz}\n\nEvaluate. KALİTE PUANI: XX/100.")
-        sorular  = self.ajan_calistir("soru_uretici", f"Problem: {self.enhanced_brief}\nOutputs:\n{tum}\nList critical unanswered questions.")
-        final    = self.ajan_calistir("final_rapor", f"Single-agent analysis. Domains: {', '.join(alan_isimleri)}\nPROBLEM: {self.enhanced_brief}\nOUTPUTS: {tum}\nOBSERVER: {gozlemci}\nQUESTIONS: {sorular}\nProduce concise professional engineering report.")
+        capraz   = self.ajan_calistir("capraz_dogrulama",
+            "Check all numerical values for physical and mathematical consistency.",
+            cache_context=tum)
+        gozlemci = self.ajan_calistir("gozlemci",
+            f"Problem: {self.enhanced_brief}\nDomains: {', '.join(alan_isimleri)}\nCROSS-VAL: {capraz}\nEvaluate. KALİTE PUANI: XX/100.",
+            cache_context=tum)
+        sorular  = self.ajan_calistir("soru_uretici",
+            f"Problem: {self.enhanced_brief}\nList unanswered critical questions.",
+            cache_context=tum)
+        final    = self.ajan_calistir("final_rapor",
+            f"""Single-agent analysis. Domains: {', '.join(alan_isimleri)}
+PROBLEM: {self.enhanced_brief}
+OBSERVER: {gozlemci}
+QUESTIONS: {sorular}
+Domain findings are in the context above. Report structure: 70% technical findings (preserve all numbers), 15% cross-domain, 15% recommendations.""",
+            cache_context=tum)
         return final
 
     def run_cift(self):
@@ -277,7 +366,7 @@ class Session:
             parts.append(f"{name.upper()} EXPERT A:\n{ca}\n\n{name.upper()} EXPERT B:\n{cb}")
         tum = "\n\n".join(parts)
         capraz   = self.ajan_calistir("capraz_dogrulama",   f"OUTPUTS:\n{tum}\n\nCheck numerical consistency.")
-        varsayim = self.ajan_calistir("varsayim_denetcisi", f"OUTPUTS:\n{tum}\n\nIdentify hidden assumptions.")
+        varsayim = self.ajan_calistir("varsayim_belirsizlik", f"OUTPUTS:\n{tum}\n\nIdentify hidden assumptions.")
         gozlemci = self.ajan_calistir("gozlemci", f"Problem: {self.enhanced_brief}\nDomains: {', '.join(alan_isimleri)}\n\nOUTPUTS:\n{tum}\n\nCROSS-VAL: {capraz}\nASSUMPTIONS: {varsayim}\n\nEvaluate. KALİTE PUANI: XX/100.")
         celiski  = self.ajan_calistir("celisiki_cozum",     f"OBSERVER:\n{gozlemci}\n\nOUTPUTS:\n{tum}\n\nResolve A vs B conflicts.")
         sorular  = self.ajan_calistir("soru_uretici",       f"Problem: {self.enhanced_brief}\nOutputs:\n{tum}\nList critical questions.")
@@ -313,8 +402,8 @@ class Session:
             )
 
             capraz   = self.ajan_calistir("capraz_dogrulama",      f"ROUND {tur} OUTPUTS:\n{tum}\n\nCheck numerical consistency.")
-            varsayim = self.ajan_calistir("varsayim_denetcisi",    f"ROUND {tur} OUTPUTS:\n{tum}\n\nIdentify hidden assumptions.")
-            belirsiz = self.ajan_calistir("belirsizlik_takipcisi", f"ROUND {tur} OUTPUTS:\n{tum}\n\nList ambiguous points.")
+            varsayim = self.ajan_calistir("varsayim_belirsizlik",    f"ROUND {tur} OUTPUTS:\n{tum}\n\nIdentify hidden assumptions.")
+            belirsiz = self.ajan_calistir("varsayim_belirsizlik", f"ROUND {tur} OUTPUTS:\n{tum}\n\nList ambiguous points.")
             literatur= self.ajan_calistir("literatur_patent",      f"ROUND {tur} OUTPUTS:\n{tum}\n\nCheck standards and IP risks.")
 
             gozlemci_cevabi = self.ajan_calistir("gozlemci", f"""Problem: {self.enhanced_brief}
@@ -332,8 +421,12 @@ Evaluate. KALİTE PUANI: XX/100. Specify corrections for next round.""")
             self.round_scores = tur_ozeti[:]
             self.emit("round_score", {"tur": tur, "puan": puan})
 
-            self.ajan_calistir("risk_guvenilirlik", f"ROUND {tur} OUTPUTS:\n{tum}\n\nFMEA. RPN values.")
-            self.ajan_calistir("celisiki_cozum",    f"OBSERVER:\n{gozlemci_cevabi}\n\nOUTPUTS:\n{tum}\n\nResolve conflicts.")
+            self.ajan_calistir("risk_guvenilirlik",
+                f"ROUND {tur}: FMEA on all proposed designs. Identify critical failure scenarios and RPN values.",
+                cache_context=tum)
+            self.ajan_calistir("celisiki_cozum",
+                f"OBSERVER REPORT:\n{gozlemci_cevabi}\nResolve all conflicts. Which agent position is better supported?",
+                cache_context=tum)
 
             if puan >= 85:
                 self.emit("early_stop", {"tur": tur, "puan": puan})
@@ -347,8 +440,8 @@ Evaluate. KALİTE PUANI: XX/100. Specify corrections for next round.""")
         enteg = self.ajan_calistir("entegrasyon_arayuz",    f"Problem: {self.enhanced_brief}\nOutputs:\n{tum}\nInterface risks.")
         sim   = self.ajan_calistir("simulasyon_koordinator",f"Problem: {self.enhanced_brief}\nOutputs:\n{tum}\nSimulation strategy.")
         mal   = self.ajan_calistir("maliyet_pazar",          f"Problem: {self.enhanced_brief}\nOutputs:\n{tum}\nCost and market analysis.")
-        veri  = self.ajan_calistir("veri_analisti",          f"Problem: {self.enhanced_brief}\nOutputs:\n{tum}\nData quality analysis.")
-        baglam= self.ajan_calistir("baglan_yoneticisi",      f"Problem: {self.enhanced_brief}\nOutputs:\n{tum}\nContext summary.")
+        veri  = self.ajan_calistir("capraz_dogrulama",          f"Problem: {self.enhanced_brief}\nOutputs:\n{tum}\nData quality analysis.")
+        baglam= self.ajan_calistir("sentez",      f"Problem: {self.enhanced_brief}\nOutputs:\n{tum}\nContext summary.")
 
         sentez = self.ajan_calistir("sentez", f"""Problem: {self.enhanced_brief}
 Domains: {', '.join(alan_isimleri)}
@@ -368,8 +461,8 @@ QUESTIONS: {soru}  ALTERNATIVES: {alt}
 SYNTHESIS: {sentez}
 Produce comprehensive professional engineering report.""")
 
-        self.ajan_calistir("dokumantasyon",  f"Problem: {self.enhanced_brief}\nReport: {final}\nDocumentation tree.")
-        self.ajan_calistir("ogrenme_hafiza", f"Problem: {self.enhanced_brief}\nReport: {final}\nLessons learned.")
+        self.ajan_calistir("dokumantasyon_hafiza",  f"Problem: {self.enhanced_brief}\nReport: {final}\nDocumentation tree.")
+        self.ajan_calistir("dokumantasyon_hafiza", f"Problem: {self.enhanced_brief}\nReport: {final}\nLessons learned.")
         self.ajan_calistir("ozet_ve_sunum",  f"Report: {final}\nExecutive summary for management.")
 
         return final
@@ -415,8 +508,14 @@ Produce comprehensive professional engineering report.""")
                         self.enhanced_brief = result.split("GÜÇLENDİRİLMİŞ BRIEF:")[-1].strip()
             else:
                 # Mod 1/2/4: Prompt Engineer → Domain Selector
-                rag_ctx = rag.benzer_getir(self.brief, n=3) if rag else ""
-                msg = f"{self.brief}\n\n{rag_ctx}" if rag_ctx else self.brief
+                rag_ctx = rag.benzer_getir(self.brief, n=2) if rag else ""
+                if rag_ctx:
+                    words = rag_ctx.split()
+                    if len(words) > 375:
+                        rag_ctx = " ".join(words[:375]) + "\n[RAG context truncated]"
+                    msg = f"{self.brief}\n\nRELEVANT PAST ANALYSES:\n{rag_ctx}"
+                else:
+                    msg = self.brief
                 result = self.ajan_calistir("prompt_muhendisi", msg)
                 if "GÜÇLENDİRİLMİŞ BRIEF:" in result:
                     self.enhanced_brief = result.split("GÜÇLENDİRİLMİŞ BRIEF:")[-1].strip()
@@ -607,11 +706,11 @@ async def download_docx(sid: str):
     if not sess or not sess.final_report:
         raise HTTPException(404, "Rapor henüz hazır değil.")
     if not PDF_OK:
-        raise HTTPException(501, "report_generator.py bulunamadı.")
+        raise HTTPException(501, "report_generator.py bulunamadı veya DOCX desteği yok.")
 
     try:
         kur = get_kur()
-        pdf_bytes = generate_pdf_report(
+        docx_bytes = generate_pdf_report(
             brief        = sess.brief,
             final_report = sess.final_report,
             domains      = [n for _, n in sess.domains],
@@ -622,14 +721,14 @@ async def download_docx(sid: str):
             mode         = sess.mode,
         )
     except Exception as e:
-        raise HTTPException(500, f"PDF oluşturma hatası: {e}")
+        raise HTTPException(500, f"DOCX oluşturma hatası: {e}")
 
     import datetime
     zaman = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     fname = f"analiz_{zaman}.docx"
     from fastapi.responses import Response
     return Response(
-        content=pdf_bytes,
+        content=docx_bytes,
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         headers={"Content-Disposition": f'attachment; filename="{fname}"'}
     )

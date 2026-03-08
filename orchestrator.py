@@ -150,6 +150,37 @@ RESPONSE STRUCTURE (required format)
 
 Your domain-specific role, expertise, and responsibilities are described in the section that follows.
 ════════════════════════════════════════════════════════════════════
+
+ENGINEERING ANALYSIS METHODOLOGY — UNIVERSAL STANDARDS
+════════════════════════════════════════════════════════════════════
+
+QUANTITATIVE RIGOR
+- Every claim must be backed by a calculation, measurement, or cited reference.
+- State units explicitly for every numerical value: Pa, MPa, GPa, K, °C, m/s, kg, N, W, J, Hz, etc.
+- When approximating, explicitly state the approximation and its valid operating range.
+- Distinguish clearly between: measured data, derived calculations, engineering estimates, and assumptions.
+- Report significant figures consistent with input data precision.
+
+FAILURE MODE AWARENESS
+- Analyze not only nominal operation but off-design conditions, transients, and edge cases.
+- Identify single points of failure and assess redundancy and fail-safe requirements.
+- Apply safety factors appropriate to the application domain and the consequences of failure.
+- Consider fatigue, creep, corrosion, wear, and other time-dependent degradation mechanisms.
+
+SYSTEM INTEGRATION THINKING
+- Every subsystem interacts with adjacent systems. Proactively flag interface and coupling risks.
+- Consider the full lifecycle: design, manufacturing, assembly, operation, maintenance, end-of-life.
+- Regulatory and standards compliance is mandatory — cite applicable standards when known
+  (e.g. ISO, ASME, MIL-SPEC, DO-178C, IEC, ASTM, EN, API, NFPA).
+- Environmental, safety, and export control constraints must be noted where applicable.
+
+OUTPUT FORMAT DISCIPLINE
+- Lead with the most critical finding, constraint, or risk.
+- Present calculations in clearly labeled sequential steps with intermediate results shown.
+- Use structured lists or tables only when they genuinely improve clarity over prose.
+- Conclude each section with a concise summary of key numerical results and open questions.
+- Preserve all numerical values exactly — do not round or paraphrase computed results.
+════════════════════════════════════════════════════════════════════
 """
 
 
@@ -159,12 +190,20 @@ Your domain-specific role, expertise, and responsibilities are described in the 
 # mesaj:         kısa talep (her çağrıda değişir)
 # ═════════════════════════════════════════════════════════════
 def _api_call(ajan, sistem_promptu_extended, mesajlar):
-    """API çağrısı + retry."""
+    """API çağrısı + retry. Thinking modu varsa otomatik aktif edilir."""
+    thinking_budget = ajan.get("thinking_budget", 0)
+    max_tokens      = ajan.get("max_tokens", 2000)
+
+    # Thinking açıkken API parametreleri
+    extra_kwargs = {}
+    if thinking_budget:
+        extra_kwargs["thinking"] = {"type": "enabled", "budget_tokens": thinking_budget}
+
     for deneme in range(5):
         try:
             yanit = client.messages.create(
                 model=ajan["model"],
-                max_tokens=ajan.get("max_tokens", 2000),
+                max_tokens=max_tokens,
                 system=[{
                     "type": "text",
                     "text": sistem_promptu_extended,
@@ -172,26 +211,33 @@ def _api_call(ajan, sistem_promptu_extended, mesajlar):
                 }],
                 messages=mesajlar,
                 betas=["prompt-caching-2024-07-31"],
+                **extra_kwargs,
             )
             return yanit
         except Exception as e:
             err = str(e)
-            # beta parametresi desteklenmiyorsa tekrar dene (beta olmadan)
             if "betas" in err or "beta" in err.lower():
+                # Beta desteklenmiyorsa betas olmadan dene
                 try:
                     yanit = client.messages.create(
                         model=ajan["model"],
-                        max_tokens=ajan.get("max_tokens", 2000),
+                        max_tokens=max_tokens,
                         system=[{
                             "type": "text",
                             "text": sistem_promptu_extended,
                             "cache_control": {"type": "ephemeral"}
                         }],
                         messages=mesajlar,
+                        **extra_kwargs,
                     )
                     return yanit
                 except Exception as e2:
                     raise e2
+            elif "thinking" in err.lower() and thinking_budget:
+                # Thinking desteklenmiyorsa thinking olmadan dene
+                extra_kwargs = {}
+                print("⚠️  Thinking modu desteklenmedi, standart moda geçiliyor...")
+                continue
             elif "rate_limit" in err.lower() or "429" in err:
                 bekleme = 60 * (deneme + 1)
                 print(f"\n⏳ Rate limit — {bekleme}s bekleniyor (deneme {deneme+1}/5)...")
@@ -300,7 +346,16 @@ def ajan_calistir(ajan_key, mesaj, gecmis=None, cache_context: Optional[str] = N
     if yanit is None:
         return "ERROR: Rate limit aşıldı, maksimum deneme sayısına ulaşıldı."
 
-    cevap = yanit.content[0].text
+    # Thinking modu varsa content karışık bloklar içerir (thinking + text)
+    # Sadece text bloklarını birleştir; thinking bloğunu logla
+    text_blocks     = [b.text     for b in yanit.content if b.type == "text"]
+    thinking_blocks = [b.thinking for b in yanit.content if b.type == "thinking"]
+
+    cevap   = "\n".join(text_blocks).strip()
+    dusunce = "\n".join(thinking_blocks).strip() if thinking_blocks else ""
+
+    if dusunce:
+        print(f"[THINKING — {len(dusunce.split())} kelime]")
     print(cevap)
     _maliyet_kaydet(ajan_key, ajan, yanit)
 
@@ -448,9 +503,13 @@ def _prompt_engineer_auto(brief):
     print(f"{'#'*60}")
 
     # RAG: geçmiş benzer analizleri getir
-    rag_context = rag.benzer_getir(brief, n=3)
+    # RAG: en fazla 500 token (~375 kelime) — bağlam şişmesini önler
+    rag_context = rag.benzer_getir(brief, n=2)
     if rag_context:
-        mesaj = f"{brief}\n\n{rag_context}"
+        words = rag_context.split()
+        if len(words) > 375:
+            rag_context = " ".join(words[:375]) + "\n[RAG context truncated to 500 tokens]"
+        mesaj = f"{brief}\n\nRELEVANT PAST ANALYSES:\n{rag_context}"
     else:
         mesaj = brief
 

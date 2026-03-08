@@ -4,8 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Engineering AI — Multi-Agent System</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<!-- Sistem fontları — offline çalışır, Google Fonts bağımlılığı yok -->
+<style>
+  @font-face {
+    font-family: 'JetBrains Mono';
+    src: local('JetBrains Mono'), local('Courier New'), local('monospace');
+  }
+</style>
 <style>
 /* ══ Variables ═══════════════════════════════════════════════ */
 :root {
@@ -22,8 +27,8 @@
   --fg3:       #5A5A65;
   --ok:        #2DB87A;
   --warn:      #E8A838;
-  --mono: 'JetBrains Mono', monospace;
-  --sans: 'Syne', sans-serif;
+  --mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', 'Courier New', monospace;
+  --sans: 'Segoe UI', 'SF Pro Display', 'Helvetica Neue', 'Inter', system-ui, sans-serif;
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -472,6 +477,11 @@ textarea:focus { border-color: var(--accent); }
 
     <hr class="divider">
 
+    <div class="stat-mini" style="border-color:rgba(45,184,122,0.3)">
+      <div class="val" id="sb-saved" style="color:var(--ok)">$0.0000</div>
+      <div class="lbl">Cache Tasarrufu</div>
+    </div>
+
     <div class="label">Knowledge Base</div>
     <div class="stat-mini">
       <div class="val" id="sb-kb">🧠 …</div>
@@ -567,6 +577,7 @@ textarea:focus { border-color: var(--accent); }
             <div class="stat-card"><div class="v" id="r-cost">$0.0000</div><div class="l">Maliyet</div></div>
             <div class="stat-card"><div class="v" id="r-agents">0</div><div class="l">Çalışan Ajan</div></div>
             <div class="stat-card"><div class="v" id="r-round">–</div><div class="l">Aktif Tur</div></div>
+            <div class="stat-card" style="border-color:var(--ok)"><div class="v" id="r-saved" style="color:var(--ok)">$0.0000</div><div class="l">Cache Tasarrufu</div></div>
           </div>
         </div>
       </div>
@@ -586,7 +597,7 @@ textarea:focus { border-color: var(--accent); }
 
       <div style="margin-top:1.2rem;display:flex;gap:0.8rem;flex-wrap:wrap">
         <button class="btn-primary" id="dl-btn" onclick="downloadTxt()">📄 TXT İndir</button>
-        <button class="btn-primary" id="pdf-dl-btn" onclick="downloadPdf()" style="background:var(--card);border:1px solid var(--accent);color:var(--accent)">📑 PDF İndir</button>
+        <button class="btn-primary" id="docx-dl-btn" onclick="downloadDocx()" style="background:var(--card);border:1px solid var(--accent);color:var(--accent)">📑 DOCX İndir</button>
       </div>
 
       <div style="margin-top:1.5rem">
@@ -615,6 +626,7 @@ const S = {
   maxRounds: 3,
   sid: null,
   totalCost: 0,
+  cacheSaved: 0,
   kur: 44,
   agentLog: [],
   roundScores: [],
@@ -780,14 +792,17 @@ function handleEvent(msg) {
 
     case 'agent_done':
       updateLastAgent({status:'done', cost: msg.data.cost});
-      S.totalCost = msg.data.total_cost;
+      S.totalCost  = msg.data.total_cost;
+      S.cacheSaved = msg.data.cache_saved || 0;
       updateCostDisplay();
       renderAgentLog();
       // running adımında da güncelle
       const rc = document.getElementById('r-cost');
       const ra = document.getElementById('r-agents');
+      const rs = document.getElementById('r-saved');
       if(rc) rc.textContent = `$${S.totalCost.toFixed(4)}`;
       if(ra) ra.textContent = msg.data.agent_count;
+      if(rs) rs.textContent = `$${S.cacheSaved.toFixed(4)}`;
       break;
 
     case 'step_domains':
@@ -859,9 +874,10 @@ function renderAgentLog(containerId) {
     if(a.status === 'error')   { icon='✗'; cls='done'; }
     if(a.status === 'waiting') { icon='⏳'; cls='waiting'; }
     const costStr = a.cost > 0 ? `$${a.cost.toFixed(4)}` : '';
+    const thinkTag = a.thinking ? `<span title="Thinking modu aktif" style="color:var(--fg3);font-size:0.65rem;margin-left:3px">🧠</span>` : '';
     return `<div class="agent-row ${cls}">
       <span class="agent-status">${icon}</span>
-      <span class="agent-name">${a.name || a.key}</span>
+      <span class="agent-name">${a.name || a.key}${thinkTag}</span>
       <span class="agent-cost">${costStr}</span>
     </div>`;
   }).join('');
@@ -985,10 +1001,13 @@ function showDoneStep(data) {
   S.totalCost = data.total_cost;
 
   // Stats
+  const saved = S.cacheSaved || 0;
+  const savedPct = S.totalCost > 0 ? ((saved / (S.totalCost + saved)) * 100).toFixed(1) : '0.0';
   document.getElementById('done-stats').innerHTML = `
     <div class="stat-card"><div class="v">$${data.total_cost.toFixed(4)}</div><div class="l">Toplam Maliyet</div></div>
     <div class="stat-card"><div class="v">~${data.total_cost_tl.toFixed(2)} ₺</div><div class="l">TL Karşılığı</div></div>
     <div class="stat-card"><div class="v">${data.agent_count}</div><div class="l">Çalışan Ajan</div></div>
+    <div class="stat-card" style="border-color:var(--ok)"><div class="v" style="color:var(--ok)">$${saved.toFixed(4)} <span style="font-size:0.65rem;color:var(--ok)">−${savedPct}%</span></div><div class="l">Cache Tasarrufu</div></div>
     <div class="stat-card"><div class="v">${data.domains.length}</div><div class="l">Aktif Alan</div></div>
   `;
 
@@ -1010,6 +1029,7 @@ function showDoneStep(data) {
         <span style="color:var(--fg3)">$${(a.cost||0).toFixed(4)}</span>
       </div>
       <div style="color:var(--fg2);font-size:0.72rem;white-space:pre-wrap;max-height:120px;overflow-y:auto">${(a.output||'').slice(0,500)}</div>
+      ${a.thinking ? `<details style="margin-top:0.4rem"><summary style="cursor:pointer;font-size:0.65rem;color:var(--fg3)">🧠 Thinking süreci (${(a.thinking||'').split(' ').length} kelime)</summary><div style="color:var(--fg3);font-size:0.68rem;white-space:pre-wrap;max-height:100px;overflow-y:auto;margin-top:0.3rem">${(a.thinking||'').slice(0,800)}</div></details>` : ''}
     </div>
   `).join('');
 
@@ -1020,35 +1040,38 @@ function showDoneStep(data) {
 function updateCostDisplay() {
   document.getElementById('sb-cost').textContent = `$${S.totalCost.toFixed(4)}`;
   document.getElementById('sb-tl').textContent = `~${(S.totalCost * S.kur).toFixed(2)} ₺`;
+  const sbSaved = document.getElementById('sb-saved');
+  if(sbSaved) sbSaved.textContent = `$${(S.cacheSaved||0).toFixed(4)}`;
 }
 
 async function downloadTxt() {
   window.location.href = `/api/download/${S.sid}`;
 }
 
-async function downloadPdf() {
-  const btn = document.getElementById('pdf-dl-btn');
-  if(btn) { btn.disabled = true; btn.textContent = '⏳ PDF Oluşturuluyor...'; }
+async function downloadDocx() {
+  const btn = document.getElementById('docx-dl-btn');
+  if(btn) { btn.disabled = true; btn.textContent = '⏳ DOCX Oluşturuluyor...'; }
   try {
-    const r = await fetch(`/api/download_pdf/${S.sid}`);
-    if(!r.ok) { alert('PDF oluşturulamadı: ' + (await r.text())); return; }
+    const r = await fetch(`/api/download_docx/${S.sid}`);
+    if(!r.ok) { alert('DOCX oluşturulamadı: ' + (await r.text())); return; }
     const blob = await r.blob();
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
     a.href     = url;
-    a.download = `analiz_${new Date().toISOString().slice(0,10)}.pdf`;
+    a.download = `analiz_${new Date().toISOString().slice(0,10)}.docx`;
     a.click();
     URL.revokeObjectURL(url);
   } catch(e) {
-    alert('PDF indirme hatası: ' + e.message);
+    alert('DOCX indirme hatası: ' + e.message);
   } finally {
-    if(btn) { btn.disabled = false; btn.textContent = '📑 PDF İndir'; }
+    if(btn) { btn.disabled = false; btn.textContent = '📑 DOCX İndir'; }
   }
 }
 
 function resetApp() {
   S.sid = null;
   S.totalCost = 0;
+  S.cacheSaved = 0;
   S.agentLog = [];
   S.roundScores = [];
   S.domains = [];
