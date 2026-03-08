@@ -595,6 +595,7 @@ def init_state():
         "error":              "",
         "docx_bytes":         None,
         "running":            False,
+        "domain_model":       "sonnet",  # "sonnet" | "opus"
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -653,6 +654,18 @@ def ajan_calistir(ajan_key, mesaj, gecmis=None, log_container=None, cache_contex
     ajan = AGENTS.get(ajan_key) or DESTEK_AJANLARI.get(ajan_key)
     if not ajan:
         return f"ERROR: Agent '{ajan_key}' not found."
+
+    # Domain model override — sidebar toggle'a göre
+    # final_rapor ve sentez her zaman Opus kalır
+    ajan = dict(ajan)  # shallow copy — orijinali değiştirme
+    _is_domain = ajan_key in AGENTS  # domain ajan mı?
+    _protected = ajan_key in ("final_rapor", "sentez")  # Opus korumalı
+    if _is_domain and not _protected:
+        chosen = st.session_state.get("domain_model", "sonnet")
+        if chosen == "sonnet":
+            ajan["model"] = "claude-sonnet-4-6"
+        else:
+            ajan["model"] = "claude-opus-4-6"
 
     # FIX: CACHE_PREAMBLE + sistem_promptu — cache eşiğini geçmek için şart
     sistem_promptu_extended = (
@@ -1193,6 +1206,28 @@ with st.sidebar:
     if st.session_state.mode in (3, 4):
         st.markdown('<div class="section-label">Döngü Ayarı</div>', unsafe_allow_html=True)
         st.session_state.max_rounds = st.slider("Maksimum Tur", 1, 5, 3, key="max_rounds_slider")
+
+    # ── Domain Model Toggle ──────────────────────────────────
+    st.markdown('<div class="section-label">Domain Ajan Modeli</div>', unsafe_allow_html=True)
+    model_choice = st.radio(
+        label="domain_model_radio",
+        label_visibility="collapsed",
+        options=["sonnet", "opus"],
+        format_func=lambda x: "⚡ Sonnet  —  Hızlı & Ekonomik" if x == "sonnet" else "🎯 Opus  —  Derin & Güçlü",
+        index=0 if st.session_state.get("domain_model", "sonnet") == "sonnet" else 1,
+        key="domain_model_radio",
+        horizontal=False,
+    )
+    if model_choice != st.session_state.get("domain_model", "sonnet"):
+        st.session_state.domain_model = model_choice
+        st.rerun()
+
+    # Maliyet tahmini göster
+    _dm = st.session_state.get("domain_model", "sonnet")
+    if _dm == "sonnet":
+        st.markdown('<div style="font-size:0.7rem;color:#2DB87A;margin:-0.3rem 0 0.8rem 0.2rem">💡 final_rapor + sentez Opus&#39;ta kalır</div>', unsafe_allow_html=True)
+    else:
+        st.markdown('<div style="font-size:0.7rem;color:#E8A838;margin:-0.3rem 0 0.8rem 0.2rem">⚠️ Tüm domain ajanları Opus — maliyet yüksek</div>', unsafe_allow_html=True)
 
     st.markdown("---")
     st.markdown('<div class="section-label">Oturum Maliyeti</div>', unsafe_allow_html=True)
