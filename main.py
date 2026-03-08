@@ -9,6 +9,7 @@ import re
 import time
 import datetime
 import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import uuid
 import queue
@@ -32,7 +33,7 @@ try:
     from orchestrator import CACHE_PREAMBLE
 except ImportError:
     CACHE_PREAMBLE = ""
-from typing import Optional, List
+from typing import Optional, List, Tuple
 import uvicorn
 
 load_dotenv()
@@ -151,6 +152,7 @@ class Session:
         self.queue        = queue.Queue()
         self.domain_event = threading.Event()
         self.qa_event     = threading.Event()
+        self._cost_lock   = threading.Lock()  # thread-safe cost / log güncellemesi
 
         self.client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
@@ -266,18 +268,18 @@ class Session:
         full_cost   = ((inp + c_cre + c_rd) * r_in) + (out * r_out)
         saved       = max(0.0, full_cost - actual_cost)
 
-        self.total_cost         += actual_cost
-        self.total_input        += inp
-        self.total_output       += out
-        self.cache_write_tokens += c_cre
-        self.cache_read_tokens  += c_rd
-        self.cache_saved_usd    += saved
-
-        self.agent_log.append({
-            "key": ajan_key, "name": ajan["isim"],
-            "cost": actual_cost, "output": cevap[:3000],
-            "thinking": dusunce[:2000] if dusunce else "",
-        })
+        with self._cost_lock:
+            self.total_cost         += actual_cost
+            self.total_input        += inp
+            self.total_output       += out
+            self.cache_write_tokens += c_cre
+            self.cache_read_tokens  += c_rd
+            self.cache_saved_usd    += saved
+            self.agent_log.append({
+                "key": ajan_key, "name": ajan["isim"],
+                "cost": actual_cost, "output": cevap[:3000],
+                "thinking": dusunce[:2000] if dusunce else "",
+            })
 
         self.emit("agent_done", {
             "key": ajan_key, "name": ajan["isim"],
@@ -332,23 +334,62 @@ class Session:
         return "\n".join(lines)
 
     # ── Analysis Runners ──────────────────────────────────────
+    def _ajan_paralel(self, gorevler: List[Tuple], max_workers: int = 6) -> List[str]:
+        """
+        Session'a bağlı ajanları paralel çalıştırır.
+        gorevler: [(ajan_key, mesaj), ...] veya [(ajan_key, mesaj, gecmis, cache_context), ...]
+        Dönüş   : [cevap0, cevap1, ...] — aynı sırada
+        """
+        n = len(gorevler)
+        if n == 0:
+            return []
+        if n == 1:
+            g = gorevler[0]
+            return [self.ajan_calistir(g[0], g[1],
+                                       g[2] if len(g) > 2 else None,
+                                       g[3] if len(g) > 3 else None)]
+
+        sonuclar = [None] * n
+
+        def _calistir(idx_gorev):
+            idx, g = idx_gorev
+            return idx, self.ajan_calistir(
+                g[0], g[1],
+                g[2] if len(g) > 2 else None,
+                g[3] if len(g) > 3 else None,
+            )
+
+        with ThreadPoolExecutor(max_workers=min(n, max_workers)) as ex:
+            futures = {ex.submit(_calistir, (i, g)): i for i, g in enumerate(gorevler)}
+            for fut in as_completed(futures):
+                try:
+                    idx, cevap = fut.result()
+                    sonuclar[idx] = cevap
+                except Exception as e:
+                    sonuclar[futures[fut]] = f"ERROR: {e}"
+
+        return sonuclar
+
     def run_tekli(self):
         alan_isimleri = [n for _, n in self.domains]
-        parts = []
-        for key, name in self.domains:
-            c = self.ajan_calistir(f"{key}_a", self.enhanced_brief)
-            parts.append(f"{name.upper()} EXPERT:\n{c}")
+
+        # ── GRUP A: Domain ajanları paralel ─────────────────
+        gorev_a = [(f"{key}_a", self.enhanced_brief, None, None) for key, _ in self.domains]
+        sonuc_a = self._ajan_paralel(gorev_a, max_workers=6)
+        parts = [f"{name.upper()} EXPERT:\n{sonuc_a[i]}" for i, (_, name) in enumerate(self.domains)]
         tum = "\n\n".join(parts)
-        capraz   = self.ajan_calistir("capraz_dogrulama",
-            "Check all numerical values for physical and mathematical consistency.",
-            cache_context=tum)
+
+        # ── GRUP B: Capraz + Soru paralel ───────────────────
+        b = self._ajan_paralel([
+            ("capraz_dogrulama", "Check all numerical values for physical and mathematical consistency.", None, tum),
+            ("soru_uretici",     f"Problem: {self.enhanced_brief}\nList unanswered critical questions.", None, tum),
+        ], max_workers=2)
+        capraz, sorular = b
+
         gozlemci = self.ajan_calistir("gozlemci",
             f"Problem: {self.enhanced_brief}\nDomains: {', '.join(alan_isimleri)}\nCROSS-VAL: {capraz}\nEvaluate. KALİTE PUANI: XX/100.",
             cache_context=tum)
-        sorular  = self.ajan_calistir("soru_uretici",
-            f"Problem: {self.enhanced_brief}\nList unanswered critical questions.",
-            cache_context=tum)
-        final    = self.ajan_calistir("final_rapor",
+        final = self.ajan_calistir("final_rapor",
             f"""Single-agent analysis. Domains: {', '.join(alan_isimleri)}
 PROBLEM: {self.enhanced_brief}
 OBSERVER: {gozlemci}
@@ -359,19 +400,40 @@ Domain findings are in the context above. Report structure: 70% technical findin
 
     def run_cift(self):
         alan_isimleri = [n for _, n in self.domains]
+
+        # ── GRUP A: Domain A+B ajanları paralel ─────────────
+        gorev_a = []
+        for key, _ in self.domains:
+            gorev_a.append((f"{key}_a", self.enhanced_brief, None, None))
+            gorev_a.append((f"{key}_b", self.enhanced_brief, None, None))
+        sonuc_a = self._ajan_paralel(gorev_a, max_workers=6)
         parts = []
-        for key, name in self.domains:
-            ca = self.ajan_calistir(f"{key}_a", self.enhanced_brief)
-            cb = self.ajan_calistir(f"{key}_b", self.enhanced_brief)
-            parts.append(f"{name.upper()} EXPERT A:\n{ca}\n\n{name.upper()} EXPERT B:\n{cb}")
+        for i, (_, name) in enumerate(self.domains):
+            parts.append(f"{name.upper()} EXPERT A:\n{sonuc_a[i*2]}\n\n{name.upper()} EXPERT B:\n{sonuc_a[i*2+1]}")
         tum = "\n\n".join(parts)
-        capraz   = self.ajan_calistir("capraz_dogrulama",   f"OUTPUTS:\n{tum}\n\nCheck numerical consistency.")
-        varsayim = self.ajan_calistir("varsayim_belirsizlik", f"OUTPUTS:\n{tum}\n\nIdentify hidden assumptions.")
-        gozlemci = self.ajan_calistir("gozlemci", f"Problem: {self.enhanced_brief}\nDomains: {', '.join(alan_isimleri)}\n\nOUTPUTS:\n{tum}\n\nCROSS-VAL: {capraz}\nASSUMPTIONS: {varsayim}\n\nEvaluate. KALİTE PUANI: XX/100.")
-        celiski  = self.ajan_calistir("celisiki_cozum",     f"OBSERVER:\n{gozlemci}\n\nOUTPUTS:\n{tum}\n\nResolve A vs B conflicts.")
-        sorular  = self.ajan_calistir("soru_uretici",       f"Problem: {self.enhanced_brief}\nOutputs:\n{tum}\nList critical questions.")
-        alternatif = self.ajan_calistir("alternatif_senaryo", f"Problem: {self.enhanced_brief}\nOutputs:\n{tum}\nEvaluate 3 alternatives.")
-        final    = self.ajan_calistir("final_rapor", f"Dual-agent. Domains: {', '.join(alan_isimleri)}\nPROBLEM: {self.enhanced_brief}\nOUTPUTS: {tum}\nOBSERVER: {gozlemci}\nCONFLICTS: {celiski}\nQUESTIONS: {sorular}\nALTERNATIVES: {alternatif}\nProduce professional engineering report.")
+
+        # ── GRUP B: Validasyon paralel ───────────────────────
+        b = self._ajan_paralel([
+            ("capraz_dogrulama",     "Check numerical consistency.",      None, tum),
+            ("varsayim_belirsizlik", "Identify hidden assumptions.",       None, tum),
+        ], max_workers=2)
+        capraz, varsayim = b
+
+        gozlemci = self.ajan_calistir("gozlemci",
+            f"Problem: {self.enhanced_brief}\nDomains: {', '.join(alan_isimleri)}\nCROSS-VAL: {capraz}\nASSUMPTIONS: {varsayim}\nEvaluate. KALİTE PUANI: XX/100.",
+            cache_context=tum)
+
+        # ── GRUP C: Çelişki + Soru + Alternatif paralel ─────
+        c = self._ajan_paralel([
+            ("celisiki_cozum",    f"OBSERVER:\n{gozlemci}\n\nResolve A vs B conflicts.",                None, tum),
+            ("soru_uretici",      f"Problem: {self.enhanced_brief}\nList critical questions.",            None, tum),
+            ("alternatif_senaryo",f"Problem: {self.enhanced_brief}\nEvaluate 3 alternatives.",            None, tum),
+        ], max_workers=3)
+        celiski, sorular, alternatif = c
+
+        final = self.ajan_calistir("final_rapor",
+            f"Dual-agent. Domains: {', '.join(alan_isimleri)}\nPROBLEM: {self.enhanced_brief}\nOBSERVER: {gozlemci}\nCONFLICTS: {celiski}\nQUESTIONS: {sorular}\nALTERNATIVES: {alternatif}\nProduce professional engineering report.",
+            cache_context=tum)
         return final
 
     def run_full_loop(self):
@@ -388,9 +450,14 @@ Domain findings are in the context above. Report structure: 70% technical findin
             mesaj = self.enhanced_brief if tur == 1 else f"{self.enhanced_brief}\n\nOBSERVER NOTES:\n{gozlemci_notu}"
             son_tur = {}
 
+            # ── GRUP A: Domain ajanları paralel ─────────────
+            gorev_a = []
             for key, name in self.domains:
-                ca = self.ajan_calistir(f"{key}_a", mesaj, gecmis[f"{key}_a"])
-                cb = self.ajan_calistir(f"{key}_b", mesaj, gecmis[f"{key}_b"])
+                gorev_a.append((f"{key}_a", mesaj, gecmis[f"{key}_a"], None))
+                gorev_a.append((f"{key}_b", mesaj, gecmis[f"{key}_b"], None))
+            sonuc_a = self._ajan_paralel(gorev_a, max_workers=6)
+            for i, (key, name) in enumerate(self.domains):
+                ca, cb = sonuc_a[i*2], sonuc_a[i*2+1]
                 son_tur[f"{key}_a"] = ca
                 son_tur[f"{key}_b"] = cb
                 gecmis[f"{key}_a"] += [{"role":"user","content":mesaj},{"role":"assistant","content":ca}]
@@ -401,10 +468,14 @@ Domain findings are in the context above. Report structure: 70% technical findin
                 for k, n in self.domains
             )
 
-            capraz   = self.ajan_calistir("capraz_dogrulama",      f"ROUND {tur} OUTPUTS:\n{tum}\n\nCheck numerical consistency.")
-            varsayim = self.ajan_calistir("varsayim_belirsizlik",    f"ROUND {tur} OUTPUTS:\n{tum}\n\nIdentify hidden assumptions.")
-            belirsiz = self.ajan_calistir("varsayim_belirsizlik", f"ROUND {tur} OUTPUTS:\n{tum}\n\nList ambiguous points.")
-            literatur= self.ajan_calistir("literatur_patent",      f"ROUND {tur} OUTPUTS:\n{tum}\n\nCheck standards and IP risks.")
+            # ── GRUP B: Validasyon paralel ───────────────────
+            b = self._ajan_paralel([
+                ("capraz_dogrulama",    f"ROUND {tur}: Check all numerical values for physical and mathematical consistency.", None, tum),
+                ("varsayim_belirsizlik",f"ROUND {tur}: Identify hidden and unstated assumptions.",                             None, tum),
+                ("varsayim_belirsizlik",f"ROUND {tur}: List all missing, ambiguous, or conflicting points.",                   None, tum),
+                ("literatur_patent",    f"ROUND {tur}: Check cited standards and references. Flag IP risks.",                  None, tum),
+            ], max_workers=4)
+            capraz, varsayim, belirsiz, literatur = b
 
             gozlemci_cevabi = self.ajan_calistir("gozlemci", f"""Problem: {self.enhanced_brief}
 Domains: {', '.join(alan_isimleri)}
@@ -413,7 +484,8 @@ CROSS-VAL: {capraz}
 ASSUMPTIONS: {varsayim}
 UNCERTAINTY: {belirsiz}
 LITERATURE: {literatur}
-Evaluate. KALİTE PUANI: XX/100. Specify corrections for next round.""")
+Evaluate. KALİTE PUANI: XX/100. Specify corrections for next round.""",
+                cache_context=tum)
 
             puan = self.kalite_puani_oku(gozlemci_cevabi)
             gozlemci_notu = gozlemci_cevabi
@@ -421,27 +493,37 @@ Evaluate. KALİTE PUANI: XX/100. Specify corrections for next round.""")
             self.round_scores = tur_ozeti[:]
             self.emit("round_score", {"tur": tur, "puan": puan})
 
-            self.ajan_calistir("risk_guvenilirlik",
-                f"ROUND {tur}: FMEA on all proposed designs. Identify critical failure scenarios and RPN values.",
-                cache_context=tum)
-            self.ajan_calistir("celisiki_cozum",
-                f"OBSERVER REPORT:\n{gozlemci_cevabi}\nResolve all conflicts. Which agent position is better supported?",
-                cache_context=tum)
+            # ── GRUP C: Risk + Çelişki paralel ──────────────
+            self._ajan_paralel([
+                ("risk_guvenilirlik",
+                 f"ROUND {tur}: FMEA on all proposed designs. Identify critical failure scenarios and RPN values.",
+                 None, tum),
+                ("celisiki_cozum",
+                 f"OBSERVER REPORT:\n{gozlemci_cevabi}\nResolve all conflicts. Which agent position is better supported?",
+                 None, tum),
+            ], max_workers=2)
 
             if puan >= 85:
                 self.emit("early_stop", {"tur": tur, "puan": puan})
                 break
 
         # Post-loop
-        soru  = self.ajan_calistir("soru_uretici",          f"Problem: {self.enhanced_brief}\nOutputs:\n{tum}\nList critical unanswered questions.")
-        alt   = self.ajan_calistir("alternatif_senaryo",    f"Problem: {self.enhanced_brief}\nOutputs:\n{tum}\nEvaluate 3 alternatives.")
-        kalib = self.ajan_calistir("kalibrasyon",            f"Problem: {self.enhanced_brief}\nOutputs:\n{tum}\nBenchmark comparison.")
-        std   = self.ajan_calistir("dogrulama_standartlar", f"Problem: {self.enhanced_brief}\nOutputs:\n{tum}\nStandards compliance.")
-        enteg = self.ajan_calistir("entegrasyon_arayuz",    f"Problem: {self.enhanced_brief}\nOutputs:\n{tum}\nInterface risks.")
-        sim   = self.ajan_calistir("simulasyon_koordinator",f"Problem: {self.enhanced_brief}\nOutputs:\n{tum}\nSimulation strategy.")
-        mal   = self.ajan_calistir("maliyet_pazar",          f"Problem: {self.enhanced_brief}\nOutputs:\n{tum}\nCost and market analysis.")
-        veri  = self.ajan_calistir("capraz_dogrulama",          f"Problem: {self.enhanced_brief}\nOutputs:\n{tum}\nData quality analysis.")
-        baglam= self.ajan_calistir("sentez",      f"Problem: {self.enhanced_brief}\nOutputs:\n{tum}\nContext summary.")
+        # ── GRUP D: 8 destek ajanı paralel ─────────────────
+        d = self._ajan_paralel([
+            ("soru_uretici",          f"Problem: {self.enhanced_brief}\nList critical unanswered questions.",         None, tum),
+            ("alternatif_senaryo",    f"Problem: {self.enhanced_brief}\nEvaluate 3 alternatives.",                    None, tum),
+            ("kalibrasyon",           f"Problem: {self.enhanced_brief}\nBenchmark comparison. Flag anomalies.",       None, tum),
+            ("dogrulama_standartlar", f"Problem: {self.enhanced_brief}\nStandards compliance. Certification risks.",  None, tum),
+            ("entegrasyon_arayuz",    f"Problem: {self.enhanced_brief}\nInterface risks between subsystems.",          None, tum),
+            ("simulasyon_koordinator",f"Problem: {self.enhanced_brief}\nSimulation strategy. CFD/FEA requirements.",  None, tum),
+            ("maliyet_pazar",         f"Problem: {self.enhanced_brief}\nCost estimation and market analysis.",         None, tum),
+            ("capraz_dogrulama",      f"Problem: {self.enhanced_brief}\nData quality analysis. Flag gaps.",            None, tum),
+        ], max_workers=6)
+        soru, alt, kalib, std, enteg, sim, mal, veri = d
+
+        baglam = self.ajan_calistir("sentez",
+            f"Problem: {self.enhanced_brief}\nSummarize confirmed parameters and key decisions.",
+            cache_context=tum)
 
         sentez = self.ajan_calistir("sentez", f"""Problem: {self.enhanced_brief}
 Domains: {', '.join(alan_isimleri)}
@@ -461,9 +543,16 @@ QUESTIONS: {soru}  ALTERNATIVES: {alt}
 SYNTHESIS: {sentez}
 Produce comprehensive professional engineering report.""")
 
-        self.ajan_calistir("dokumantasyon_hafiza",  f"Problem: {self.enhanced_brief}\nReport: {final}\nDocumentation tree.")
-        self.ajan_calistir("dokumantasyon_hafiza", f"Problem: {self.enhanced_brief}\nReport: {final}\nLessons learned.")
-        self.ajan_calistir("ozet_ve_sunum",  f"Report: {final}\nExecutive summary for management.")
+        # ── GRUP E: Dokümantasyon + Özet paralel ───────────
+        self._ajan_paralel([
+            ("dokumantasyon_hafiza",
+             f"Problem: {self.enhanced_brief}\nReport: {final}\n"
+             f"Documentation tree, traceability requirements, lessons learned, and reusable insights.",
+             None, None),
+            ("ozet_ve_sunum",
+             f"Report: {final}\nExecutive summary for management.",
+             None, None),
+        ], max_workers=2)
 
         return final
 

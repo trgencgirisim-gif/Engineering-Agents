@@ -3,7 +3,9 @@ import os
 import re
 import time
 import datetime
-from typing import Optional
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Optional, List, Tuple, Any
 from dotenv import load_dotenv
 from config.agents_config import AGENTS, DESTEK_AJANLARI
 from rag.store import RAGStore
@@ -17,6 +19,7 @@ client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 # ── Global cost counters ──────────────────────────────────────
 MALIYET = {"input_token": 0, "output_token": 0, "usd": 0.0, "cache_create": 0, "cache_read": 0, "cache_saved_usd": 0.0}
 MALIYET_DETAY = {}  # per-agent: {key: {calls, input, output, usd}}
+_MALIYET_LOCK  = threading.Lock()  # thread-safe maliyet güncellemesi için
 
 # ── Domain registry ───────────────────────────────────────────
 DOMAINS = {
@@ -248,7 +251,7 @@ def _api_call(ajan, sistem_promptu_extended, mesajlar):
 
 
 def _maliyet_kaydet(ajan_key, ajan, yanit):
-    """Token kullanımını ve maliyeti kaydet. Cache tasarrufunu da izle."""
+    """Token kullanımını ve maliyeti kaydet. Cache tasarrufunu da izle. Thread-safe."""
     model = ajan["model"]
     usage = yanit.usage
 
@@ -277,19 +280,19 @@ def _maliyet_kaydet(ajan_key, ajan, yanit):
     full_cost   = ((inp + c_cre + c_rd) * r_in) + (out * r_out)
     saved       = max(0.0, full_cost - actual_cost)
 
-    MALIYET["input_token"]   += inp
-    MALIYET["output_token"]  += out
-    MALIYET["cache_create"]  += c_cre
-    MALIYET["cache_read"]    += c_rd
-    MALIYET["usd"]           += actual_cost
-    MALIYET["cache_saved_usd"] += saved
-
-    if ajan_key not in MALIYET_DETAY:
-        MALIYET_DETAY[ajan_key] = {"calls": 0, "input": 0, "output": 0, "usd": 0.0}
-    MALIYET_DETAY[ajan_key]["calls"]  += 1
-    MALIYET_DETAY[ajan_key]["input"]  += inp
-    MALIYET_DETAY[ajan_key]["output"] += out
-    MALIYET_DETAY[ajan_key]["usd"]    += actual_cost
+    with _MALIYET_LOCK:
+        MALIYET["input_token"]    += inp
+        MALIYET["output_token"]   += out
+        MALIYET["cache_create"]   += c_cre
+        MALIYET["cache_read"]     += c_rd
+        MALIYET["usd"]            += actual_cost
+        MALIYET["cache_saved_usd"] += saved
+        if ajan_key not in MALIYET_DETAY:
+            MALIYET_DETAY[ajan_key] = {"calls": 0, "input": 0, "output": 0, "usd": 0.0}
+        MALIYET_DETAY[ajan_key]["calls"]  += 1
+        MALIYET_DETAY[ajan_key]["input"]  += inp
+        MALIYET_DETAY[ajan_key]["output"] += out
+        MALIYET_DETAY[ajan_key]["usd"]    += actual_cost
 
     cache_info = ""
     if c_cre: cache_info += f" | cache_write={c_cre:,}"
@@ -597,6 +600,59 @@ Now produce the enhanced brief using this format:
     return brief
 
 
+# ═════════════════════════════════════════════════════════════
+# PARALEL AJAN ÇALIŞTIRICI
+# ═════════════════════════════════════════════════════════════
+def _ajan_paralel(gorevler: List[Tuple], max_workers: int = 6) -> List[str]:
+    """
+    Bağımsız ajanları ThreadPoolExecutor ile eş zamanlı çalıştırır.
+
+    gorevler: [(ajan_key, mesaj), ...]
+           veya [(ajan_key, mesaj, gecmis, cache_context), ...]
+    Dönüş   : [cevap0, cevap1, ...] — gorevler ile aynı sırada
+
+    Notlar:
+    - _MALIYET_LOCK sayesinde MALIYET dict thread-safe güncelleniyor.
+    - max_workers: eş zamanlı thread sayısı. Anthropic rate limit
+      hesaplanarak 6 olarak tutulur; Opus ağır ise 4 öneririz.
+    - Rate limit durumunda her thread kendi retry döngüsünü çalıştırır.
+    """
+    n = len(gorevler)
+    if n == 0:
+        return []
+    if n == 1:
+        # Tek görev — thread yükü yok, direkt çalıştır
+        g = gorevler[0]
+        key, mesaj = g[0], g[1]
+        gecmis      = g[2] if len(g) > 2 else None
+        cache_ctx   = g[3] if len(g) > 3 else None
+        return [ajan_calistir(key, mesaj, gecmis, cache_ctx)]
+
+    workers = min(n, max_workers)
+    sonuclar = [None] * n  # sıra korunur
+
+    def _calistir(idx_gorev):
+        idx, g = idx_gorev
+        key       = g[0]
+        mesaj     = g[1]
+        gecmis    = g[2] if len(g) > 2 else None
+        cache_ctx = g[3] if len(g) > 3 else None
+        return idx, ajan_calistir(key, mesaj, gecmis, cache_ctx)
+
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = {executor.submit(_calistir, (i, g)): i for i, g in enumerate(gorevler)}
+        for future in as_completed(futures):
+            try:
+                idx, cevap = future.result()
+                sonuclar[idx] = cevap
+            except Exception as e:
+                idx = futures[future]
+                print(f"⚠️  Paralel ajan hatası (idx={idx}): {e}")
+                sonuclar[idx] = f"ERROR: {e}"
+
+    return sonuclar
+
+
 # ── Paylaşılan: Tam döngü çekirdeği (Mod 3 ve Mod 4) ─────────
 def _feedback_loop_core(brief, guclendirilmis_brief, aktif_alanlar, max_tur, mod):
     """
@@ -632,15 +688,21 @@ def _feedback_loop_core(brief, guclendirilmis_brief, aktif_alanlar, max_tur, mod
 
         son_tur_cikti = {}
 
-        # Mühendislik ajanları — A ve B
+        # ── GRUP A: Domain ajanları PARALEL ────────────────────────
+        print(f"\n--- GRUP A: {len(aktif_alanlar)} domain × 2 ajan paralel çalışıyor ---")
+        gorev_a = []
         for key, name in aktif_alanlar:
-            print(f"\n--- {name.upper()} CLUSTER ---")
-            cevap_a = ajan_calistir(f"{key}_a", mesaj, gecmis[f"{key}_a"])
-            cevap_b = ajan_calistir(f"{key}_b", mesaj, gecmis[f"{key}_b"])
+            gorev_a.append((f"{key}_a", mesaj, gecmis[f"{key}_a"], None))
+            gorev_a.append((f"{key}_b", mesaj, gecmis[f"{key}_b"], None))
 
+        sonuc_a = _ajan_paralel(gorev_a, max_workers=6)
+
+        # Sonuçları gecmis'e yaz
+        for i, (key, name) in enumerate(aktif_alanlar):
+            cevap_a = sonuc_a[i * 2]
+            cevap_b = sonuc_a[i * 2 + 1]
             son_tur_cikti[f"{key}_a"] = cevap_a
             son_tur_cikti[f"{key}_b"] = cevap_b
-
             gecmis[f"{key}_a"].append({"role": "user",      "content": mesaj})
             gecmis[f"{key}_a"].append({"role": "assistant",  "content": cevap_a})
             gecmis[f"{key}_b"].append({"role": "user",      "content": mesaj})
@@ -652,34 +714,17 @@ def _feedback_loop_core(brief, guclendirilmis_brief, aktif_alanlar, max_tur, mod
             for key, name in aktif_alanlar
         )
 
-        # Validasyon katmanı
-        print(f"\n--- VALIDATION LAYER ---")
+        # ── GRUP B: Validasyon katmanı PARALEL ──────────────────────
+        print(f"\n--- GRUP B: Validasyon ajanları paralel çalışıyor ---")
+        val_sonuc = _ajan_paralel([
+            ("capraz_dogrulama",    f"ROUND {tur}: Check all numerical values for physical and mathematical consistency.",    None, tum_ciktilar),
+            ("varsayim_belirsizlik",f"ROUND {tur}: Identify hidden and unstated assumptions in all agent outputs.",            None, tum_ciktilar),
+            ("varsayim_belirsizlik",f"ROUND {tur}: List all missing, ambiguous, or conflicting points.",                       None, tum_ciktilar),
+            ("literatur_patent",    f"ROUND {tur}: Check cited standards and references. Flag unverifiable citations and IP risks.", None, tum_ciktilar),
+        ], max_workers=4)
+        capraz_cevap, varsayim_cevap, belirsizlik_cevap, literatur_cevap = val_sonuc
 
-        capraz_cevap = ajan_calistir(
-            "capraz_dogrulama",
-            f"ROUND {tur}: Check all numerical values for physical and mathematical consistency.",
-            cache_context=tum_ciktilar,
-        )
-
-        varsayim_cevap = ajan_calistir(
-            "varsayim_belirsizlik",
-            f"ROUND {tur}: Identify hidden and unstated assumptions in all agent outputs.",
-            cache_context=tum_ciktilar,
-        )
-
-        belirsizlik_cevap = ajan_calistir(
-            "varsayim_belirsizlik",
-            f"ROUND {tur}: List all missing, ambiguous, or conflicting points.",
-            cache_context=tum_ciktilar,
-        )
-
-        literatur_cevap = ajan_calistir(
-            "literatur_patent",
-            f"ROUND {tur}: Check cited standards and references. Flag unverifiable citations and IP risks.",
-            cache_context=tum_ciktilar,
-        )
-
-        # Observer
+        # Observer — B grubunu bekler
         print(f"\n--- OBSERVER ---")
         gozlemci_cevabi = ajan_calistir("gozlemci", f"""
 Problem: {guclendirilmis_brief}
@@ -700,20 +745,17 @@ Specify what each agent must correct in the next round.
         puan = kalite_puani_oku(gozlemci_cevabi)
         gozlemci_notu = gozlemci_cevabi
 
-        # Risk & Reliability
-        ajan_calistir(
-            "risk_guvenilirlik",
-            f"ROUND {tur}: Conduct FMEA on all proposed designs. Identify critical failure scenarios and RPN values.",
-            cache_context=tum_ciktilar,
-        )
-
-        # Conflict Resolution
-        ajan_calistir(
-            "celisiki_cozum",
-            f"ROUND {tur} OBSERVER REPORT:\n{gozlemci_cevabi}\n\n"
-            f"Resolve all conflicts identified by the Observer. Determine which agent position is better supported for each conflict.",
-            cache_context=tum_ciktilar,
-        )
+        # ── GRUP C: Risk + Celiski PARALEL ──────────────────────────
+        print(f"\n--- GRUP C: Risk + Çelişki çözümü paralel çalışıyor ---")
+        _ajan_paralel([
+            ("risk_guvenilirlik",
+             f"ROUND {tur}: Conduct FMEA on all proposed designs. Identify critical failure scenarios and RPN values.",
+             None, tum_ciktilar),
+            ("celisiki_cozum",
+             f"ROUND {tur} OBSERVER REPORT:\n{gozlemci_cevabi}\n\n"
+             f"Resolve all conflicts identified by the Observer. Determine which agent position is better supported.",
+             None, tum_ciktilar),
+        ], max_workers=2)
 
         tur_ozeti.append({"tur": tur, "puan": puan})
 
@@ -738,63 +780,21 @@ Specify what each agent must correct in the next round.
     print("POST-LOOP: Kalan destek ajanları çalışıyor...")
     print(f"{'='*60}")
 
-    print(f"\n--- QUESTION GENERATOR ---")
-    soru_cevap = ajan_calistir(
-        "soru_uretici",
-        f"Problem: {guclendirilmis_brief}\n\nList unanswered critical questions requiring further analysis or testing.",
-        cache_context=tum_ciktilar,
-    )
+    # ── GRUP D: 8 destek ajanı PARALEL ─────────────────────────
+    print(f"\n--- GRUP D: 8 destek ajanı paralel çalışıyor ---")
+    d_sonuc = _ajan_paralel([
+        ("soru_uretici",         f"Problem: {guclendirilmis_brief}\n\nList unanswered critical questions requiring further analysis or testing.",             None, tum_ciktilar),
+        ("alternatif_senaryo",   f"Problem: {guclendirilmis_brief}\n\nEvaluate at least 3 alternative design/solution approaches.",                           None, tum_ciktilar),
+        ("kalibrasyon",          f"Problem: {guclendirilmis_brief}\n\nCompare proposed parameters against known benchmarks. Flag anomalies.",                  None, tum_ciktilar),
+        ("dogrulama_standartlar",f"Problem: {guclendirilmis_brief}\n\nAssess compliance with relevant industry standards. Identify certification roadblocks.", None, tum_ciktilar),
+        ("entegrasyon_arayuz",   f"Problem: {guclendirilmis_brief}\n\nIdentify interface risks between subsystems and adjacent systems.",                       None, tum_ciktilar),
+        ("simulasyon_koordinator",f"Problem: {guclendirilmis_brief}\n\nRecommend simulation strategy. Which analyses require CFD, FEA, or high-fidelity sim?", None, tum_ciktilar),
+        ("maliyet_pazar",        f"Problem: {guclendirilmis_brief}\n\nProvide cost estimation, market context, and supply chain assessment.",                  None, tum_ciktilar),
+        ("capraz_dogrulama",     f"Problem: {guclendirilmis_brief}\n\nAnalyze numerical data quality, identify statistical patterns, and flag data gaps.",      None, tum_ciktilar),
+    ], max_workers=6)
+    soru_cevap, alt_cevap, kalibrasyon_cevap, standart_cevap,     entegrasyon_cevap, simulasyon_cevap, maliyet_cevap, veri_cevap = d_sonuc
 
-    print(f"\n--- ALTERNATIVE SCENARIOS ---")
-    alt_cevap = ajan_calistir(
-        "alternatif_senaryo",
-        f"Problem: {guclendirilmis_brief}\n\nEvaluate at least 3 alternative design/solution approaches.",
-        cache_context=tum_ciktilar,
-    )
-
-    print(f"\n--- CALIBRATION ---")
-    kalibrasyon_cevap = ajan_calistir(
-        "kalibrasyon",
-        f"Problem: {guclendirilmis_brief}\n\nCompare proposed parameters against known benchmarks. Flag anomalies and over-conservative estimates.",
-        cache_context=tum_ciktilar,
-    )
-
-    print(f"\n--- VERIFICATION & STANDARDS ---")
-    standart_cevap = ajan_calistir(
-        "dogrulama_standartlar",
-        f"Problem: {guclendirilmis_brief}\n\nAssess compliance with relevant industry standards. Identify certification roadblocks.",
-        cache_context=tum_ciktilar,
-    )
-
-    print(f"\n--- INTEGRATION & INTERFACE ---")
-    entegrasyon_cevap = ajan_calistir(
-        "entegrasyon_arayuz",
-        f"Problem: {guclendirilmis_brief}\n\nIdentify interface risks between subsystems and adjacent systems.",
-        cache_context=tum_ciktilar,
-    )
-
-    print(f"\n--- SIMULATION COORDINATOR ---")
-    simulasyon_cevap = ajan_calistir(
-        "simulasyon_koordinator",
-        f"Problem: {guclendirilmis_brief}\n\nRecommend simulation strategy. Identify which analyses require CFD, FEA, or other high-fidelity simulation.",
-        cache_context=tum_ciktilar,
-    )
-
-    print(f"\n--- COST & MARKET ANALYST ---")
-    maliyet_cevap = ajan_calistir(
-        "maliyet_pazar",
-        f"Problem: {guclendirilmis_brief}\n\nProvide cost estimation, market context, and supply chain assessment.",
-        cache_context=tum_ciktilar,
-    )
-
-    print(f"\n--- DATA ANALYST ---")
-    veri_cevap = ajan_calistir(
-        "capraz_dogrulama",
-        f"Problem: {guclendirilmis_brief}\n\nAnalyze numerical data quality, identify statistical patterns, and flag data gaps.",
-        cache_context=tum_ciktilar,
-    )
-
-    print(f"\n--- CONTEXT MANAGER ---")
+    print(f"\n--- CONTEXT SUMMARY (ön sentez) ---")
     baglam_cevap = ajan_calistir(
         "sentez",
         f"Problem: {guclendirilmis_brief}\n\nSummarize key context, confirmed parameters, and decisions for future reference.",
@@ -847,28 +847,19 @@ Produce a comprehensive, professional final engineering report.
 """)
 
     # Dokümantasyon ve öğrenme — final rapordan sonra
-    print(f"\n--- DOCUMENTATION ---")
-    ajan_calistir("dokumantasyon_hafiza", f"""
-Problem: {guclendirilmis_brief}
-Final report:
-{final}
-Identify required documentation tree and traceability requirements.
-""")
-
-    print(f"\n--- LEARNING & MEMORY ---")
-    ajan_calistir("dokumantasyon_hafiza", f"""
-Problem: {guclendirilmis_brief}
-Final report:
-{final}
-Capture key decisions, lessons learned, and reusable insights for future similar analyses.
-""")
-
-    print(f"\n--- SUMMARY & PRESENTATION ---")
-    ajan_calistir("ozet_ve_sunum", f"""
-Final engineering report:
-{final}
-Produce an executive summary for non-technical stakeholders (management, investors).
-""")
+    # ── GRUP E: Dokümantasyon + Özet PARALEL ────────────────────
+    print(f"\n--- GRUP E: Dokümantasyon + Özet paralel çalışıyor ---")
+    _ajan_paralel([
+        ("dokumantasyon_hafiza",
+         f"Problem: {guclendirilmis_brief}\nFinal report:\n{final}\n"
+         f"Identify required documentation tree and traceability requirements. "
+         f"Capture key decisions, lessons learned, and reusable insights.",
+         None, None),
+        ("ozet_ve_sunum",
+         f"Final engineering report:\n{final}\n"
+         f"Produce an executive summary for non-technical stakeholders (management, investors).",
+         None, None),
+    ], max_workers=2)
 
     kaydet(brief, mod, final, alan_isimleri, tur_ozeti)
     return final
@@ -890,44 +881,39 @@ def tekli_analiz(brief):
     alan_isimleri = [name for _, name in aktif_alanlar]
     print(f"\n✅ Aktif alanlar: {', '.join(alan_isimleri)}")
 
-    tum_ciktilar_parts = []
-    for key, name in aktif_alanlar:
-        print(f"\n--- {name.upper()} ---")
-        cevap = ajan_calistir(f"{key}_a", guclendirilmis_brief)
-        tum_ciktilar_parts.append(f"{name.upper()} EXPERT:\n{cevap}")
+    # ── GRUP A: Tüm domain ajanları paralel ────────────────────
+    print(f"\n--- GRUP A: {len(aktif_alanlar)} domain ajanı paralel çalışıyor ---")
+    gorev_a = [(f"{key}_a", guclendirilmis_brief, None, None) for key, _ in aktif_alanlar]
+    sonuc_a = _ajan_paralel(gorev_a, max_workers=6)
 
+    tum_ciktilar_parts = [
+        f"{name.upper()} EXPERT:\n{sonuc_a[i]}"
+        for i, (_, name) in enumerate(aktif_alanlar)
+    ]
     tum_ciktilar = "\n\n".join(tum_ciktilar_parts)
 
-    # Hafif destek katmanı
-    print(f"\n--- CROSS-VALIDATION ---")
-    capraz_cevap = ajan_calistir("capraz_dogrulama", f"""
-AGENT OUTPUTS:
-{tum_ciktilar}
-
-Check all numerical values for physical and mathematical consistency.
-""")
+    # ── GRUP B: Capraz + Soru paralel ───────────────────────────
+    print(f"\n--- GRUP B: Validasyon + Soru paralel çalışıyor ---")
+    b_sonuc = _ajan_paralel([
+        ("capraz_dogrulama",
+         "Check all numerical values for physical and mathematical consistency.",
+         None, tum_ciktilar),
+        ("soru_uretici",
+         f"Problem: {guclendirilmis_brief}\nList unanswered critical questions.",
+         None, tum_ciktilar),
+    ], max_workers=2)
+    capraz_cevap, soru_cevap = b_sonuc
 
     print(f"\n--- OBSERVER ---")
     gozlemci_cevabi = ajan_calistir("gozlemci", f"""
 Problem: {guclendirilmis_brief}
 Active domains: {', '.join(alan_isimleri)}
 
-AGENT OUTPUTS:
-{tum_ciktilar}
-
 CROSS-VALIDATION: {capraz_cevap}
 
 Evaluate outputs. Assign quality score (format: KALİTE PUANI: XX/100).
 Highlight key findings and flag critical issues.
-""")
-
-    print(f"\n--- QUESTION GENERATOR ---")
-    soru_cevap = ajan_calistir("soru_uretici", f"""
-Problem: {guclendirilmis_brief}
-Agent outputs:
-{tum_ciktilar}
-List unanswered critical questions that require further analysis.
-""")
+""", cache_context=tum_ciktilar)
 
     print(f"\n{'*'*60}")
     print("FINAL RAPOR OLUŞTURULUYOR...")
@@ -969,34 +955,35 @@ def cift_ajan_analiz(brief):
     alan_isimleri = [name for _, name in aktif_alanlar]
     print(f"\n✅ Aktif alanlar: {', '.join(alan_isimleri)}")
 
+    # ── GRUP A: Tüm domain A+B ajanları paralel ─────────────────
+    print(f"\n--- GRUP A: {len(aktif_alanlar)} domain × 2 ajan paralel çalışıyor ---")
+    gorev_a = []
+    for key, _ in aktif_alanlar:
+        gorev_a.append((f"{key}_a", guclendirilmis_brief, None, None))
+        gorev_a.append((f"{key}_b", guclendirilmis_brief, None, None))
+    sonuc_a = _ajan_paralel(gorev_a, max_workers=6)
+
     tum_ciktilar_parts = []
-    for key, name in aktif_alanlar:
-        print(f"\n--- {name.upper()} CLUSTER ---")
-        cevap_a = ajan_calistir(f"{key}_a", guclendirilmis_brief)
-        cevap_b = ajan_calistir(f"{key}_b", guclendirilmis_brief)
+    for i, (_, name) in enumerate(aktif_alanlar):
+        cevap_a = sonuc_a[i * 2]
+        cevap_b = sonuc_a[i * 2 + 1]
         tum_ciktilar_parts.append(
             f"{name.upper()} EXPERT A:\n{cevap_a}\n\n"
             f"{name.upper()} EXPERT B:\n{cevap_b}"
         )
-
     tum_ciktilar = "\n\n".join(tum_ciktilar_parts)
 
-    # Orta destek katmanı
-    print(f"\n--- VALIDATION LAYER ---")
-
-    capraz_cevap = ajan_calistir("capraz_dogrulama", f"""
-AGENT OUTPUTS:
-{tum_ciktilar}
-
-Check all numerical values for physical and mathematical consistency.
-""")
-
-    varsayim_cevap = ajan_calistir("varsayim_belirsizlik", f"""
-AGENT OUTPUTS:
-{tum_ciktilar}
-
-Identify hidden and unstated assumptions across all expert outputs.
-""")
+    # ── GRUP B: Validasyon katmanı paralel ───────────────────────
+    print(f"\n--- GRUP B: Validasyon ajanları paralel çalışıyor ---")
+    b_sonuc = _ajan_paralel([
+        ("capraz_dogrulama",
+         "Check all numerical values for physical and mathematical consistency.",
+         None, tum_ciktilar),
+        ("varsayim_belirsizlik",
+         "Identify hidden and unstated assumptions across all expert outputs.",
+         None, tum_ciktilar),
+    ], max_workers=2)
+    capraz_cevap, varsayim_cevap = b_sonuc
 
     print(f"\n--- OBSERVER ---")
     gozlemci_cevabi = ajan_calistir("gozlemci", f"""
