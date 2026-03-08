@@ -1,7 +1,7 @@
 """
-Engineering AI — Report Generator
-Beyaz zemin, siyah metin, profesyonel kurumsal stil.
-Sadece ReportLab — matplotlib bağımlılığı yok.
+Engineering AI — Report Generator (DOCX)
+python-docx tabanlı profesyonel rapor üretici.
+Matplotlib grafikleri gömülü olarak eklenir (opsiyonel).
 """
 
 import io
@@ -10,434 +10,404 @@ import datetime
 from typing import List, Dict, Optional
 from collections import defaultdict
 
-# ── ReportLab core ────────────────────────────────────────────
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.units import cm
-from reportlab.lib import colors
-from reportlab.lib.styles import ParagraphStyle
-from reportlab.lib.enums import TA_LEFT, TA_CENTER, TA_JUSTIFY
-from reportlab.platypus import (
-    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
-    PageBreak, Image,
-)
-from reportlab.platypus.flowables import Flowable
+from docx import Document
+from docx.shared import Pt, RGBColor, Inches, Cm
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml.ns import qn
+from docx.oxml import OxmlElement
 
-# ── ReportLab graphics (grafik çizimi için, matplotlib yerine) ─
-from reportlab.graphics.shapes import (
-    Drawing, Line, Rect, String, Circle, Polygon, Group,
-)
+try:
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import matplotlib.patches as mpatches
+    import matplotlib.ticker as mticker
+    MATPLOTLIB_OK = True
+except ImportError:
+    MATPLOTLIB_OK = False
+
 # ═══════════════════════════════════════════════════════════════
 # RENK PALETİ
 # ═══════════════════════════════════════════════════════════════
-C_WHITE        = colors.white
-C_TEXT         = colors.HexColor("#1A1A1A")
-C_TEXT2        = colors.HexColor("#444444")
-C_TEXT3        = colors.HexColor("#777777")
-C_ACCENT       = colors.HexColor("#C0441E")
-C_ACCENT_LIGHT = colors.HexColor("#FAF0EC")
-C_OK           = colors.HexColor("#1A7A4A")
-C_WARN         = colors.HexColor("#8A6000")
-C_ERR          = colors.HexColor("#C0441E")
-C_BORDER       = colors.HexColor("#CCCCCC")
-C_ROW_ALT      = colors.HexColor("#F7F7F7")
-C_COVER_BG     = colors.HexColor("#1C1C1C")
-
-# Grafiklerde kullanılacak hex string'ler (shapes için)
-G_ACCENT = "#C0441E"
-G_OK     = "#1A7A4A"
-G_WARN   = "#C47A00"
-G_TEXT   = "#1A1A1A"
-G_TEXT2  = "#555555"
-G_BORDER = "#CCCCCC"
-G_GRID   = "#EEEEEE"
-G_BG     = "#FFFFFF"
-G_ALT    = "#E09080"   # maliyet çubukları için ikincil renk
+ACCENT      = RGBColor(0xC0, 0x44, 0x1E)
+ACCENT_HX   = "C0441E"
+WHITE       = RGBColor(0xFF, 0xFF, 0xFF)
+TEXT        = RGBColor(0x1A, 0x1A, 0x1A)
+TEXT2       = RGBColor(0x44, 0x44, 0x44)
+TEXT3       = RGBColor(0x77, 0x77, 0x77)
+OK_RGB      = RGBColor(0x1A, 0x7A, 0x4A)
+WARN_RGB    = RGBColor(0x8A, 0x60, 0x00)
+ERR_RGB     = RGBColor(0xC0, 0x44, 0x1E)
+DARK_BG2    = "282828"
+BORDER_HX   = "CCCCCC"
+ROW_ALT     = "F7F7F7"
+INFO_BG     = "FAF0EC"
+INFO_BORDER = "E8C4B0"
 
 
 # ═══════════════════════════════════════════════════════════════
-# STILLER
+# XML / DOCX YARDIMCILARI
 # ═══════════════════════════════════════════════════════════════
-def build_styles():
-    S = {}
-    S["cover_eye"]   = ParagraphStyle("cover_eye",   fontName="Helvetica",      fontSize=8,
-        textColor=colors.HexColor("#AAAAAA"), leading=12, spaceAfter=6)
-    S["cover_title"] = ParagraphStyle("cover_title", fontName="Helvetica-Bold", fontSize=28,
-        textColor=colors.white, leading=34, spaceAfter=10)
-    S["cover_sub"]   = ParagraphStyle("cover_sub",   fontName="Helvetica",      fontSize=11,
-        textColor=colors.HexColor("#DDDDDD"), leading=17, spaceAfter=4)
 
-    S["h1"] = ParagraphStyle("h1", fontName="Helvetica-Bold", fontSize=13,
-        textColor=C_ACCENT, leading=17, spaceBefore=16, spaceAfter=4)
-    S["h2"] = ParagraphStyle("h2", fontName="Helvetica-Bold", fontSize=10.5,
-        textColor=C_TEXT, leading=14, spaceBefore=11, spaceAfter=3)
-
-    S["body"]      = ParagraphStyle("body",      fontName="Helvetica", fontSize=9.5,
-        textColor=C_TEXT,  leading=15, alignment=TA_JUSTIFY, spaceAfter=4)
-    S["body_left"] = ParagraphStyle("body_left", fontName="Helvetica", fontSize=9.5,
-        textColor=C_TEXT,  leading=15, alignment=TA_LEFT,    spaceAfter=4)
-    S["bullet"]    = ParagraphStyle("bullet",    fontName="Helvetica", fontSize=9.5,
-        textColor=C_TEXT,  leading=15, leftIndent=14,        spaceAfter=3)
-    S["mono"]      = ParagraphStyle("mono",      fontName="Courier",   fontSize=8.5,
-        textColor=C_TEXT2, leading=13,                       spaceAfter=3)
-    S["caption"]   = ParagraphStyle("caption",   fontName="Helvetica", fontSize=8,
-        textColor=C_TEXT3, leading=12, alignment=TA_CENTER,  spaceAfter=8, spaceBefore=3)
-
-    S["th"]      = ParagraphStyle("th",      fontName="Helvetica-Bold", fontSize=8.5,
-        textColor=colors.white, leading=12)
-    S["td"]      = ParagraphStyle("td",      fontName="Helvetica",      fontSize=8.5,
-        textColor=C_TEXT,  leading=12)
-    S["td_mono"] = ParagraphStyle("td_mono", fontName="Courier",        fontSize=8,
-        textColor=C_TEXT2, leading=11)
-    S["td_ok"]   = ParagraphStyle("td_ok",   fontName="Helvetica-Bold", fontSize=8.5,
-        textColor=C_OK,   leading=12)
-    S["td_warn"] = ParagraphStyle("td_warn", fontName="Helvetica-Bold", fontSize=8.5,
-        textColor=C_WARN, leading=12)
-    S["td_err"]  = ParagraphStyle("td_err",  fontName="Helvetica-Bold", fontSize=8.5,
-        textColor=C_ERR,  leading=12)
-    return S
+def _shade(cell, fill_hex: str):
+    tcPr = cell._tc.get_or_add_tcPr()
+    shd  = OxmlElement("w:shd")
+    shd.set(qn("w:val"),   "clear")
+    shd.set(qn("w:color"), "auto")
+    shd.set(qn("w:fill"),  fill_hex)
+    tcPr.append(shd)
 
 
-# ═══════════════════════════════════════════════════════════════
-# CUSTOM FLOWABLES
-# ═══════════════════════════════════════════════════════════════
-class AccentRule(Flowable):
-    def __init__(self, thickness=1.8, color=None):
-        Flowable.__init__(self)
-        self.thickness = thickness
-        self.color = color or C_ACCENT
-
-    def wrap(self, aW, aH):
-        self.width = aW
-        return aW, self.thickness + 8
-
-    def draw(self):
-        self.canv.setStrokeColor(self.color)
-        self.canv.setLineWidth(self.thickness)
-        self.canv.line(0, 4, self.width, 4)
+def _borders(cell, color: str = BORDER_HX, sz: str = "4"):
+    tcPr     = cell._tc.get_or_add_tcPr()
+    tcBorders = OxmlElement("w:tcBorders")
+    for side in ("top", "left", "bottom", "right"):
+        b = OxmlElement(f"w:{side}")
+        b.set(qn("w:val"),   "single")
+        b.set(qn("w:sz"),    sz)
+        b.set(qn("w:space"), "0")
+        b.set(qn("w:color"), color)
+        tcBorders.append(b)
+    tcPr.append(tcBorders)
 
 
-class ThinRule(Flowable):
-    def __init__(self, color=None):
-        Flowable.__init__(self)
-        self.color = color or C_BORDER
+def _no_border_table(table):
+    tbl   = table._tbl
+    tblPr = tbl.find(qn("w:tblPr"))
+    if tblPr is None:
+        tblPr = OxmlElement("w:tblPr")
+        tbl.insert(0, tblPr)
+    tblBorders = OxmlElement("w:tblBorders")
+    for side in ("top", "left", "bottom", "right", "insideH", "insideV"):
+        b = OxmlElement(f"w:{side}")
+        b.set(qn("w:val"), "none")
+        tblBorders.append(b)
+    old = tblPr.find(qn("w:tblBorders"))
+    if old is not None:
+        tblPr.remove(old)
+    tblPr.append(tblBorders)
 
-    def wrap(self, aW, aH):
-        self.width = aW
-        return aW, 8
 
-    def draw(self):
-        self.canv.setStrokeColor(self.color)
-        self.canv.setLineWidth(0.4)
-        self.canv.line(0, 4, self.width, 4)
+def _row_height(row, twips: int):
+    trPr = row._tr.get_or_add_trPr()
+    trH  = OxmlElement("w:trHeight")
+    trH.set(qn("w:val"),   str(twips))
+    trH.set(qn("w:hRule"), "exact")
+    trPr.append(trH)
 
 
-class InfoBox(Flowable):
-    def __init__(self, paragraphs, bg=None, left_color=None, padding=10):
-        Flowable.__init__(self)
-        self.paragraphs = paragraphs
-        self.bg         = bg         or C_ACCENT_LIGHT
-        self.left_color = left_color or C_ACCENT
-        self.padding    = padding
+def _run(para, text, bold=False, size=None, color=None, font="Arial"):
+    run = para.add_run(text)
+    run.bold = bold
+    run.font.name = font
+    if size:
+        run.font.size = Pt(size)
+    if color:
+        run.font.color.rgb = color
+    return run
 
-    def wrap(self, aW, aH):
-        self.width = aW
-        iw = aW - 2 * self.padding - 4
-        h  = self.padding
-        for p in self.paragraphs:
-            _, ph = p.wrap(iw, aH)
-            h += ph + 4
-        h += self.padding
-        self.height = h
-        return aW, h
 
-    def draw(self):
-        c = self.canv
-        c.setFillColor(self.bg)
-        c.setStrokeColor(colors.HexColor("#E8C4B0"))
-        c.setLineWidth(0.5)
-        c.roundRect(0, 0, self.width, self.height, 3, fill=1, stroke=1)
-        c.setFillColor(self.left_color)
-        c.rect(0, 0, 3.5, self.height, fill=1, stroke=0)
-        iw = self.width - 2 * self.padding - 4
-        y  = self.height - self.padding
-        for p in self.paragraphs:
-            _, ph = p.wrapOn(c, iw, self.height)
-            y -= ph
-            p.drawOn(c, self.padding + 6, y)
-            y -= 4
+def _set_margins(doc, top=1.8, right=1.9, bottom=1.8, left=1.9):
+    for section in doc.sections:
+        section.page_width    = Cm(21.0)
+        section.page_height   = Cm(29.7)
+        section.top_margin    = Cm(top)
+        section.right_margin  = Cm(right)
+        section.bottom_margin = Cm(bottom)
+        section.left_margin   = Cm(left)
 
 
 # ═══════════════════════════════════════════════════════════════
-# GRAFİK YARDIMCILARI  (saf ReportLab)
+# KAPAK SAYFASI
 # ═══════════════════════════════════════════════════════════════
 
-def _hex(c):
-    """colors.HexColor → hex string."""
-    if isinstance(c, str):
-        return c
-    return "#%02X%02X%02X" % (int(c.red*255), int(c.green*255), int(c.blue*255))
+def _cover_page(doc, brief_short: str, meta: list):
+    for _ in range(4):
+        p = doc.add_paragraph()
+        p.paragraph_format.space_after = Pt(0)
 
+    eye = doc.add_paragraph()
+    _run(eye, "ENGINEERING AI", size=7.5, color=RGBColor(0xAA, 0xAA, 0xAA))
+    eye.paragraph_format.space_after = Pt(4)
 
-def _rl_color(h):
-    return colors.HexColor(h)
+    title = doc.add_paragraph()
+    _run(title, "Multi-Agent\nAnalysis Report", bold=True, size=26, color=TEXT)
+    title.paragraph_format.space_after = Pt(10)
 
+    # Accent çizgisi
+    sep = doc.add_table(rows=1, cols=1)
+    _no_border_table(sep)
+    _shade(sep.rows[0].cells[0], ACCENT_HX)
+    sep.rows[0].cells[0].paragraphs[0].paragraph_format.space_before = Pt(0)
+    sep.rows[0].cells[0].paragraphs[0].paragraph_format.space_after  = Pt(0)
+    sep.columns[0].width = Inches(2.5)
+    _row_height(sep.rows[0], 40)
 
-def _grid_lines_h(d, x0, y0, w, h, n, color=G_GRID):
-    """Yatay grid çizgileri."""
-    for i in range(n + 1):
-        y = y0 + i * h / n
-        d.add(Line(x0, y, x0 + w, y,
-                   strokeColor=_rl_color(color), strokeWidth=0.4))
+    sp = doc.add_paragraph()
+    sp.paragraph_format.space_after = Pt(10)
 
+    lbl = doc.add_paragraph()
+    _run(lbl, "ANALYSIS SUBJECT", size=7.5, color=TEXT3)
+    lbl.paragraph_format.space_after = Pt(3)
 
-def _grid_lines_v(d, x0, y0, w, h, n, color=G_GRID):
-    for i in range(n + 1):
-        x = x0 + i * w / n
-        d.add(Line(x, y0, x, y0 + h,
-                   strokeColor=_rl_color(color), strokeWidth=0.4))
+    sub = doc.add_paragraph()
+    _run(sub, brief_short, size=10, color=TEXT2)
+    sub.paragraph_format.space_after = Pt(20)
 
+    # Metadata tablosu
+    mt = doc.add_table(rows=len(meta), cols=2)
+    _no_border_table(mt)
+    mt.columns[0].width = Cm(3.5)
+    mt.columns[1].width = Cm(12.5)
 
-def _axis_label(d, text, x, y, size=7, color=G_TEXT2, anchor="middle"):
-    d.add(String(x, y, text,
-                 fontSize=size, fillColor=_rl_color(color),
-                 textAnchor=anchor, fontName="Helvetica"))
+    for ri, (label, value) in enumerate(meta):
+        bg = "F2F2F2" if ri % 2 == 0 else "FAFAFA"
+        for ci, (cell, txt, bold) in enumerate([
+            (mt.rows[ri].cells[0], label, True),
+            (mt.rows[ri].cells[1], value, False),
+        ]):
+            _shade(cell, bg)
+            p = cell.paragraphs[0]
+            p.paragraph_format.space_before = Pt(5)
+            p.paragraph_format.space_after  = Pt(5)
+            p.paragraph_format.left_indent  = Cm(0.3)
+            _run(p, txt, bold=bold, size=8.5, color=TEXT if bold else TEXT2)
 
-
-def _title_label(d, text, x, y, size=9.5):
-    d.add(String(x, y, text,
-                 fontSize=size, fillColor=_rl_color(G_TEXT),
-                 textAnchor="middle", fontName="Helvetica-Bold"))
+    doc.add_page_break()
 
 
 # ═══════════════════════════════════════════════════════════════
-# GRAFİK 1 — Tur Kalite Puanı (çizgi grafik)
+# TEKRAR KULLANILABILIR BİLEŞENLER
 # ═══════════════════════════════════════════════════════════════
-def chart_round_scores(round_scores: List[Dict]) -> Optional[Drawing]:
+
+def _h1(doc, text):
+    p = doc.add_paragraph()
+    p.paragraph_format.space_before = Pt(16)
+    p.paragraph_format.space_after  = Pt(4)
+    _run(p, text, bold=True, size=13, color=ACCENT)
+
+
+def _h2(doc, text):
+    p = doc.add_paragraph()
+    p.paragraph_format.space_before = Pt(11)
+    p.paragraph_format.space_after  = Pt(3)
+    _run(p, text, bold=True, size=10.5, color=TEXT)
+
+
+def _body_para(doc, text):
+    p = doc.add_paragraph()
+    p.paragraph_format.space_after = Pt(4)
+    _run(p, text, size=9.5, color=TEXT)
+
+
+def _thin_rule(doc, color: str = BORDER_HX):
+    t = doc.add_table(rows=1, cols=1)
+    _no_border_table(t)
+    _shade(t.rows[0].cells[0], color)
+    t.rows[0].cells[0].paragraphs[0].paragraph_format.space_before = Pt(0)
+    t.rows[0].cells[0].paragraphs[0].paragraph_format.space_after  = Pt(0)
+    _row_height(t.rows[0], 8)
+
+
+def _accent_rule(doc):
+    _thin_rule(doc, ACCENT_HX)
+    sp = doc.add_paragraph()
+    sp.paragraph_format.space_after = Pt(4)
+
+
+def _info_box(doc, title, lines, bg: str = INFO_BG, title_color=ACCENT):
+    t = doc.add_table(rows=1, cols=1)
+    _no_border_table(t)
+    cell = t.rows[0].cells[0]
+    _shade(cell, bg)
+    _borders(cell, INFO_BORDER, "4")
+
+    tp = cell.paragraphs[0]
+    tp.paragraph_format.space_before = Pt(6)
+    tp.paragraph_format.space_after  = Pt(3)
+    tp.paragraph_format.left_indent  = Cm(0.3)
+    _run(tp, title, bold=True, size=9.5, color=title_color)
+
+    for line in (lines if isinstance(lines, list) else [lines]):
+        if not line:
+            continue
+        lp = cell.add_paragraph()
+        lp.paragraph_format.space_after = Pt(2)
+        lp.paragraph_format.left_indent = Cm(0.3)
+        _run(lp, line, size=9, color=TEXT2)
+
+    bot = cell.add_paragraph()
+    bot.paragraph_format.space_after = Pt(5)
+
+    sp = doc.add_paragraph()
+    sp.paragraph_format.space_after = Pt(4)
+
+
+def _make_table(doc, headers, rows, widths_cm, header_bg: str = ACCENT_HX):
+    tbl = doc.add_table(rows=1 + len(rows), cols=len(headers))
+    tbl.style = "Table Grid"
+
+    hr = tbl.rows[0]
+    for i, hdr in enumerate(headers):
+        cell = hr.cells[i]
+        _shade(cell, header_bg)
+        _borders(cell, BORDER_HX)
+        p = cell.paragraphs[0]
+        p.paragraph_format.space_before = Pt(3)
+        p.paragraph_format.space_after  = Pt(3)
+        p.paragraph_format.left_indent  = Cm(0.15)
+        _run(p, hdr, bold=True, size=8.5, color=WHITE)
+
+    for ri, row_data in enumerate(rows):
+        dr = tbl.rows[ri + 1]
+        bg = "FFFFFF" if ri % 2 == 0 else ROW_ALT
+        for ci, val in enumerate(row_data):
+            cell = dr.cells[ci]
+            _shade(cell, bg)
+            _borders(cell, BORDER_HX)
+            p = cell.paragraphs[0]
+            p.paragraph_format.space_before = Pt(3)
+            p.paragraph_format.space_after  = Pt(3)
+            p.paragraph_format.left_indent  = Cm(0.15)
+            if isinstance(val, tuple):
+                text, color = val[0], val[1]
+                bold = val[2] if len(val) > 2 else False
+                _run(p, str(text), bold=bool(bold), size=8.5, color=color)
+            else:
+                _run(p, str(val), size=8.5, color=TEXT)
+
+    for row in tbl.rows:
+        for ci, cell in enumerate(row.cells):
+            if ci < len(widths_cm):
+                cell.width = Cm(widths_cm[ci])
+
+    sp = doc.add_paragraph()
+    sp.paragraph_format.space_after = Pt(4)
+    return tbl
+
+
+# ═══════════════════════════════════════════════════════════════
+# GRAFİKLER
+# ═══════════════════════════════════════════════════════════════
+
+def _fig_bytes(fig) -> bytes:
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=150, bbox_inches="tight",
+                facecolor="white", edgecolor="none")
+    plt.close(fig)
+    buf.seek(0)
+    return buf.read()
+
+
+def _embed_chart(doc, img_bytes: bytes, caption: str = ""):
+    if not img_bytes:
+        return
+    doc.add_picture(io.BytesIO(img_bytes), width=Inches(5.8))
+    if caption:
+        cap = doc.add_paragraph(caption)
+        cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        for run in cap.runs:
+            run.font.size = Pt(8)
+            run.font.color.rgb = TEXT3
+    sp = doc.add_paragraph()
+    sp.paragraph_format.space_after = Pt(8)
+
+
+def chart_quality_scores(round_scores: List[Dict]) -> Optional[bytes]:
+    if not MATPLOTLIB_OK:
+        return None
     puanlar = [r["puan"] for r in round_scores if r.get("puan") is not None]
     if not puanlar:
         return None
 
-    W, H   = 420, 180
-    PAD_L  = 46
-    PAD_R  = 20
-    PAD_T  = 32
-    PAD_B  = 32
-    pw     = W - PAD_L - PAD_R
-    ph     = H - PAD_T - PAD_B
-    x0, y0 = PAD_L, PAD_B
-    max_v  = 100
-    n      = len(puanlar)
+    n  = len(puanlar)
+    xs = list(range(1, n + 1))
 
-    d = Drawing(W, H)
-    d.add(Rect(0, 0, W, H, fillColor=_rl_color(G_BG), strokeColor=None))
+    fig, ax = plt.subplots(figsize=(6.5, 2.8))
+    ax.set_facecolor("white")
+    fig.patch.set_facecolor("white")
 
-    # Grid
-    for i in range(6):
-        yg = y0 + i * ph / 5
-        vg = i * 20
-        d.add(Line(x0, yg, x0 + pw, yg,
-                   strokeColor=_rl_color(G_GRID), strokeWidth=0.5))
-        _axis_label(d, str(vg), x0 - 6, yg - 3.5, anchor="end")
+    ax.fill_between(xs, puanlar, alpha=0.12, color="#C0441E")
+    ax.plot(xs, puanlar, color="#C0441E", linewidth=2.5, zorder=3)
+    ax.scatter(xs, puanlar, color="white", edgecolors="#C0441E", s=65, linewidths=2, zorder=4)
 
-    # Eşik çizgileri
-    y85 = y0 + (85 / max_v) * ph
-    y70 = y0 + (70 / max_v) * ph
-    d.add(Line(x0, y85, x0 + pw, y85,
-               strokeColor=_rl_color(G_OK), strokeWidth=1,
-               strokeDashArray=[4, 3]))
-    d.add(Line(x0, y70, x0 + pw, y70,
-               strokeColor=_rl_color(G_WARN), strokeWidth=0.8,
-               strokeDashArray=[2, 3]))
-    _axis_label(d, "85", x0 + pw + 4, y85 - 3, size=6.5, color=G_OK, anchor="start")
-    _axis_label(d, "70", x0 + pw + 4, y70 - 3, size=6.5, color=G_WARN, anchor="start")
+    ax.axhline(85, color="#1A7A4A", linestyle="--", linewidth=1, alpha=0.7, label="Target 85")
+    ax.axhline(70, color="#8A6000", linestyle=":",  linewidth=1, alpha=0.7, label="Min 70")
 
-    # X koordinatları
-    if n == 1:
-        xs = [x0 + pw / 2]
-    else:
-        xs = [x0 + i * pw / (n - 1) for i in range(n)]
-    ys = [y0 + (v / max_v) * ph for v in puanlar]
+    for x, v in zip(xs, puanlar):
+        c = "#1A7A4A" if v >= 85 else "#8A6000" if v >= 70 else "#C0441E"
+        ax.annotate(str(v), (x, v), textcoords="offset points",
+                    xytext=(0, 9), ha="center", fontsize=9, color=c, fontweight="bold")
 
-    # Alan dolgu (basit dikdörtgenler)
-    for i in range(n - 1):
-        x1, y1 = xs[i],   ys[i]
-        x2, y2 = xs[i+1], ys[i+1]
-        poly = Polygon([x1, y0, x1, y1, x2, y2, x2, y0],
-                       fillColor=_rl_color("#F5C4B4"),
-                       strokeColor=None)
-        d.add(poly)
-
-    # Çizgi segmentleri
-    for i in range(n - 1):
-        d.add(Line(xs[i], ys[i], xs[i+1], ys[i+1],
-                   strokeColor=_rl_color(G_ACCENT), strokeWidth=2.5))
-
-    # Noktalar + etiketler
-    for i, (x, y, v) in enumerate(zip(xs, ys, puanlar)):
-        d.add(Circle(x, y, 5,
-                     fillColor=_rl_color(G_BG),
-                     strokeColor=_rl_color(G_ACCENT), strokeWidth=2))
-        lc = G_OK if v >= 85 else G_WARN if v >= 70 else G_ACCENT
-        _axis_label(d, str(v), x, y + 9, size=8.5, color=lc, anchor="middle")
-        _axis_label(d, f"R{i+1}", x, y0 - 16, size=8, color=G_TEXT2, anchor="middle")
-
-    # Eksen çizgisi
-    d.add(Line(x0, y0, x0, y0 + ph,
-               strokeColor=_rl_color(G_BORDER), strokeWidth=0.8))
-    d.add(Line(x0, y0, x0 + pw, y0,
-               strokeColor=_rl_color(G_BORDER), strokeWidth=0.8))
-
-    # Başlık
-    _title_label(d, "Quality Score per Round", W / 2, H - 14)
-
-    # Legend
-    lx = x0 + 10
-    d.add(Line(lx, 12, lx + 16, 12,
-               strokeColor=_rl_color(G_OK), strokeWidth=1,
-               strokeDashArray=[4, 3]))
-    _axis_label(d, "Target 85", lx + 20, 9, size=7, color=G_TEXT2, anchor="start")
-    d.add(Line(lx + 80, 12, lx + 96, 12,
-               strokeColor=_rl_color(G_WARN), strokeWidth=0.8,
-               strokeDashArray=[2, 3]))
-    _axis_label(d, "Threshold 70", lx + 100, 9, size=7, color=G_TEXT2, anchor="start")
-
-    return d
+    ax.set_xticks(xs)
+    ax.set_xticklabels([f"R{i}" for i in xs], fontsize=8.5)
+    ax.set_yticks([0, 20, 40, 60, 80, 100])
+    ax.set_ylim(0, 115)
+    ax.tick_params(labelsize=8)
+    ax.grid(axis="y", linewidth=0.4, color="#EEEEEE")
+    ax.spines[["top", "right"]].set_visible(False)
+    ax.legend(fontsize=7.5, loc="lower right", framealpha=0.7)
+    ax.set_title("Quality Score per Round", fontsize=10,
+                 fontweight="bold", color="#1A1A1A", pad=8)
+    fig.tight_layout()
+    return _fig_bytes(fig)
 
 
-# ═══════════════════════════════════════════════════════════════
-# GRAFİK 2 — Ajan Maliyet Dağılımı (yatay çubuk)
-# ═══════════════════════════════════════════════════════════════
-def chart_agent_cost(agent_log: List[Dict], top_n: int = 14) -> Optional[Drawing]:
+def chart_agent_cost(agent_log: List[Dict], top_n: int = 12) -> Optional[bytes]:
+    if not MATPLOTLIB_OK:
+        return None
     agg = defaultdict(float)
     for a in agent_log:
         cost = a.get("cost", 0)
         if cost > 0:
-            agg[a.get("name", a.get("key", "?"))[:32]] += cost
+            agg[a.get("name", a.get("key", "?"))[:30]] += cost
     if not agg:
         return None
 
     items  = sorted(agg.items(), key=lambda x: x[1], reverse=True)[:top_n]
     names  = [x[0] for x in items]
     costs  = [x[1] for x in items]
-    max_c  = max(costs) if costs else 1
-    n      = len(names)
+    max_c  = max(costs)
+    colors = ["#C0441E" if c == max_c else "#E09080" for c in costs]
 
-    BAR_H  = 14
-    GAP    = 5
-    PAD_L  = 160
-    PAD_R  = 60
-    PAD_T  = 30
-    PAD_B  = 22
-    pw     = 320
-    H      = PAD_T + PAD_B + n * (BAR_H + GAP)
-    W      = PAD_L + pw + PAD_R
+    fig, ax = plt.subplots(figsize=(6.5, max(2.5, len(names) * 0.38 + 0.9)))
+    ax.set_facecolor("white")
+    fig.patch.set_facecolor("white")
 
-    d = Drawing(W, H)
-    d.add(Rect(0, 0, W, H, fillColor=_rl_color(G_BG), strokeColor=None))
+    ax.barh(range(len(names)), costs, color=colors, edgecolor="none", height=0.65)
+    for i, cost in enumerate(costs):
+        ax.text(cost + max_c * 0.01, i, f"${cost:.5f}",
+                va="center", fontsize=7, color="#444444")
 
-    # Dikey grid
-    for i in range(5):
-        xg = PAD_L + i * pw / 4
-        d.add(Line(xg, PAD_B, xg, PAD_B + n * (BAR_H + GAP),
-                   strokeColor=_rl_color(G_GRID), strokeWidth=0.5))
-
-    for i, (name, cost) in enumerate(zip(names, costs)):
-        y = PAD_B + (n - 1 - i) * (BAR_H + GAP)
-        bar_w = (cost / max_c) * pw
-        clr = G_ACCENT if cost == max_c else G_ALT
-
-        # Çubuk
-        d.add(Rect(PAD_L, y, bar_w, BAR_H,
-                   fillColor=_rl_color(clr), strokeColor=None))
-
-        # İsim etiketi (solda)
-        d.add(String(PAD_L - 6, y + BAR_H / 2 - 3.5, name,
-                     fontSize=7.5, fillColor=_rl_color(G_TEXT),
-                     textAnchor="end", fontName="Helvetica"))
-
-        # Değer etiketi (sağda)
-        d.add(String(PAD_L + bar_w + 5, y + BAR_H / 2 - 3.5,
-                     f"${cost:.4f}",
-                     fontSize=7, fillColor=_rl_color(G_TEXT2),
-                     textAnchor="start", fontName="Courier"))
-
-    # Eksen çizgisi
-    d.add(Line(PAD_L, PAD_B, PAD_L, PAD_B + n * (BAR_H + GAP),
-               strokeColor=_rl_color(G_BORDER), strokeWidth=0.8))
-
-    # X ekseni değerleri
-    for i in range(5):
-        xg = PAD_L + i * pw / 4
-        val = max_c * i / 4
-        _axis_label(d, f"${val:.3f}", xg, PAD_B - 13, size=6.5, anchor="middle")
-
-    _title_label(d, f"Agent Cost Distribution (Top {n})", W / 2, H - 14)
-    return d
+    ax.set_yticks(range(len(names)))
+    ax.set_yticklabels(names, fontsize=7.5)
+    ax.invert_yaxis()
+    ax.xaxis.set_major_formatter(mticker.FormatStrFormatter("$%.4f"))
+    ax.tick_params(labelsize=7.5)
+    ax.grid(axis="x", linewidth=0.4, color="#EEEEEE")
+    ax.spines[["top", "right"]].set_visible(False)
+    ax.set_title(f"Agent Cost Distribution (Top {len(names)})", fontsize=10,
+                 fontweight="bold", color="#1A1A1A", pad=8)
+    fig.tight_layout()
+    return _fig_bytes(fig)
 
 
-# ═══════════════════════════════════════════════════════════════
-# GRAFİK 3 — Domain Dağılımı (yatay bar listesi)
-# ═══════════════════════════════════════════════════════════════
-def chart_domain_distribution(domains: List[str]) -> Optional[Drawing]:
-    if len(domains) < 2:
+def chart_rpn(report_text: str) -> Optional[bytes]:
+    if not MATPLOTLIB_OK:
         return None
 
-    PALETTE = ["#C0441E","#1A7A4A","#C47A00","#2255AA","#7744AA",
-               "#0099AA","#AA3366","#336699","#669933","#993333",
-               "#336633","#663399"]
-
-    n      = len(domains)
-    BAR_H  = 16
-    GAP    = 5
-    PAD_L  = 10
-    PAD_R  = 20
-    PAD_T  = 30
-    PAD_B  = 16
-    BAR_W  = 220
-    W      = PAD_L + BAR_W + PAD_R + 160
-    H      = PAD_T + PAD_B + n * (BAR_H + GAP)
-
-    d = Drawing(W, H)
-    d.add(Rect(0, 0, W, H, fillColor=_rl_color(G_BG), strokeColor=None))
-
-    for i, domain in enumerate(domains):
-        y    = PAD_B + (n - 1 - i) * (BAR_H + GAP)
-        clr  = PALETTE[i % len(PALETTE)]
-        seg  = BAR_W / n   # eşit segment
-
-        # Renkli blok (ince, tam genişlik)
-        d.add(Rect(PAD_L, y + BAR_H * 0.2, BAR_W, BAR_H * 0.6,
-                   fillColor=_rl_color("#EEEEEE"), strokeColor=None))
-        d.add(Rect(PAD_L, y + BAR_H * 0.2, BAR_W * (i + 1) / n, BAR_H * 0.6,
-                   fillColor=_rl_color(clr), strokeColor=None))
-
-        # Renkli square + isim
-        sx = PAD_L + BAR_W + 12
-        d.add(Rect(sx, y + 3, 9, 9,
-                   fillColor=_rl_color(clr), strokeColor=None))
-        d.add(String(sx + 13, y + 4, domain,
-                     fontSize=7.5, fillColor=_rl_color(G_TEXT),
-                     textAnchor="start", fontName="Helvetica"))
-
-    _title_label(d, "Active Engineering Domains", W / 2, H - 14)
-    return d
-
-
-# ═══════════════════════════════════════════════════════════════
-# GRAFİK 4 — FMEA RPN Matrisi (yatay çubuk)
-# ═══════════════════════════════════════════════════════════════
-def chart_rpn_matrix(report_text: str) -> Optional[Drawing]:
     rpn_vals = []
     for label, rpn_str in re.findall(
-        r'([A-Za-z][^\n]{3,50}?)\s*(?:RPN|rpn)\s*[=:]\s*(\d{2,3})', report_text
+        r'([A-Za-z][^\n]{3,40}?)\s*(?:RPN|rpn)\s*[=:]\s*(\d{2,3})', report_text
     )[:10]:
-        rpn_vals.append((label.strip()[:34], int(rpn_str)))
+        rpn_vals.append((label.strip()[:32], int(rpn_str)))
 
     if not rpn_vals:
-        for m in re.findall(r'(\d{1,2})\s*[×xX\*]\s*(\d{1,2})\s*[×xX\*]\s*(\d{1,2})',
-                            report_text)[:8]:
-            s, o, d_ = int(m[0]), int(m[1]), int(m[2])
-            rpn_vals.append((f"S{s}×O{o}×D{d_}", s * o * d_))
+        for m in re.findall(
+            r'(\d{1,2})\s*[×xX*]\s*(\d{1,2})\s*[×xX*]\s*(\d{1,2})', report_text
+        )[:8]:
+            s, o, d = int(m[0]), int(m[1]), int(m[2])
+            rpn_vals.append((f"S{s}×O{o}×D{d}", s * o * d))
 
     if not rpn_vals:
         return None
@@ -445,143 +415,47 @@ def chart_rpn_matrix(report_text: str) -> Optional[Drawing]:
     labels = [v[0] for v in rpn_vals]
     rpns   = [v[1] for v in rpn_vals]
     max_r  = max(rpns)
-    n      = len(rpn_vals)
+    colors = ["#C0441E" if r >= 200 else "#C47A00" if r >= 100 else "#1A7A4A" for r in rpns]
 
-    BAR_H  = 14
-    GAP    = 5
-    PAD_L  = 175
-    PAD_R  = 55
-    PAD_T  = 30
-    PAD_B  = 28
-    pw     = 290
-    H      = PAD_T + PAD_B + n * (BAR_H + GAP) + 22
-    W      = PAD_L + pw + PAD_R
+    fig, ax = plt.subplots(figsize=(6.5, max(2.5, len(labels) * 0.38 + 1.3)))
+    ax.set_facecolor("white")
+    fig.patch.set_facecolor("white")
 
-    d = Drawing(W, H)
-    d.add(Rect(0, 0, W, H, fillColor=_rl_color(G_BG), strokeColor=None))
+    ax.barh(range(len(labels)), rpns, color=colors, edgecolor="none", height=0.65)
+    if max_r >= 200:
+        ax.axvline(200, color="#C0441E", linestyle="--", linewidth=1, alpha=0.6)
+    if max_r >= 100:
+        ax.axvline(100, color="#C47A00", linestyle=":",  linewidth=1, alpha=0.6)
 
-    # Grid
-    for i in range(5):
-        xg = PAD_L + i * pw / 4
-        d.add(Line(xg, PAD_B + 22, xg, PAD_B + 22 + n * (BAR_H + GAP),
-                   strokeColor=_rl_color(G_GRID), strokeWidth=0.5))
+    for i, rpn in enumerate(rpns):
+        ax.text(rpn + max_r * 0.01, i, str(rpn), va="center", fontsize=8, color="#444444")
 
-    # Eşik çizgileri
-    x200 = PAD_L + (200 / max_r) * pw if max_r > 0 else PAD_L + pw * 0.8
-    x100 = PAD_L + (100 / max_r) * pw if max_r > 0 else PAD_L + pw * 0.4
-    top_y = PAD_B + 22 + n * (BAR_H + GAP)
-    if x200 <= PAD_L + pw:
-        d.add(Line(x200, PAD_B + 22, x200, top_y,
-                   strokeColor=_rl_color(G_ACCENT), strokeWidth=1,
-                   strokeDashArray=[4, 3]))
-    if x100 <= PAD_L + pw:
-        d.add(Line(x100, PAD_B + 22, x100, top_y,
-                   strokeColor=_rl_color(G_WARN), strokeWidth=0.8,
-                   strokeDashArray=[2, 3]))
+    ax.set_yticks(range(len(labels)))
+    ax.set_yticklabels(labels, fontsize=7.5)
+    ax.invert_yaxis()
+    ax.tick_params(labelsize=7.5)
+    ax.grid(axis="x", linewidth=0.4, color="#EEEEEE")
+    ax.spines[["top", "right"]].set_visible(False)
 
-    for i, (label, rpn) in enumerate(zip(labels, rpns)):
-        y = PAD_B + 22 + (n - 1 - i) * (BAR_H + GAP)
-        bar_w = (rpn / max_r) * pw if max_r > 0 else 10
-        clr = G_ACCENT if rpn >= 200 else G_WARN if rpn >= 100 else G_OK
-
-        d.add(Rect(PAD_L, y, bar_w, BAR_H,
-                   fillColor=_rl_color(clr), strokeColor=None))
-
-        d.add(String(PAD_L - 6, y + BAR_H / 2 - 3.5, label,
-                     fontSize=7, fillColor=_rl_color(G_TEXT),
-                     textAnchor="end", fontName="Helvetica"))
-
-        d.add(String(PAD_L + bar_w + 5, y + BAR_H / 2 - 3.5, str(rpn),
-                     fontSize=7.5, fillColor=_rl_color(G_TEXT2),
-                     textAnchor="start", fontName="Courier"))
-
-    # Eksen
-    d.add(Line(PAD_L, PAD_B + 22, PAD_L, top_y,
-               strokeColor=_rl_color(G_BORDER), strokeWidth=0.8))
-
-    # X etiket
-    for i in range(5):
-        xg = PAD_L + i * pw / 4
-        val = int(max_r * i / 4)
-        _axis_label(d, str(val), xg, PAD_B + 10, size=6.5, anchor="middle")
-
-    # Legend (alt)
     legend_items = [
-        (G_ACCENT, "CRITICAL ≥200"),
-        (G_WARN,   "HIGH 100–199"),
-        (G_OK,     "MEDIUM <100"),
+        mpatches.Patch(color="#C0441E", label="Critical ≥200"),
+        mpatches.Patch(color="#C47A00", label="High 100–199"),
+        mpatches.Patch(color="#1A7A4A", label="Medium <100"),
     ]
-    lx = PAD_L
-    for clr, lbl in legend_items:
-        d.add(Rect(lx, 4, 9, 9, fillColor=_rl_color(clr), strokeColor=None))
-        d.add(String(lx + 13, 5, lbl,
-                     fontSize=7, fillColor=_rl_color(G_TEXT2),
-                     textAnchor="start", fontName="Helvetica"))
-        lx += 100
-
-    _title_label(d, "FMEA Risk Priority Numbers (RPN)", W / 2, H - 14)
-    return d
-
-
-# ═══════════════════════════════════════════════════════════════
-# GRAFİK → FLOWABLE SARICI
-# Drawing nesnelerini doğrudan story'ye ekle
-# ═══════════════════════════════════════════════════════════════
-class DrawingFlowable(Flowable):
-    """Drawing nesnesini platypus story'ye gömer."""
-    def __init__(self, drawing: Drawing, hAlign="LEFT"):
-        Flowable.__init__(self)
-        self.drawing = drawing
-        self.hAlign  = hAlign
-
-    def wrap(self, aW, aH):
-        return self.drawing.width, self.drawing.height
-
-    def draw(self):
-        self.drawing.drawOn(self.canv, 0, 0)
-
-
-# ═══════════════════════════════════════════════════════════════
-# SAYFA ŞABLONU
-# ═══════════════════════════════════════════════════════════════
-def _page_template(canvas_obj, doc, title_short=""):
-    c = canvas_obj
-    W, H = A4
-    c.setStrokeColor(C_ACCENT)
-    c.setLineWidth(2.5)
-    c.line(1.9*cm, H - 1.0*cm, W - 1.9*cm, H - 1.0*cm)
-
-    c.setFont("Helvetica-Bold", 7.5)
-    c.setFillColor(C_ACCENT)
-    c.drawString(1.9*cm, H - 0.70*cm, "ENGINEERING AI")
-
-    c.setFont("Helvetica", 7)
-    c.setFillColor(C_TEXT3)
-    c.drawCentredString(W / 2, H - 0.70*cm, title_short[:65])
-
-    c.setFont("Courier", 6.5)
-    c.setFillColor(C_TEXT3)
-    c.drawRightString(W - 1.9*cm, H - 0.70*cm,
-                      datetime.datetime.now().strftime("%Y-%m-%d"))
-
-    c.setStrokeColor(C_BORDER)
-    c.setLineWidth(0.4)
-    c.line(1.9*cm, 1.1*cm, W - 1.9*cm, 1.1*cm)
-
-    c.setFont("Helvetica", 7)
-    c.setFillColor(C_TEXT3)
-    c.drawCentredString(W / 2, 0.62*cm, f"— {doc.page} —")
-
-    c.setFont("Helvetica", 6.5)
-    c.drawString(1.9*cm, 0.62*cm, "Engineering AI · Multi-Agent Analysis")
+    ax.legend(handles=legend_items, fontsize=7.5, loc="lower right", framealpha=0.7)
+    ax.set_title("FMEA Risk Priority Numbers (RPN)", fontsize=10,
+                 fontweight="bold", color="#1A1A1A", pad=8)
+    fig.tight_layout()
+    return _fig_bytes(fig)
 
 
 # ═══════════════════════════════════════════════════════════════
 # METİN PARSERİ
 # ═══════════════════════════════════════════════════════════════
-def parse_sections(text: str) -> List[tuple]:
+
+def _parse_sections(text: str) -> List[tuple]:
     heading_re = re.compile(
-        r'^(?:#{1,4}\s+|(?:\d+[\.\)]\s+[A-Z])|([A-Z][A-Z &/:0-9\-]{3,})\s*$)'
+        r'^(?:#{1,4}\s+|(?:\d+[.)]\s+[A-Z])|([A-Z][A-Z &/:0-9\-]{3,})\s*$)'
     )
     sections, cur_title, cur_lines = [], "", []
     for line in text.splitlines():
@@ -600,43 +474,45 @@ def parse_sections(text: str) -> List[tuple]:
     return sections
 
 
-def _esc(t: str) -> str:
-    return t.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-
-
-def render_body(text: str, S: dict) -> list:
-    """Ham metni flowable listesine çevirir — kırpma YOK."""
-    out = []
+def _render_body(doc, text: str):
     for line in text.splitlines():
         raw = line.strip()
         if not raw:
-            out.append(Spacer(1, 4))
+            sp = doc.add_paragraph()
+            sp.paragraph_format.space_after = Pt(3)
             continue
         if raw.startswith("|") and raw.count("|") >= 2:
             if re.match(r'^[\|\-\s:]+$', raw):
                 continue
             cells = [c.strip() for c in raw.strip("|").split("|")]
-            out.append(Paragraph("  |  ".join(_esc(c) for c in cells), S["mono"]))
+            p = doc.add_paragraph()
+            _run(p, "  |  ".join(cells), size=8.5, color=TEXT2, font="Courier New")
             continue
         if raw[0] in ("-", "•", "*", "–", "·"):
-            out.append(Paragraph(
-                f"<bullet>&bull;</bullet> {_esc(raw.lstrip('-•*–· ').strip())}",
-                S["bullet"]))
+            try:
+                p = doc.add_paragraph(style="List Bullet")
+            except Exception:
+                p = doc.add_paragraph()
+            p.paragraph_format.space_after = Pt(2)
+            _run(p, raw.lstrip("-•*–· ").strip(), size=9.5, color=TEXT)
             continue
         m = re.match(r'^(\d+[.)]\s+)(.*)', raw)
         if m:
-            out.append(Paragraph(
-                f"<b>{_esc(m.group(1).strip())}</b> {_esc(m.group(2).strip())}",
-                S["body_left"]))
+            p = doc.add_paragraph()
+            p.paragraph_format.space_after = Pt(3)
+            _run(p, m.group(1).strip() + " ", bold=True, size=9.5, color=TEXT)
+            _run(p, m.group(2).strip(), size=9.5, color=TEXT)
             continue
-        out.append(Paragraph(_esc(raw), S["body"]))
-    return out
+        p = doc.add_paragraph()
+        p.paragraph_format.space_after = Pt(4)
+        _run(p, raw, size=9.5, color=TEXT)
 
 
 # ═══════════════════════════════════════════════════════════════
 # ANA FONKSİYON
 # ═══════════════════════════════════════════════════════════════
-def generate_pdf_report(
+
+def generate_docx_report(
     brief:        str,
     final_report: str,
     domains:      List[str],
@@ -653,232 +529,182 @@ def generate_pdf_report(
     mode_labels  = {1: "Single Agent", 2: "Dual Agent",
                     3: "Semi-Automatic", 4: "Full Automatic"}
     mode_label   = mode_labels.get(mode, "Full Automatic")
-    brief_short  = brief[:80].replace("\n", " ") + ("..." if len(brief) > 80 else "")
+    brief_short  = brief[:90].replace("\n", " ") + ("..." if len(brief) > 90 else "")
 
-    buf = io.BytesIO()
-    W, H = A4
-
-    doc = SimpleDocTemplate(
-        buf, pagesize=A4,
-        leftMargin=1.9*cm, rightMargin=1.9*cm,
-        topMargin=1.9*cm,  bottomMargin=1.9*cm,
-        title="Engineering AI Analysis Report",
-        author="Engineering AI Multi-Agent System",
-    )
-    S     = build_styles()
-    story = []
-
-    def on_later(canvas_obj, doc):
-        _page_template(canvas_obj, doc, brief_short)
+    doc = Document()
+    _set_margins(doc)
+    doc.styles["Normal"].font.name = "Arial"
+    doc.styles["Normal"].font.size = Pt(9.5)
 
     # ─── KAPAK ──────────────────────────────────────────────
-    def cover_page(canvas_obj, doc):
-        c = canvas_obj
-        c.setFillColor(C_COVER_BG)
-        c.rect(0, 0, W, H, fill=1, stroke=0)
-        c.setFillColor(C_ACCENT)
-        c.rect(0, H - 0.65*cm, W, 0.65*cm, fill=1, stroke=0)
-        c.rect(0, 0, W, 0.45*cm, fill=1, stroke=0)
-
-    story.append(Spacer(1, 3.8*cm))
-    story.append(Paragraph("ENGINEERING AI", S["cover_eye"]))
-    story.append(Paragraph("Multi-Agent<br/>Analysis Report", S["cover_title"]))
-
-    class AccentLine3(Flowable):
-        def wrap(self, aW, aH): self.width = aW; return aW, 7
-        def draw(self):
-            self.canv.setStrokeColor(C_ACCENT)
-            self.canv.setLineWidth(3)
-            self.canv.line(0, 3, self.width * 0.25, 3)
-
-    story.append(AccentLine3())
-    story.append(Spacer(1, 0.6*cm))
-    story.append(Paragraph("ANALYSIS SUBJECT", S["cover_eye"]))
-    story.append(Paragraph(brief_short, S["cover_sub"]))
-    story.append(Spacer(1, 1.8*cm))
-
-    cv_lbl = ParagraphStyle("cvl", fontName="Helvetica-Bold", fontSize=8,
-                             textColor=colors.HexColor("#AAAAAA"), leading=13)
-    cv_val = ParagraphStyle("cvv", fontName="Helvetica", fontSize=9,
-                             textColor=colors.HexColor("#DDDDDD"), leading=13)
     meta = [
         ("Date",       datetime.datetime.now().strftime("%B %d, %Y  —  %H:%M")),
         ("Mode",       f"{mode}  —  {mode_label}"),
-        ("Domains",    ", ".join(domains)),
+        ("Domains",    ", ".join(domains) if domains else "—"),
         ("Rounds",     str(len(round_scores)) if round_scores else "1"),
         ("Total Cost", f"${total_cost:.4f} USD   ≈   {total_cost * kur:.2f} TL"),
         ("Agents",     str(len(agent_log))),
     ]
-    tdata = [[Paragraph(k, cv_lbl), Paragraph(v, cv_val)] for k, v in meta]
-    mt = Table(tdata, colWidths=[3.2*cm, None])
-    mt.setStyle(TableStyle([
-        ("BACKGROUND",    (0, 0), (-1, -1), colors.HexColor("#282828")),
-        ("LINEBELOW",     (0, 0), (-1, -2), 0.3, colors.HexColor("#383838")),
-        ("TOPPADDING",    (0, 0), (-1, -1), 7),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
-        ("LEFTPADDING",   (0, 0), (-1, -1), 12),
-        ("RIGHTPADDING",  (0, 0), (-1, -1), 12),
-    ]))
-    story.append(mt)
-    story.append(PageBreak())
+    _cover_page(doc, brief_short, meta)
 
-    # ─── BÖLÜM 1: GRAFİKLER ─────────────────────────────────
-    story.append(Paragraph("1.  ANALYSIS METRICS", S["h1"]))
-    story.append(AccentRule())
-    story.append(Spacer(1, 0.25*cm))
+    # ─── BÖLÜM 1: METRİKLER ─────────────────────────────────
+    _h1(doc, "1.  ANALYSIS METRICS")
+    _accent_rule(doc)
 
+    # 1.1 Kalite Puanı
     if round_scores:
-        story.append(Paragraph("1.1  Quality Score per Round", S["h2"]))
-        dw = chart_round_scores(round_scores)
-        if dw:
-            story.append(DrawingFlowable(dw))
-            story.append(Paragraph(
+        _h2(doc, "1.1  Quality Score per Round")
+        img = chart_quality_scores(round_scores)
+        if img:
+            _embed_chart(doc, img,
                 "Quality scores assigned by the Observer Agent. "
-                "Target: 85/100. Analysis terminates early when target is reached.",
-                S["caption"]))
-        story.append(Spacer(1, 0.3*cm))
+                "Target: 85/100.")
+        else:
+            _make_table(doc,
+                ["Round", "Quality Score", "Status"],
+                [[f"Round {r['tur']}", f"{r.get('puan',0)} / 100",
+                  ("✓ Reached", OK_RGB, True) if (r.get("puan") or 0) >= 85
+                  else ("~  OK",  WARN_RGB, False) if (r.get("puan") or 0) >= 70
+                  else ("✗ Low",  ERR_RGB,  True)]
+                 for r in round_scores],
+                [3.0, 3.5, 9.5])
 
+    # 1.2 Ajan Maliyeti
     if agent_log:
-        story.append(Paragraph("1.2  Agent Cost Distribution", S["h2"]))
-        dw = chart_agent_cost(agent_log)
-        if dw:
-            story.append(DrawingFlowable(dw))
-            story.append(Paragraph(
-                f"API cost per agent. "
-                f"Total: ${total_cost:.4f} USD ≈ {total_cost * kur:.2f} TL.",
-                S["caption"]))
-        story.append(Spacer(1, 0.3*cm))
+        _h2(doc, "1.2  Agent Cost Distribution")
+        img = chart_agent_cost(agent_log)
+        if img:
+            _embed_chart(doc, img,
+                f"API cost per agent.  Total: ${total_cost:.4f} USD "
+                f"≈ {total_cost*kur:.2f} TL.")
+        else:
+            _body_para(doc,
+                f"Total API cost: ${total_cost:.4f} USD ≈ {total_cost*kur:.2f} TL  "
+                f"({len(agent_log)} agents executed).")
 
+    # 1.3 Domain Dağılımı
     if len(domains) >= 2:
-        story.append(Paragraph("1.3  Domain Coverage", S["h2"]))
-        dw = chart_domain_distribution(domains)
-        if dw:
-            story.append(DrawingFlowable(dw))
-            story.append(Paragraph(
-                f"Active domains: {', '.join(domains)}.", S["caption"]))
-        story.append(Spacer(1, 0.3*cm))
+        _h2(doc, "1.3  Active Engineering Domains")
+        _info_box(doc, "Active Domains", " · ".join(domains))
 
-    story.append(Paragraph("1.4  FMEA Risk Priority Matrix", S["h2"]))
-    dw = chart_rpn_matrix(final_report)
-    if dw:
-        story.append(DrawingFlowable(dw))
-        story.append(Paragraph(
-            "RPN = Severity × Occurrence × Detectability. "
-            "Critical ≥ 200  |  High 100–199  |  Medium < 100.",
-            S["caption"]))
+    # 1.4 FMEA RPN
+    _h2(doc, "1.4  FMEA Risk Priority Matrix")
+    img = chart_rpn(final_report)
+    if img:
+        _embed_chart(doc, img,
+            "RPN = Severity × Occurrence × Detectability.  "
+            "Critical ≥ 200  |  High 100–199  |  Medium < 100.")
     else:
-        story.append(Paragraph(
+        _body_para(doc,
             "No structured FMEA/RPN data found in report. "
-            "See Section 3 for qualitative risk assessment.", S["body"]))
+            "See Section 3 for qualitative risk assessment.")
 
-    story.append(PageBreak())
+    doc.add_page_break()
 
     # ─── BÖLÜM 2: ROUND SUMMARIES ───────────────────────────
     if round_scores:
-        story.append(Paragraph("2.  ROUND SUMMARIES", S["h1"]))
-        story.append(AccentRule())
-        story.append(Spacer(1, 0.25*cm))
+        _h1(doc, "2.  ROUND SUMMARIES")
+        _accent_rule(doc)
 
-        hdr  = [Paragraph(t, S["th"]) for t in ["ROUND", "QUALITY SCORE", "STATUS", "NOTE"]]
-        rows = [hdr]
+        rows = []
         for r in round_scores:
             p = r.get("puan") or 0
-            if p >= 85:   sp, st = S["td_ok"],   "✓ Target Reached"
-            elif p >= 70: sp, st = S["td_warn"],  "~ Acceptable"
-            else:         sp, st = S["td_err"],   "✗ Below Target"
+            if p >= 85:   status = ("✓ Target Reached", OK_RGB,   True)
+            elif p >= 70: status = ("~  Acceptable",    WARN_RGB, False)
+            else:         status = ("✗ Below Target",   ERR_RGB,  True)
             rows.append([
-                Paragraph(f"Round {r['tur']}", S["td"]),
-                Paragraph(f"{p} / 100", S["td"]),
-                Paragraph(st, sp),
-                Paragraph("Early termination triggered." if p >= 85 else "", S["td"]),
+                f"Round {r['tur']}",
+                f"{p} / 100",
+                status,
+                "Early termination triggered." if p >= 85 else "",
             ])
-        rt = Table(rows, colWidths=[2.6*cm, 3.5*cm, 5*cm, None])
-        rt.setStyle(TableStyle([
-            ("BACKGROUND",    (0, 0), (-1, 0),  C_ACCENT),
-            ("ROWBACKGROUNDS",(0, 1), (-1, -1), [C_WHITE, C_ROW_ALT]),
-            ("GRID",          (0, 0), (-1, -1), 0.4, C_BORDER),
-            ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
-            ("TOPPADDING",    (0, 0), (-1, -1), 8),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
-            ("LEFTPADDING",   (0, 0), (-1, -1), 10),
-        ]))
-        story.append(rt)
-        story.append(PageBreak())
+        _make_table(doc,
+            ["ROUND", "QUALITY SCORE", "STATUS", "NOTE"],
+            rows, [2.6, 3.2, 4.5, 5.7])
+        doc.add_page_break()
 
-    # ─── BÖLÜM 3: FİNAL RAPOR (TAM) ────────────────────────
-    story.append(Paragraph("3.  FINAL ENGINEERING REPORT", S["h1"]))
-    story.append(AccentRule())
-    story.append(Spacer(1, 0.3*cm))
+    # ─── BÖLÜM 3: FİNAL RAPOR ───────────────────────────────
+    _h1(doc, "3.  FINAL ENGINEERING REPORT")
+    _accent_rule(doc)
 
-    sections = parse_sections(final_report)
+    sections = _parse_sections(final_report)
     if len(sections) > 1:
         for title, body in sections:
             if not body.strip():
                 continue
             if title:
-                story.append(Paragraph(_esc(title), S["h2"]))
-                story.append(ThinRule())
-            story.extend(render_body(body, S))
-            story.append(Spacer(1, 0.2*cm))
+                _h2(doc, title)
+                _thin_rule(doc)
+            _render_body(doc, body)
+            sp = doc.add_paragraph()
+            sp.paragraph_format.space_after = Pt(6)
     else:
-        story.extend(render_body(final_report, S))
+        _render_body(doc, final_report)
 
-    story.append(PageBreak())
+    doc.add_page_break()
 
-    # ─── BÖLÜM 4: AJAN LOGU (TAM) ───────────────────────────
+    # ─── BÖLÜM 4: AJAN LOGU ─────────────────────────────────
     if agent_log:
-        story.append(Paragraph("4.  AGENT ACTIVITY LOG", S["h1"]))
-        story.append(AccentRule())
-        story.append(Spacer(1, 0.25*cm))
+        _h1(doc, "4.  AGENT ACTIVITY LOG")
+        _accent_rule(doc)
 
-        hdr  = [Paragraph(t, S["th"]) for t in ["#", "AGENT", "COST (USD)", "STATUS"]]
-        rows = [hdr]
-        for i, a in enumerate(agent_log, 1):
-            rows.append([
-                Paragraph(str(i), S["td"]),
-                Paragraph((a.get("name") or a.get("key", "?"))[:42], S["td"]),
-                Paragraph(f"${a.get('cost', 0):.5f}", S["td_mono"]),
-                Paragraph("✓ Completed", S["td_ok"]),
-            ])
-        lt = Table(rows, colWidths=[1.0*cm, None, 2.8*cm, 2.5*cm])
-        lt.setStyle(TableStyle([
-            ("BACKGROUND",    (0, 0), (-1, 0),  C_ACCENT),
-            ("ROWBACKGROUNDS",(0, 1), (-1, -1), [C_WHITE, C_ROW_ALT]),
-            ("GRID",          (0, 0), (-1, -1), 0.3, C_BORDER),
-            ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
-            ("TOPPADDING",    (0, 0), (-1, -1), 6),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-            ("LEFTPADDING",   (0, 0), (-1, -1), 8),
-        ]))
-        story.append(lt)
-        story.append(Spacer(1, 0.6*cm))
+        log_rows = [[
+            str(i),
+            (a.get("name") or a.get("key", "?"))[:42],
+            f"${a.get('cost', 0):.5f}",
+            ("✓ Completed", OK_RGB, False),
+        ] for i, a in enumerate(agent_log, 1)]
+        _make_table(doc,
+            ["#", "AGENT", "COST (USD)", "STATUS"],
+            log_rows, [0.8, 9.0, 3.0, 3.2])
 
-        story.append(Paragraph("4.1  Agent Output Details (Full)", S["h2"]))
-        story.append(ThinRule())
-        story.append(Spacer(1, 0.2*cm))
+        sp = doc.add_paragraph()
+        sp.paragraph_format.space_after = Pt(6)
+
+        _h2(doc, "4.1  Agent Output Details")
+        _thin_rule(doc)
+        sp = doc.add_paragraph()
+        sp.paragraph_format.space_after = Pt(4)
 
         for i, a in enumerate(agent_log, 1):
             name   = a.get("name") or a.get("key", "?")
             cost   = a.get("cost", 0)
-            output = a.get("output", "").strip()
+            output = (a.get("output") or "").strip()
 
-            hdr_para = Paragraph(
-                f"<b>Agent {i}: {_esc(name)}</b>"
-                f"&nbsp;&nbsp;&nbsp;·&nbsp;&nbsp;&nbsp;Cost: ${cost:.5f} USD",
-                ParagraphStyle("ah", fontName="Helvetica-Bold", fontSize=9,
-                               textColor=C_TEXT, leading=13)
-            )
-            story.append(InfoBox([hdr_para], padding=9))
-            story.append(Spacer(1, 4))
-            story.extend(render_body(output, S) if output
-                         else [Paragraph("(No output recorded)", S["mono"])])
-            story.append(Spacer(1, 0.4*cm))
-            story.append(ThinRule(color=colors.HexColor("#E0E0E0")))
-            story.append(Spacer(1, 0.2*cm))
+            _info_box(doc, f"Agent {i}: {name}   ·   ${cost:.5f} USD", [])
 
-    doc.build(story, onFirstPage=cover_page, onLaterPages=on_later)
+            if output:
+                _render_body(doc, output[:3000] + ("…" if len(output) > 3000 else ""))
+            else:
+                _body_para(doc, "(No output recorded)")
+
+            _thin_rule(doc, "E0E0E0")
+            sp = doc.add_paragraph()
+            sp.paragraph_format.space_after = Pt(4)
+
+    # ─── HEADER / FOOTER ────────────────────────────────────
+    for section in doc.sections:
+        hp = section.header.paragraphs[0]
+        hp.clear()
+        _run(hp, "ENGINEERING AI  ·  Multi-Agent Analysis Report",
+             size=7.5, color=TEXT3)
+        hp.alignment = WD_ALIGN_PARAGRAPH.LEFT
+
+        fp = section.footer.paragraphs[0]
+        fp.clear()
+        _run(fp,
+             f"Engineering AI  ·  {datetime.datetime.now().strftime('%Y-%m-%d')}",
+             size=7, color=TEXT3)
+        fp.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    buf = io.BytesIO()
+    doc.save(buf)
     buf.seek(0)
     return buf.read()
+
+
+# Geriye dönük uyumluluk alias — app.py ve main.py değişmeden çalışır
+generate_pdf_report = generate_docx_report
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -890,15 +716,13 @@ EXECUTIVE SUMMARY
 1. Hipersonik araçta stagnasyon noktası sıcaklığı Mach 8'de 2400 derece C'yi aşmaktadır.
 2. UHTC malzeme ailesi (ZrB2-SiC) mevcut en uygun koruma sistemini sunmaktadır.
 3. Yapısal emniyet katsayısı 25g yük altında 1.8 olarak hesaplanmıştır.
-4. Kritik yol: UHTC sinterleme süreci (yüzde 15 maliyet belirsizliği).
-5. Termal koruma katmanı kalınlığı en az 12 mm olarak önerilmektedir.
+4. Kritik yol: UHTC sinterleme süreci yüzde 15 maliyet belirsizliği.
 
 MATERIALS ANALYSIS
 ZrB2-SiC kompozit malzeme grubu 2000 derece C üzeri uygulamalar için birincil adaydır.
 - Yogunluk: 6.09 g/cm3
-- Egme mukavemeti: 450 MPa @ 1500 derece C
+- Egme mukavemeti: 450 MPa at 1500 derece C
 - Oksidasyona karsi SiC matrisi koruma saglar
-- Tedarik suresi 14-18 hafta (kritik)
 
 RISK ASSESSMENT
 Failure Mode 1: Termal bant delaminasyonu. RPN: 240.
@@ -911,21 +735,25 @@ RECOMMENDATIONS
 3. Testler F2 ark tunelinde dogrulanmalidir
 """
 
-    pdf_bytes = generate_pdf_report(
+    out_bytes = generate_docx_report(
         brief="Hipersonik fuzze icin malzeme secimi ve termal koruma. Mach 8, 25km irtifa.",
         final_report=sample,
         domains=["Materials", "Thermal & Heat Transfer", "Aerodynamics", "Structural & Static"],
-        round_scores=[{"tur":1,"puan":68},{"tur":2,"puan":82},{"tur":3,"puan":91}],
+        round_scores=[{"tur": 1, "puan": 68}, {"tur": 2, "puan": 82}, {"tur": 3, "puan": 91}],
         agent_log=[
-            {"name":"Materials Engineer A",   "cost":0.0842, "output":"ZrB2-SiC primary. Density 6.09 g/cm3."},
-            {"name":"Thermal Engineer A",     "cost":0.0720, "output":"Heat flux 4.2 MW/m2 at Mach 8."},
-            {"name":"Cross-Validation Agent", "cost":0.0210, "output":"All values consistent."},
-            {"name":"Final Report Writer",    "cost":0.1200, "output":"Comprehensive report generated."},
+            {"name": "Materials Engineer A",   "cost": 0.0842,
+             "output": "ZrB2-SiC primary. Density 6.09 g/cm3. TRL 6."},
+            {"name": "Thermal Engineer A",     "cost": 0.0720,
+             "output": "Heat flux 4.2 MW/m2 at Mach 8. Active cooling required."},
+            {"name": "Cross-Validation Agent", "cost": 0.0210,
+             "output": "All numerical values dimensionally consistent."},
+            {"name": "Final Report Writer",    "cost": 0.1200,
+             "output": "Comprehensive report generated."},
         ],
         total_cost=0.295, kur=44.0, mode=4,
     )
 
-    out = "/home/claude/test_report.pdf"
+    out = "/mnt/user-data/outputs/test_report.docx"
     with open(out, "wb") as f:
-        f.write(pdf_bytes)
-    print(f"PDF olusturuldu: {len(pdf_bytes):,} bytes -> {out}")
+        f.write(out_bytes)
+    print(f"DOCX: {len(out_bytes):,} bytes → {out}")

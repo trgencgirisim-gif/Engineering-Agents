@@ -17,17 +17,6 @@ except ImportError:
 load_dotenv()
 
 
-@st.cache_data(ttl=3600)
-def kur_getir():
-    try:
-        r = requests.get("https://api.frankfurter.app/latest?from=USD&to=TRY", timeout=3)
-        kur = r.json()["rates"]["TRY"]
-        return round(kur, 2)
-    except Exception:
-        return 44.0
-
-KUR = kur_getir()
-
 # ═════════════════════════════════════════════════════════════
 # PAGE CONFIG
 # ═════════════════════════════════════════════════════════════
@@ -516,7 +505,7 @@ def init_state():
         "current_round":      0,
         "max_rounds":         3,
         "error":              "",
-        "pdf_bytes":          None,
+        "docx_bytes":          None,
         "running":            False,
     }
     for k, v in defaults.items():
@@ -560,6 +549,15 @@ rag = get_rag()
 # ═════════════════════════════════════════════════════════════
 # CORE: Ajan çalıştır (Streamlit callback ile)
 # ═════════════════════════════════════════════════════════════
+
+# ═════════════════════════════════════════════════════════════
+# CACHE PREAMBLE — orchestrator.py ile senkron
+# ═════════════════════════════════════════════════════════════
+try:
+    from orchestrator import CACHE_PREAMBLE
+except ImportError:
+    CACHE_PREAMBLE = ""  # orchestrator.py yoksa boş geç
+
 def ajan_calistir(ajan_key, mesaj, gecmis=None, log_container=None):
     if gecmis is None:
         gecmis = []
@@ -587,7 +585,7 @@ def ajan_calistir(ajan_key, mesaj, gecmis=None, log_container=None):
                 max_tokens=ajan.get("max_tokens", 2000),
                 system=[{
                     "type": "text",
-                    "text": ajan["sistem_promptu"],
+                    "text": (CACHE_PREAMBLE + "\n" + ajan["sistem_promptu"]) if CACHE_PREAMBLE else ajan["sistem_promptu"],
                     "cache_control": {"type": "ephemeral"}
                 }],
                 messages=mesajlar
@@ -609,11 +607,11 @@ def ajan_calistir(ajan_key, mesaj, gecmis=None, log_container=None):
 
     model = ajan["model"]
     if "opus" in model:
-        maliyet = yanit.usage.input_tokens * 5 / 1_000_000 + yanit.usage.output_tokens * 25 / 1_000_000
+        maliyet = yanit.usage.input_tokens * 15 / 1_000_000 + yanit.usage.output_tokens * 75 / 1_000_000
     elif "sonnet" in model:
         maliyet = yanit.usage.input_tokens * 3 / 1_000_000 + yanit.usage.output_tokens * 15 / 1_000_000
     else:
-        maliyet = yanit.usage.input_tokens * 1 / 1_000_000 + yanit.usage.output_tokens * 5 / 1_000_000
+        maliyet = yanit.usage.input_tokens * 0.8 / 1_000_000 + yanit.usage.output_tokens * 4 / 1_000_000
 
     # Log güncelle
     st.session_state.agent_log[-1]["status"] = "done"
@@ -1292,7 +1290,7 @@ elif st.session_state.step == "done":
             )
         with col2:
             if PDF_OK:
-                if not st.session_state.get("pdf_bytes"):
+                if not st.session_state.get("docx_bytes"):
                     with st.spinner("PDF oluşturuluyor..."):
                         try:
                             pdf_bytes = generate_pdf_report(
@@ -1305,22 +1303,22 @@ elif st.session_state.step == "done":
                                 kur          = KUR,
                                 mode         = st.session_state.mode,
                             )
-                            st.session_state.pdf_bytes = pdf_bytes
+                            st.session_state.docx_bytes = pdf_bytes
                         except Exception as e:
-                            st.session_state.pdf_bytes = None
+                            st.session_state.docx_bytes = None
                             st.error(f"PDF hatası: {e}")
-                if st.session_state.get("pdf_bytes"):
+                if st.session_state.get("docx_bytes"):
                     zaman = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
                     st.download_button(
-                        label="📑 PDF İndir",
-                        data=st.session_state.pdf_bytes,
-                        file_name=f"analiz_{zaman}.pdf",
-                        mime="application/pdf",
+                        label="📄 DOCX İndir",
+                        data=st.session_state.docx_bytes,
+                        file_name=f"analiz_{zaman}.docx",
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                         use_container_width=True,
-                        key="pdf_dl_btn"
+                        key="docx_dl_btn"
                     )
             else:
-                st.button("📑 PDF İndir (report_generator.py eksik)", disabled=True,
+                st.button("📄 DOCX İndir (report_generator.py eksik)", disabled=True,
                           use_container_width=True, key="pdf_btn")
 
         # Ajan log detayı

@@ -190,9 +190,9 @@ class Session:
         cevap = yanit.content[0].text
 
         model = ajan["model"]
-        if "opus"   in model: maliyet = yanit.usage.input_tokens*5/1e6  + yanit.usage.output_tokens*25/1e6
-        elif "sonnet" in model: maliyet = yanit.usage.input_tokens*3/1e6 + yanit.usage.output_tokens*15/1e6
-        else:                   maliyet = yanit.usage.input_tokens*1/1e6 + yanit.usage.output_tokens*5/1e6
+        if "opus"   in model: maliyet = yanit.usage.input_tokens*15/1e6 + yanit.usage.output_tokens*75/1e6
+        elif "sonnet" in model: maliyet = yanit.usage.input_tokens*3/1e6  + yanit.usage.output_tokens*15/1e6
+        else:                   maliyet = yanit.usage.input_tokens*0.8/1e6+ yanit.usage.output_tokens*4/1e6
 
         self.total_cost   += maliyet
         self.total_input  += yanit.usage.input_tokens
@@ -383,7 +383,7 @@ Produce comprehensive professional engineering report.""")
 
             if self.mode == 3:
                 # Mod 3: Önce soru üret
-                sorular_raw = self.ajan_calistir("soru_uretici", self.brief)
+                sorular_raw = self.ajan_calistir("soru_uretici_pm", self.brief)
                 sorular = re.findall(r'SORU_\d+:\s*(.+)', sorular_raw)
                 if not sorular:
                     sorular = re.findall(r'\d+\.\s*(.+)', sorular_raw)
@@ -601,8 +601,8 @@ async def download(sid: str):
 
 
 # ── PDF İndir ─────────────────────────────────────────────────
-@app.get("/api/download_pdf/{sid}")
-async def download_pdf(sid: str):
+@app.get("/api/download_docx/{sid}")
+async def download_docx(sid: str):
     sess = sessions.get(sid)
     if not sess or not sess.final_report:
         raise HTTPException(404, "Rapor henüz hazır değil.")
@@ -626,11 +626,11 @@ async def download_pdf(sid: str):
 
     import datetime
     zaman = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    fname = f"analiz_{zaman}.pdf"
+    fname = f"analiz_{zaman}.docx"
     from fastapi.responses import Response
     return Response(
         content=pdf_bytes,
-        media_type="application/pdf",
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         headers={"Content-Disposition": f'attachment; filename="{fname}"'}
     )
 
