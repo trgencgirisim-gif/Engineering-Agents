@@ -51,10 +51,14 @@ st.markdown("""
 }
 
 /* Global reset */
-html, body, [class*="css"] {
+html, body {
     font-family: var(--sans) !important;
     background-color: var(--bg-primary) !important;
     color: var(--text-primary) !important;
+}
+/* Streamlit main container */
+.main .block-container {
+    background-color: var(--bg-primary) !important;
 }
 
 .stApp {
@@ -62,7 +66,9 @@ html, body, [class*="css"] {
 }
 
 /* ── Hide Streamlit Branding ── */
-#MainMenu, footer, header { visibility: hidden; }
+#MainMenu { visibility: hidden; }
+footer { visibility: hidden; }
+/* header GİZLENMİYOR - sidebar toggle butonu header içinde! */
 .stDeployButton { display: none; }
 
 /* ── Sidebar ── */
@@ -71,8 +77,16 @@ html, body, [class*="css"] {
     border-right: 1px solid var(--border) !important;
 }
 
-[data-testid="stSidebar"] > div {
+[data-testid="stSidebar"] > div:first-child {
     padding: 1.5rem 1rem !important;
+}
+
+/* Sidebar collapse/expand toggle her zaman görünür */
+button[data-testid="collapsedControl"],
+[data-testid="stSidebarCollapsedControl"] {
+    visibility: visible !important;
+    display: flex !important;
+    opacity: 1 !important;
 }
 
 /* ── Buttons ── */
