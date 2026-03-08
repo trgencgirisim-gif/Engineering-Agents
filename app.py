@@ -4,11 +4,24 @@ import re
 import time
 import datetime
 import anthropic
+import requests
 from dotenv import load_dotenv
 from config.agents_config import AGENTS, DESTEK_AJANLARI
 from rag.store import RAGStore
 
 load_dotenv()
+
+
+@st.cache_data(ttl=3600)
+def kur_getir():
+    try:
+        r = requests.get("https://api.frankfurter.app/latest?from=USD&to=TRY", timeout=3)
+        kur = r.json()["rates"]["TRY"]
+        return round(kur, 2)
+    except Exception:
+        return 44.0
+
+KUR = kur_getir()
 
 # ═════════════════════════════════════════════════════════════
 # PAGE CONFIG
@@ -508,13 +521,27 @@ init_state()
 
 
 # ═════════════════════════════════════════════════════════════
-# API CLIENT
+# API CLIENT & KUR
 # ═════════════════════════════════════════════════════════════
 @st.cache_resource
 def get_client():
     return anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
 client = get_client()
+
+
+@st.cache_data(ttl=3600)  # 1 saatte bir güncelle
+def kur_getir():
+    try:
+        r = requests.get(
+            "https://api.frankfurter.app/latest?from=USD&to=TRY",
+            timeout=3
+        )
+        return r.json()["rates"]["TRY"]
+    except Exception:
+        return 44.0  # API çalışmazsa fallback
+
+KUR = kur_getir()
 
 
 @st.cache_resource
@@ -643,7 +670,7 @@ def kaydet_txt(brief, mod, final, alan_isimleri, tur_ozeti):
     satirlar.append(f"MODE:       {mod} — {mod_etiket.get(mod,'?')}")
     satirlar.append(f"DOMAINS:    {', '.join(alan_isimleri)}")
     satirlar.append(f"BRIEF:      {brief}")
-    satirlar.append(f"TOTAL COST: ${st.session_state.total_cost:.4f} / ~{st.session_state.total_cost*44:.2f} TL")
+    satirlar.append(f"TOTAL COST: ${st.session_state.total_cost:.4f} / ~{st.session_state.total_cost*KUR:.2f} TL")
     satirlar.append("="*60)
     satirlar.append("")
 
@@ -862,8 +889,8 @@ with st.sidebar:
         <div class="stat-lbl">USD</div>
     </div>
     <div class="stat-item">
-        <div class="stat-val">~{cost*44:.2f} TL</div>
-        <div class="stat-lbl">TRY (×44)</div>
+        <div class="stat-val">~{cost*KUR:.2f} TL</div>
+        <div class="stat-lbl">TRY (×{KUR:.1f})</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -1198,7 +1225,7 @@ elif st.session_state.step == "done":
         with col1:
             st.metric("Toplam Maliyet", f"${cost:.4f}")
         with col2:
-            st.metric("TL Karşılığı", f"~{cost*44:.2f} ₺")
+            st.metric("TL Karşılığı", f"~{cost*KUR:.2f} ₺")
         with col3:
             st.metric("Çalışan Ajan", ajan_sayisi)
         with col4:

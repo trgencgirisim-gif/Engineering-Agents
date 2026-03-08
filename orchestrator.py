@@ -3,15 +3,26 @@ import os
 import re
 import time
 import datetime
+import requests
 from dotenv import load_dotenv
 from config.agents_config import AGENTS, DESTEK_AJANLARI
-from rag.store import RAGStore
-
-rag = RAGStore()
-
 
 load_dotenv()
 client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+
+
+# ── Güncel kur ────────────────────────────────────────────────
+def kur_getir():
+    try:
+        r = requests.get(
+            "https://api.frankfurter.app/latest?from=USD&to=TRY",
+            timeout=3
+        )
+        return r.json()["rates"]["TRY"]
+    except Exception:
+        return 44.0  # API çalışmazsa fallback
+
+KUR = kur_getir()
 
 # ── Global cost counters ──────────────────────────────────────
 MALIYET = {"input_token": 0, "output_token": 0, "usd": 0.0}
@@ -53,9 +64,7 @@ DOMAINS = {
 # ═════════════════════════════════════════════════════════════
 # CORE: Run a single agent
 # ═════════════════════════════════════════════════════════════
-def ajan_calistir(ajan_key, mesaj, gecmis=None):
-    if gecmis is None:
-        gecmis = []
+def ajan_calistir(ajan_key, mesaj, gecmis=[]):
     ajan = AGENTS.get(ajan_key) or DESTEK_AJANLARI.get(ajan_key)
     if not ajan:
         return f"ERROR: Agent '{ajan_key}' not found."
@@ -71,11 +80,7 @@ def ajan_calistir(ajan_key, mesaj, gecmis=None):
             yanit = client.messages.create(
                 model=ajan["model"],
                 max_tokens=ajan.get("max_tokens", 2000),
-                system=[{
-                    "type": "text",
-                    "text": ajan["sistem_promptu"],
-                    "cache_control": {"type": "ephemeral"}
-                }],
+                system=ajan["sistem_promptu"],
                 messages=mesajlar
             )
             break
@@ -105,7 +110,7 @@ def ajan_calistir(ajan_key, mesaj, gecmis=None):
 
     toplam = input_maliyet + output_maliyet
     print(f"\nToken: {yanit.usage.input_tokens} input, {yanit.usage.output_tokens} output")
-    print(f"Cost:  ${toplam:.4f} / ~{toplam*44:.2f} TL")
+    print(f"Cost:  ${toplam:.4f} / ~{toplam*KUR:.2f} TL")
 
     MALIYET["input_token"]  += yanit.usage.input_tokens
     MALIYET["output_token"] += yanit.usage.output_tokens
@@ -146,7 +151,8 @@ def kaydet(brief, mod, sonuc, aktif_alanlar=[], tur_ozeti=[]):
         f.write(f"MODE:       {mod} — {mod_etiket.get(mod,'?').replace('_',' ').title()}\n")
         f.write(f"DOMAINS:    {', '.join(aktif_alanlar)}\n")
         f.write(f"BRIEF:      {brief}\n")
-        f.write(f"TOTAL COST: ${MALIYET['usd']:.4f} / ~{MALIYET['usd']*44:.2f} TL\n")
+        usd = MALIYET['usd']
+        f.write(f"TOTAL COST: ${usd:.4f} / ~{usd*KUR:.2f} TL\n")
         f.write("="*60 + "\n\n")
 
         # Per-agent cost breakdown
@@ -177,19 +183,9 @@ def kaydet(brief, mod, sonuc, aktif_alanlar=[], tur_ozeti=[]):
     print(f"TOTAL SESSION COST")
     print(f"Input : {MALIYET['input_token']:,} tokens")
     print(f"Output: {MALIYET['output_token']:,} tokens")
-    print(f"Total : ${MALIYET['usd']:.4f} / ~{MALIYET['usd']*44:.2f} TL")
+    print(f"Total : ${MALIYET['usd']:.4f} / ~{MALIYET['usd']*KUR:.2f} TL")
     print(f"{'='*40}")
     print(f"\n💾 Saved: {dosya_adi}")
-
-    # RAG: analizi knowledge base'e kaydet
-    rag.kaydet(
-        brief=brief,
-        domains=aktif_alanlar,
-        final_report=sonuc,
-        mode=mod,
-        cost=MALIYET["usd"]
-    )
-    print(f"🧠 Knowledge base'e kaydedildi.")
 
 
 def domain_sec(guclendirilmis_brief):
@@ -255,18 +251,15 @@ def domain_sec(guclendirilmis_brief):
 
 # ── Yardımcı: Prompt Engineer otomatik mod ───────────────────
 def _prompt_engineer_auto(brief):
+    """
+    Prompt Engineer'ı tam otomatik çalıştırır.
+    Güçlendirilmiş brief metnini döndürür.
+    """
     print(f"\n{'#'*60}")
     print("PROMPT ENGINEER: Brief güçlendiriliyor...")
     print(f"{'#'*60}")
 
-    # RAG: geçmiş benzer analizleri getir
-    rag_context = rag.benzer_getir(brief, n=3)
-    if rag_context:
-        mesaj = f"{brief}\n\n{rag_context}"
-    else:
-        mesaj = brief
-
-    guclendirilmis = ajan_calistir("prompt_muhendisi", mesaj)
+    guclendirilmis = ajan_calistir("prompt_muhendisi", brief)
     if "GÜÇLENDİRİLMİŞ BRIEF:" in guclendirilmis:
         return guclendirilmis.split("GÜÇLENDİRİLMİŞ BRIEF:")[-1].strip()
     return brief
@@ -294,8 +287,21 @@ def _prompt_engineer_soru_cevap(brief):
     print("PROMPT ENGINEER: Eksik parametreler tespit ediliyor...")
     print(f"{'#'*60}")
 
+    # ── Adım 1: Sadece soruları üret ─────────────────────────
+    soru_mesaji = f"""Analyze the following engineering brief and identify 3 to 7 CRITICAL missing parameters that would significantly affect the analysis quality.
 
-    soru_cevabi = ajan_calistir("soru_uretici_pm", brief)
+For each missing parameter, write one clear, specific question.
+
+Output format — EXACTLY like this, nothing else:
+SORU_1: [question in the same language as the brief]
+SORU_2: [question]
+SORU_3: [question]
+(continue up to SORU_7 if needed)
+
+Engineering brief:
+{brief}"""
+
+    soru_cevabi = ajan_calistir("prompt_muhendisi", soru_mesaji)
 
     # Soruları parse et
     sorular = re.findall(r'SORU_\d+:\s*(.+)', soru_cevabi)
@@ -517,7 +523,7 @@ Evaluate at least 3 alternative design/solution approaches.
 """)
 
     print(f"\n--- CALIBRATION ---")
-    kalibrasyon_cevap = ajan_calistir("kalibrasyon", f"""
+    ajan_calistir("kalibrasyon", f"""
 Problem: {guclendirilmis_brief}
 Agent outputs:
 {tum_ciktilar}
@@ -525,7 +531,7 @@ Compare proposed parameters against known benchmarks. Flag anomalies and over-co
 """)
 
     print(f"\n--- VERIFICATION & STANDARDS ---")
-    standart_cevap = ajan_calistir("dogrulama_standartlar", f"""
+    ajan_calistir("dogrulama_standartlar", f"""
 Problem: {guclendirilmis_brief}
 Agent outputs:
 {tum_ciktilar}
@@ -533,7 +539,7 @@ Assess compliance with relevant industry standards. Identify certification roadb
 """)
 
     print(f"\n--- INTEGRATION & INTERFACE ---")
-    entegrasyon_cevap = ajan_calistir("entegrasyon_arayuz", f"""
+    ajan_calistir("entegrasyon_arayuz", f"""
 Problem: {guclendirilmis_brief}
 Agent outputs:
 {tum_ciktilar}
@@ -541,7 +547,7 @@ Identify interface risks between subsystems and adjacent systems.
 """)
 
     print(f"\n--- SIMULATION COORDINATOR ---")
-    simulasyon_cevap = ajan_calistir("simulasyon_koordinator", f"""
+    ajan_calistir("simulasyon_koordinator", f"""
 Problem: {guclendirilmis_brief}
 Agent outputs:
 {tum_ciktilar}
@@ -549,7 +555,7 @@ Recommend simulation strategy. Identify which analyses require CFD, FEA, or othe
 """)
 
     print(f"\n--- COST & MARKET ANALYST ---")
-    maliyet_cevap = ajan_calistir("maliyet_pazar", f"""
+    ajan_calistir("maliyet_pazar", f"""
 Problem: {guclendirilmis_brief}
 Agent outputs:
 {tum_ciktilar}
@@ -557,7 +563,7 @@ Provide cost estimation, market context, and supply chain assessment.
 """)
 
     print(f"\n--- DATA ANALYST ---")
-    veri_cevap = ajan_calistir("veri_analisti", f"""
+    ajan_calistir("veri_analisti", f"""
 Problem: {guclendirilmis_brief}
 Agent outputs:
 {tum_ciktilar}
@@ -565,7 +571,7 @@ Analyze numerical data quality, identify statistical patterns, and flag data gap
 """)
 
     print(f"\n--- CONTEXT MANAGER ---")
-    baglam_cevap = ajan_calistir("baglan_yoneticisi", f"""
+    ajan_calistir("baglan_yoneticisi", f"""
 Problem: {guclendirilmis_brief}
 Agent outputs:
 {tum_ciktilar}
@@ -583,13 +589,6 @@ All findings:
 OBSERVER: {gozlemci_cevabi}
 QUESTIONS: {soru_cevap}
 ALTERNATIVES: {alt_cevap}
-CALIBRATION: {kalibrasyon_cevap}
-STANDARDS COMPLIANCE: {standart_cevap}
-INTEGRATION & INTERFACES: {entegrasyon_cevap}
-SIMULATION STRATEGY: {simulasyon_cevap}
-COST & MARKET: {maliyet_cevap}
-DATA ANALYSIS: {veri_cevap}
-CONTEXT SUMMARY: {baglam_cevap}
 
 Synthesize all findings. Resolve remaining conflicts, highlight consensus.
 Provide a clean, structured summary for the Final Report Writer.
