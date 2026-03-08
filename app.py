@@ -38,6 +38,22 @@ st.set_page_config(
 # ═════════════════════════════════════════════════════════════
 # CUSTOM CSS — Koyu tema, Claude benzeri, mobil uyumlu
 # ═════════════════════════════════════════════════════════════
+# Sidebar'ı JS ile force-expand et (CSS yetmezse fallback)
+st.markdown("""
+<script>
+window.addEventListener('load', function() {
+    // Sidebar collapsed ise aç
+    setTimeout(function() {
+        var sidebar = document.querySelector('[data-testid="stSidebar"]');
+        var colBtn  = document.querySelector('[data-testid="collapsedControl"] button');
+        if (sidebar && sidebar.getAttribute('aria-expanded') === 'false' && colBtn) {
+            colBtn.click();
+        }
+    }, 500);
+});
+</script>
+""", unsafe_allow_html=True)
+
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&family=Syne:wght@400;600;700;800&display=swap');
@@ -75,21 +91,36 @@ html, body, [class*="css"] {
 }
 
 /* ── Hide Streamlit Branding ── */
-#MainMenu, footer { visibility: hidden; }
-header { visibility: hidden; }
-.stDeployButton { display: none; }
+#MainMenu { display: none !important; }
+footer { display: none !important; }
+.stDeployButton { display: none !important; }
 
-/* ── Sidebar collapse/expand button — görünür tut ── */
-[data-testid="collapsedControl"] {
+/* ── Header: sadece içindeki branding öğelerini gizle, kendisini değil ── */
+header[data-testid="stHeader"] { background: transparent !important; }
+header[data-testid="stHeader"] > div:first-child { display: none !important; }
+
+/* ── Sidebar toggle butonları — her zaman görünür ── */
+[data-testid="collapsedControl"],
+[data-testid="stSidebarCollapseButton"],
+[data-testid="stSidebarExpandButton"] {
     visibility: visible !important;
     opacity: 1 !important;
     display: flex !important;
+    pointer-events: auto !important;
 }
 
 /* ── Sidebar ── */
 [data-testid="stSidebar"] {
     background-color: var(--bg-secondary) !important;
     border-right: 1px solid var(--border) !important;
+    display: block !important;
+    visibility: visible !important;
+    z-index: 100 !important;
+    min-width: 240px !important;
+}
+
+[data-testid="stSidebar"][aria-expanded="false"] {
+    display: none !important;
 }
 
 [data-testid="stSidebar"] > div {
