@@ -1006,56 +1006,6 @@ def kaydet_txt(brief, mod, final, alan_isimleri, tur_ozeti):
 
 
 # ═════════════════════════════════════════════════════════════
-# PARALEL AJAN ÇALIŞTIRICI (app.py versiyonu)
-# ═════════════════════════════════════════════════════════════
-def ajan_calistir_paralel(gorevler: List[Tuple], max_workers: int = 6) -> List[str]:
-    """
-    Birden fazla bağımsız ajanı eş zamanlı çalıştırır.
-
-    gorevler: [(ajan_key, mesaj), ...]
-           ya da [(ajan_key, mesaj, gecmis, cache_context), ...]
-    Dönüş   : [cevap0, cevap1, ...] — gorevler ile aynı sırada
-
-    Notlar:
-    - Her thread kendi rate-limit retry döngüsünü çalıştırır.
-    - session_state agent_log güncellemeleri thread-safe (lock korumalı).
-    - Streamlit widget'larına doğrudan erişim yok — UI ana thread'den güncellenir.
-    """
-    n = len(gorevler)
-    if n == 0:
-        return []
-    if n == 1:
-        g = gorevler[0]
-        key, mesaj = g[0], g[1]
-        gecmis    = g[2] if len(g) > 2 else None
-        cache_ctx = g[3] if len(g) > 3 else None
-        return [ajan_calistir(key, mesaj, gecmis, cache_ctx)]
-
-    workers  = min(n, max_workers)
-    sonuclar = [None] * n
-
-    def _calistir(idx_gorev):
-        idx, g = idx_gorev
-        key       = g[0]
-        mesaj     = g[1]
-        gecmis    = g[2] if len(g) > 2 else None
-        cache_ctx = g[3] if len(g) > 3 else None
-        return idx, ajan_calistir(key, mesaj, gecmis, cache_ctx)
-
-    with ThreadPoolExecutor(max_workers=workers) as executor:
-        futures = {executor.submit(_calistir, (i, g)): i for i, g in enumerate(gorevler)}
-        for future in as_completed(futures):
-            try:
-                idx, cevap = future.result()
-                sonuclar[idx] = cevap
-            except Exception as e:
-                idx = futures[future]
-                sonuclar[idx] = f"ERROR: {e}"
-
-    return sonuclar
-
-
-# ═════════════════════════════════════════════════════════════
 # ANALYSIS RUNNERS
 # ═════════════════════════════════════════════════════════════
 def run_tekli(brief, aktif_alanlar):
