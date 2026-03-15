@@ -40,587 +40,262 @@ st.set_page_config(
 # ═════════════════════════════════════════════════════════════
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500;1,6..72,300;1,6..72,400&family=JetBrains+Mono:wght@300;400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&family=JetBrains+Mono:wght@400&display=swap');
 
-/* ══════════════════════════════════════════════════════
-   DESIGN TOKENS — Claude-adjacent palette
-   Styrene → Plus Jakarta Sans
-   Tiempos → Newsreader
-   ══════════════════════════════════════════════════════ */
+/* ── Design Tokens ── */
 :root {
-    /* Surfaces */
-    --surface-0:   #0D0D0F;
-    --surface-1:   #111114;
-    --surface-2:   #16161A;
-    --surface-3:   #1C1C22;
-    --surface-4:   #242430;
-
-    /* Borders */
-    --border-0:    rgba(255,255,255,0.06);
-    --border-1:    rgba(255,255,255,0.10);
-    --border-2:    rgba(255,255,255,0.16);
-
-    /* Text */
-    --text-0:      #F2F1EE;
-    --text-1:      #B8B7C0;
-    --text-2:      #6E6D7A;
-    --text-3:      #3E3D4A;
-
-    /* Accent — warm terracotta (turuncu Anthropic tonu) */
-    --accent:      #DA6A42;
-    --accent-dim:  rgba(218, 106, 66, 0.14);
-    --accent-glow: rgba(218, 106, 66, 0.22);
-
-    /* Status */
-    --ok:   #3DBF82;
-    --warn: #E8A838;
-    --err:  #CF4F4F;
-
-    /* Typography */
-    --font-sans:  'Plus Jakarta Sans', system-ui, sans-serif;
-    --font-serif: 'Newsreader', Georgia, serif;
-    --font-mono:  'JetBrains Mono', monospace;
-
-    /* Radius */
-    --r-sm: 6px;
-    --r-md: 10px;
-    --r-lg: 16px;
-
-    /* Transitions */
-    --t-fast: 0.12s cubic-bezier(0.4,0,0.2,1);
-    --t-med:  0.22s cubic-bezier(0.4,0,0.2,1);
+    --bg0: #0D0D0F; --bg1: #111114; --bg2: #16161A;
+    --bg3: #1C1C22; --bg4: #23232C;
+    --b0: rgba(255,255,255,0.06);
+    --b1: rgba(255,255,255,0.10);
+    --b2: rgba(255,255,255,0.16);
+    --t0: #F0EFED; --t1: #B5B4BD; --t2: #6A6978; --t3: #3A3948;
+    --accent: #DA6A42;
+    --accent-dim: rgba(218,106,66,0.12);
+    --ok: #3DBF82; --warn: #E8A838; --err: #CF4F4F;
+    --sans: 'Plus Jakarta Sans', system-ui, sans-serif;
+    --mono: 'JetBrains Mono', monospace;
+    --r: 8px; --r2: 12px; --r3: 16px;
 }
 
-/* ── Reset ─────────────────────────────────────── */
 html, body, [class*="css"] {
-    font-family: var(--font-sans) !important;
-    background:  var(--surface-0) !important;
-    color:       var(--text-0) !important;
+    font-family: var(--sans) !important;
+    background: var(--bg0) !important;
+    color: var(--t0) !important;
 }
-.stApp {
-    background: var(--surface-0) !important;
-    /* Subtle noise texture overlay */
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.025'/%3E%3C/svg%3E") !important;
-}
+.stApp { background: var(--bg0) !important; }
 
-/* ── Streamlit chrome ──────────────────────────── */
+/* ── Hide chrome ── */
 #MainMenu, footer, .stDeployButton { display: none !important; }
-header[data-testid="stHeader"]     { display: none !important; }
+header[data-testid="stHeader"] { display: none !important; }
 [data-testid="collapsedControl"],
 [data-testid="stSidebarCollapseButton"],
 [data-testid="stSidebarExpandButton"],
 button[kind="header"] { display: none !important; }
 
-/* ── Sidebar ────────────────────────────────────── */
+/* ── Sidebar ── */
 [data-testid="stSidebar"] {
-    background:  var(--surface-1) !important;
-    border-right: 1px solid var(--border-0) !important;
-    display:     block !important;
-    visibility:  visible !important;
-    transform:   none !important;
-    min-width:   268px !important;
-    max-width:   268px !important;
-    width:       268px !important;
-    position:    relative !important;
-    left:        0 !important;
+    background: var(--bg1) !important;
+    border-right: 1px solid var(--b0) !important;
+    display: block !important; visibility: visible !important;
+    transform: none !important; min-width: 268px !important;
+    max-width: 268px !important; width: 268px !important;
+    position: relative !important; left: 0 !important;
 }
 [data-testid="stSidebar"][aria-expanded="false"] {
-    display:    block !important;
-    visibility: visible !important;
-    transform:  none !important;
-    left:       0 !important;
-    width:      268px !important;
-    min-width:  268px !important;
+    display: block !important; visibility: visible !important;
+    transform: none !important; left: 0 !important;
+    width: 268px !important; min-width: 268px !important;
 }
-[data-testid="stSidebar"] > div {
-    padding: 1.4rem 1.1rem !important;
-}
+[data-testid="stSidebar"] > div { padding: 1.4rem 1.1rem !important; }
 
-/* ── Buttons ────────────────────────────────────── */
+/* ── Buttons — NO transform/box-shadow transitions ── */
 .stButton > button {
-    background:     var(--accent) !important;
-    color:          #fff !important;
-    border:         none !important;
-    border-radius:  var(--r-md) !important;
-    font-family:    var(--font-sans) !important;
-    font-weight:    600 !important;
-    font-size:      0.88rem !important;
+    background: var(--accent) !important;
+    color: #fff !important; border: none !important;
+    border-radius: var(--r) !important;
+    font-family: var(--sans) !important;
+    font-weight: 600 !important; font-size: 0.88rem !important;
     letter-spacing: 0.01em !important;
-    padding:        0.58rem 1.2rem !important;
-    transition:     background var(--t-fast), transform var(--t-fast),
-                    box-shadow var(--t-fast) !important;
-    width:          100% !important;
+    padding: 0.58rem 1.2rem !important;
+    width: 100% !important;
 }
-.stButton > button:hover {
-    background:  #C45A32 !important;
-    transform:   translateY(-1px) !important;
-    box-shadow:  0 6px 24px var(--accent-glow) !important;
-}
-.stButton > button:active {
-    transform:   translateY(0) !important;
-}
+.stButton > button:hover { background: #C45A32 !important; }
 .stButton > button:disabled {
-    background:  var(--surface-3) !important;
-    color:       var(--text-2) !important;
-    transform:   none !important;
-    box-shadow:  none !important;
+    background: var(--bg3) !important; color: var(--t2) !important;
 }
-
-/* Secondary buttons (mode tiles, domain tiles) */
 .stButton > button[kind="secondary"] {
-    background:     var(--surface-3) !important;
-    color:          var(--text-1) !important;
-    border:         1px solid var(--border-0) !important;
+    background: var(--bg3) !important;
+    color: var(--t1) !important;
+    border: 1px solid var(--b0) !important;
 }
 .stButton > button[kind="secondary"]:hover {
-    background:   var(--surface-4) !important;
-    border-color: var(--border-1) !important;
-    color:        var(--text-0) !important;
-    box-shadow:   none !important;
+    background: var(--bg4) !important; color: var(--t0) !important;
 }
 
-/* ── Text inputs ─────────────────────────────────── */
+/* ── Text inputs ── */
 .stTextArea textarea, .stTextInput input {
-    background:   var(--surface-2) !important;
-    border:       1px solid var(--border-0) !important;
-    border-radius: var(--r-md) !important;
-    color:        var(--text-0) !important;
-    font-family:  var(--font-sans) !important;
-    font-size:    0.92rem !important;
-    line-height:  1.6 !important;
-    transition:   border-color var(--t-fast), box-shadow var(--t-fast) !important;
+    background: var(--bg2) !important; border: 1px solid var(--b0) !important;
+    border-radius: var(--r) !important; color: var(--t0) !important;
+    font-family: var(--sans) !important; font-size: 0.92rem !important;
+    line-height: 1.6 !important;
 }
 .stTextArea textarea:focus, .stTextInput input:focus {
     border-color: var(--accent) !important;
-    box-shadow:   0 0 0 3px var(--accent-dim) !important;
-    outline:      none !important;
+    box-shadow: 0 0 0 2px var(--accent-dim) !important;
 }
 
-/* ── Number input ────────────────────────────────── */
+/* ── Number input ── */
 [data-testid="stNumberInput"] input {
-    background:   var(--surface-2) !important;
-    border:       1px solid var(--border-0) !important;
-    border-radius: var(--r-sm) !important;
-    color:        var(--text-0) !important;
-    font-family:  var(--font-mono) !important;
-    font-size:    0.85rem !important;
+    background: var(--bg2) !important; border: 1px solid var(--b0) !important;
+    border-radius: 6px !important; color: var(--t0) !important;
+    font-family: var(--mono) !important; font-size: 0.85rem !important;
 }
 
-/* ── Checkbox ────────────────────────────────────── */
-.stCheckbox label {
-    color:        var(--text-1) !important;
-    font-family:  var(--font-sans) !important;
-    font-size:    0.88rem !important;
-}
+/* ── Checkbox / Slider / Radio ── */
+.stCheckbox label { color: var(--t1) !important; font-size: 0.88rem !important; }
+.stRadio label    { color: var(--t1) !important; font-size: 0.88rem !important; }
 
-/* ── Slider ──────────────────────────────────────── */
-.stSlider [data-testid="stSlider"] > div > div > div {
-    background: var(--accent) !important;
-}
-
-/* ── Radio ───────────────────────────────────────── */
-.stRadio label {
-    color:      var(--text-1) !important;
-    font-size:  0.88rem !important;
-    font-family: var(--font-sans) !important;
-}
-
-/* ── Select ──────────────────────────────────────── */
-[data-testid="stSelectbox"] > div > div {
-    background:   var(--surface-2) !important;
-    border:       1px solid var(--border-0) !important;
-    border-radius: var(--r-sm) !important;
-}
-
-/* ── Metrics ─────────────────────────────────────── */
+/* ── Metrics ── */
 [data-testid="stMetric"] {
-    background:    var(--surface-2) !important;
-    border:        1px solid var(--border-0) !important;
-    border-radius: var(--r-md) !important;
-    padding:       1rem 1.1rem !important;
+    background: var(--bg2) !important; border: 1px solid var(--b0) !important;
+    border-radius: var(--r2) !important; padding: 0.9rem 1rem !important;
 }
 [data-testid="stMetricValue"] {
-    color:       var(--accent) !important;
-    font-family: var(--font-mono) !important;
-    font-size:   1.35rem !important;
-    font-weight: 500 !important;
+    color: var(--accent) !important; font-family: var(--mono) !important;
+    font-size: 1.3rem !important; font-weight: 500 !important;
 }
 [data-testid="stMetricLabel"] {
-    color:          var(--text-2) !important;
-    font-size:      0.7rem !important;
-    text-transform: uppercase !important;
-    letter-spacing: 0.1em !important;
+    color: var(--t2) !important; font-size: 0.68rem !important;
+    text-transform: uppercase !important; letter-spacing: 0.1em !important;
 }
 
-/* ── Expander ────────────────────────────────────── */
+/* ── Expander ── */
 [data-testid="stExpander"] {
-    background:    var(--surface-2) !important;
-    border:        1px solid var(--border-0) !important;
-    border-radius: var(--r-md) !important;
+    background: var(--bg2) !important; border: 1px solid var(--b0) !important;
+    border-radius: var(--r2) !important;
 }
 [data-testid="stExpander"] summary {
-    color:       var(--text-0) !important;
-    font-weight: 500 !important;
-    font-family: var(--font-sans) !important;
+    color: var(--t0) !important; font-weight: 500 !important;
 }
 
-/* ── Tabs ────────────────────────────────────────── */
+/* ── Tabs ── */
 [data-testid="stTabs"] [role="tablist"] {
-    border-bottom:  1px solid var(--border-0) !important;
-    gap:            4px !important;
+    border-bottom: 1px solid var(--b0) !important;
 }
 [data-testid="stTabs"] [role="tab"] {
-    background:     transparent !important;
-    border:         none !important;
-    color:          var(--text-2) !important;
-    font-family:    var(--font-sans) !important;
-    font-size:      0.88rem !important;
-    font-weight:    500 !important;
-    padding:        0.5rem 1rem !important;
-    border-radius:  var(--r-sm) var(--r-sm) 0 0 !important;
-    transition:     color var(--t-fast) !important;
+    background: transparent !important; border: none !important;
+    color: var(--t2) !important; font-family: var(--sans) !important;
+    font-size: 0.88rem !important; font-weight: 500 !important;
+    padding: 0.5rem 1rem !important;
 }
-[data-testid="stTabs"] [role="tab"]:hover {
-    color: var(--text-0) !important;
-    background: var(--surface-2) !important;
-}
+[data-testid="stTabs"] [role="tab"]:hover { color: var(--t0) !important; }
 [data-testid="stTabs"] [role="tab"][aria-selected="true"] {
-    color:         var(--accent) !important;
+    color: var(--accent) !important;
     border-bottom: 2px solid var(--accent) !important;
-    background:    transparent !important;
 }
 
-/* ── Progress ────────────────────────────────────── */
-.stProgress > div > div {
-    background:    var(--accent) !important;
-    border-radius: 3px !important;
-    transition:    width 0.4s ease !important;
-}
-.stProgress > div {
-    background:    var(--surface-3) !important;
-    border-radius: 3px !important;
-}
+/* ── Progress ── */
+.stProgress > div > div { background: var(--accent) !important; border-radius: 3px !important; }
+.stProgress > div       { background: var(--bg3) !important; border-radius: 3px !important; }
 
-/* ── Scrollbar ───────────────────────────────────── */
+/* ── Scrollbar ── */
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb {
-    background:    var(--surface-4);
-    border-radius: 3px;
-}
-::-webkit-scrollbar-thumb:hover { background: var(--text-3); }
+::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 3px; }
 
-/* ══════════════════════════════════════════════════
-   CUSTOM COMPONENTS
-   ══════════════════════════════════════════════════ */
+/* ══ CUSTOM COMPONENTS ══ */
 
-/* ── Logo area ───────────────────────────────────── */
 .logo-area {
-    display:        flex;
-    align-items:    center;
-    gap:            10px;
-    margin-bottom:  1.8rem;
-    padding-bottom: 1.4rem;
-    border-bottom:  1px solid var(--border-0);
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 1.6rem; padding-bottom: 1.3rem;
+    border-bottom: 1px solid var(--b0);
 }
-.logo-icon { font-size: 1.5rem; }
-.logo-text {
-    font-family:    var(--font-sans);
-    font-size:      1.0rem;
-    font-weight:    700;
-    color:          var(--text-0);
-    letter-spacing: -0.01em;
-}
-.logo-sub {
-    font-size:      0.65rem;
-    font-family:    var(--font-mono);
-    color:          var(--text-2);
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    margin-top:     1px;
-}
+.logo-icon { font-size: 1.4rem; }
+.logo-text { font-family: var(--sans); font-size: 1.0rem; font-weight: 700; color: var(--t0); }
+.logo-sub  { font-size: 0.62rem; font-family: var(--mono); color: var(--t2);
+              letter-spacing: 0.08em; text-transform: uppercase; margin-top: 1px; }
 
-/* ── Section label ───────────────────────────────── */
 .section-label {
-    font-family:    var(--font-mono);
-    font-size:      0.6rem;
-    color:          var(--text-2);
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    margin-bottom:  0.5rem;
-    margin-top:     1.3rem;
+    font-family: var(--mono); font-size: 0.6rem; color: var(--t2);
+    letter-spacing: 0.14em; text-transform: uppercase;
+    margin-bottom: 0.5rem; margin-top: 1.2rem;
 }
 
-/* ── Mode cards ──────────────────────────────────── */
-.mode-card {
-    background:    var(--surface-2);
-    border:        1px solid var(--border-0);
-    border-radius: var(--r-md);
-    padding:       0.9rem 1rem;
-    margin-bottom: 0.5rem;
-    cursor:        pointer;
-    transition:    border-color var(--t-med), background var(--t-med);
-    position:      relative;
-    overflow:      hidden;
+.hero-title {
+    font-family: var(--sans); font-size: 1.8rem; font-weight: 800;
+    color: var(--t0); letter-spacing: -0.025em; line-height: 1.15;
+    margin-bottom: 0.2rem;
 }
-.mode-card::before {
-    content:    '';
-    position:   absolute;
-    left:       0; top: 0; bottom: 0;
-    width:      3px;
-    background: transparent;
-    transition: background var(--t-med);
-}
-.mode-card:hover {
-    border-color: var(--border-1);
-    background:   var(--surface-3);
-}
-.mode-card.active {
-    border-color: var(--accent);
-    background:   var(--accent-dim);
-}
-.mode-card.active::before { background: var(--accent); }
-.mode-number {
-    font-family:    var(--font-mono);
-    font-size:      0.6rem;
-    color:          var(--accent);
-    letter-spacing: 0.1em;
-    margin-bottom:  3px;
-}
-.mode-title {
-    font-weight: 600;
-    font-size:   0.88rem;
-    color:       var(--text-0);
-    margin-bottom: 3px;
-}
-.mode-desc {
-    font-size:   0.73rem;
-    color:       var(--text-2);
-    line-height: 1.45;
+.hero-sub {
+    font-size: 0.88rem; color: var(--t2); margin-bottom: 1.6rem; font-weight: 400;
 }
 
-/* ── Agent log ───────────────────────────────────── */
 .agent-log {
-    background:    var(--surface-1);
-    border:        1px solid var(--border-0);
-    border-radius: var(--r-md);
-    padding:       0.8rem;
-    height:        300px;
-    overflow-y:    auto;
-    font-family:   var(--font-mono);
-    font-size:     0.75rem;
+    background: var(--bg1); border: 1px solid var(--b0);
+    border-radius: var(--r2); padding: 0.8rem;
+    height: 300px; overflow-y: auto;
+    font-family: var(--mono); font-size: 0.75rem;
 }
 .agent-row {
-    display:       flex;
-    align-items:   center;
-    gap:           9px;
-    padding:       5px 7px;
-    border-radius: var(--r-sm);
-    margin-bottom: 2px;
-    transition:    background var(--t-fast);
+    display: flex; align-items: center; gap: 9px;
+    padding: 5px 7px; border-radius: 6px; margin-bottom: 2px;
 }
-.agent-row.running {
-    background:    var(--accent-dim);
-    border-left:   2px solid var(--accent);
-}
-.agent-row.done   { color: var(--text-2); }
+.agent-row.running { background: var(--accent-dim); border-left: 2px solid var(--accent); }
+.agent-row.done    { color: var(--t2); }
 .agent-row.done .agent-status { color: var(--ok); }
-.agent-row.stopped { color: var(--warn); }
 .agent-status { min-width: 14px; text-align: center; }
-.agent-name   { flex: 1; color: var(--text-1); }
-.agent-cost   { color: var(--text-2); font-size: 0.66rem; }
-.agent-cost:nth-child(3) {
-    color:          var(--text-3);
-    font-size:      0.62rem;
-    letter-spacing: 0.04em;
-}
+.agent-name   { flex: 1; color: var(--t1); }
+.agent-cost   { color: var(--t2); font-size: 0.66rem; }
+.agent-cost:nth-child(3) { color: var(--t3); font-size: 0.62rem; letter-spacing: 0.04em; }
 
-/* ── Output / report box ─────────────────────────── */
 .output-box {
-    background:    var(--surface-1);
-    border:        1px solid var(--border-0);
-    border-radius: var(--r-lg);
-    padding:       1.6rem 1.8rem;
-    font-family:   var(--font-serif);
-    font-size:     0.95rem;
-    line-height:   1.75;
-    color:         var(--text-0);
-    white-space:   pre-wrap;
-    max-height:    640px;
-    overflow-y:    auto;
+    background: var(--bg1); border: 1px solid var(--b0);
+    border-radius: var(--r3); padding: 1.5rem 1.8rem;
+    font-family: var(--sans); font-size: 0.92rem;
+    line-height: 1.72; color: var(--t0);
+    white-space: pre-wrap; max-height: 640px; overflow-y: auto;
 }
 
-/* ── Stat bar ────────────────────────────────────── */
-.stat-bar {
-    display:     flex;
-    gap:         0.8rem;
-    margin:      0.8rem 0;
-    flex-wrap:   wrap;
-}
-.stat-item {
-    background:    var(--surface-2);
-    border:        1px solid var(--border-0);
-    border-radius: var(--r-md);
-    padding:       0.65rem 0.9rem;
-    flex:          1;
-    min-width:     90px;
-}
-.stat-val {
-    font-family: var(--font-mono);
-    font-size:   1.05rem;
-    font-weight: 500;
-    color:       var(--accent);
-    line-height: 1.2;
-}
-.stat-lbl {
-    font-size:      0.65rem;
-    color:          var(--text-2);
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    margin-top:     2px;
-}
+.stat-bar  { display: flex; gap: 0.7rem; margin: 0.8rem 0; flex-wrap: wrap; }
+.stat-item { background: var(--bg2); border: 1px solid var(--b0);
+             border-radius: var(--r); padding: 0.6rem 0.9rem; flex: 1; min-width: 90px; }
+.stat-val  { font-family: var(--mono); font-size: 1.05rem; font-weight: 500;
+             color: var(--accent); line-height: 1.2; }
+.stat-lbl  { font-size: 0.63rem; color: var(--t2); text-transform: uppercase;
+             letter-spacing: 0.1em; margin-top: 2px; }
 
-/* ── Domain chips ────────────────────────────────── */
 .domain-chip {
-    display:       inline-block;
-    background:    var(--accent-dim);
-    border:        1px solid rgba(218,106,66,0.3);
-    color:         var(--accent);
-    border-radius: 20px;
-    padding:       3px 10px;
-    font-size:     0.71rem;
-    font-family:   var(--font-mono);
-    margin:        2px;
+    display: inline-block; background: var(--accent-dim);
+    border: 1px solid rgba(218,106,66,0.28); color: var(--accent);
+    border-radius: 20px; padding: 3px 9px;
+    font-size: 0.7rem; font-family: var(--mono); margin: 2px;
 }
+.domain-count { font-family: var(--mono); font-size: 0.62rem; color: var(--t2); margin-bottom: 0.7rem; }
 
-/* ── Domain count ────────────────────────────────── */
-.domain-count {
-    font-family: var(--font-mono);
-    font-size:   0.62rem;
-    color:       var(--text-2);
-    margin-bottom: 0.7rem;
-}
+.qa-box { background: var(--bg2); border: 1px solid var(--b0);
+          border-left: 3px solid var(--accent); border-radius: var(--r2);
+          padding: 0.9rem 1.1rem; margin-bottom: 0.7rem; }
+.qa-question { font-size: 0.9rem; color: var(--t0); font-weight: 500; line-height: 1.5; }
+.qa-num      { font-family: var(--mono); font-size: 0.62rem; color: var(--accent);
+               letter-spacing: 0.1em; margin-bottom: 4px; }
 
-/* ── QA box ──────────────────────────────────────── */
-.qa-box {
-    background:    var(--surface-2);
-    border:        1px solid var(--border-0);
-    border-left:   3px solid var(--accent);
-    border-radius: var(--r-md);
-    padding:       0.9rem 1.1rem;
-    margin-bottom: 0.7rem;
-}
-.qa-question {
-    font-size:   0.9rem;
-    color:       var(--text-0);
-    font-weight: 500;
-    line-height: 1.5;
-}
-.qa-num {
-    font-family:    var(--font-mono);
-    font-size:      0.62rem;
-    color:          var(--accent);
-    letter-spacing: 0.1em;
-    margin-bottom:  4px;
-}
-
-/* ── Round badges ────────────────────────────────── */
-.round-badge {
-    display:       inline-flex;
-    align-items:   center;
-    gap:           5px;
-    background:    var(--surface-2);
-    border:        1px solid var(--border-0);
-    border-radius: 20px;
-    padding:       3px 11px;
-    font-family:   var(--font-mono);
-    font-size:     0.7rem;
-    color:         var(--text-2);
-    margin-right:  5px;
-}
+.round-badge { display: inline-flex; align-items: center; gap: 5px;
+               background: var(--bg2); border: 1px solid var(--b0);
+               border-radius: 20px; padding: 3px 10px;
+               font-family: var(--mono); font-size: 0.7rem; color: var(--t2); margin-right: 5px; }
 .round-badge.active { border-color: var(--accent); color: var(--accent); }
 .round-badge.done   { border-color: var(--ok);     color: var(--ok); }
 
-/* ── Model toggle buttons ────────────────────────── */
-.model-toggle {
-    display:       flex;
-    gap:           4px;
-    margin:        0.5rem 0 0.3rem;
-}
+.model-toggle { display: flex; gap: 4px; margin: 0.5rem 0 0.3rem; }
 .model-btn {
-    flex:          1;
-    background:    var(--surface-3);
-    border:        1px solid var(--border-0);
-    border-radius: var(--r-sm);
-    padding:       5px 0;
-    font-size:     0.7rem;
-    font-family:   var(--font-mono);
-    color:         var(--text-2);
-    cursor:        pointer;
-    text-align:    center;
-    transition:    all var(--t-fast);
+    flex: 1; background: var(--bg3); border: 1px solid var(--b0);
+    border-radius: 6px; padding: 5px 0; font-size: 0.7rem;
+    font-family: var(--mono); color: var(--t2); cursor: pointer; text-align: center;
 }
-.model-btn:hover {
-    border-color: var(--border-1);
-    color:        var(--text-0);
+.model-btn:hover  { border-color: var(--b1); color: var(--t0); }
+.model-btn.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+
+/* Login */
+.login-card {
+    max-width: 360px; margin: 8vh auto 0;
+    background: var(--bg2); border: 1px solid var(--b1);
+    border-radius: var(--r3); padding: 2.8rem 2.2rem;
 }
-.model-btn.active {
-    background:   var(--accent-dim);
-    border-color: var(--accent);
-    color:        var(--accent);
+.login-logo {
+    font-family: var(--sans); font-size: 1.05rem; font-weight: 700;
+    color: var(--t0); margin-bottom: 4px;
+}
+.login-sub {
+    font-family: var(--mono); font-size: 0.6rem; color: var(--t2);
+    letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 2rem;
 }
 
-/* ── Hero heading (input page) ───────────────────── */
-.hero-title {
-    font-family:    var(--font-sans);
-    font-size:      1.85rem;
-    font-weight:    800;
-    color:          var(--text-0);
-    letter-spacing: -0.03em;
-    line-height:    1.15;
-    margin-bottom:  0.25rem;
-}
-.hero-sub {
-    font-family:  var(--font-serif);
-    font-style:   italic;
-    font-size:    1.0rem;
-    color:        var(--text-2);
-    font-weight:  300;
-    margin-bottom: 1.6rem;
-}
-
-/* ── Info callout ────────────────────────────────── */
-.callout {
-    background:    var(--surface-2);
-    border:        1px solid var(--border-0);
-    border-left:   3px solid var(--accent);
-    border-radius: var(--r-sm);
-    padding:       0.65rem 1rem;
-    font-size:     0.8rem;
-    color:         var(--text-1);
-    margin-bottom: 0.8rem;
-}
-
-/* ── Running animation ───────────────────────────── */
-@keyframes pulse-dot {
-    0%, 100% { opacity: 1; }
-    50%       { opacity: 0.3; }
-}
-.running-dot {
-    display:         inline-block;
-    width:           6px; height: 6px;
-    background:      var(--accent);
-    border-radius:   50%;
-    margin-right:    6px;
-    animation:       pulse-dot 1.4s ease-in-out infinite;
-}
-
-/* ── Mobile ──────────────────────────────────────── */
 @media (max-width: 768px) {
-    .stat-bar   { flex-direction: column; }
-    .agent-log  { height: 200px; }
+    .stat-bar  { flex-direction: column; }
+    .agent-log { height: 200px; }
     .output-box { max-height: 380px; }
-    .hero-title { font-size: 1.45rem; }
+    .hero-title { font-size: 1.4rem; }
 }
 </style>
 """, unsafe_allow_html=True)
@@ -701,36 +376,31 @@ def _login_check() -> bool:
         return True
 
     # ── Login formu ──────────────────────────────────────────
-    st.markdown("""
-    <style>
-    .login-wrap {
-        max-width: 380px;
-        margin: 10vh auto 0;
-        padding: 2.5rem 2rem;
-        background: #18181C;
-        border: 1px solid #2A2A32;
-        border-radius: 14px;
-    }
-    .login-title { font-size: 1.4rem; font-weight: 800; margin-bottom: 0.3rem; }
-    .login-sub   { font-size: 0.75rem; color: #9998A3; margin-bottom: 1.8rem; letter-spacing: 0.08em; text-transform: uppercase; }
-    </style>
-    <div class="login-wrap">
-        <div class="login-title">⚙️ Engineering AI</div>
-        <div class="login-sub">Multi-Agent System — Giriş</div>
-    </div>
-    """, unsafe_allow_html=True)
+    # Ortala: boş sütun + form + boş sütun
+    _, col_mid, _ = st.columns([1, 1.2, 1])
+    with col_mid:
+        st.markdown("""
+        <div class="login-card">
+          <div class="login-logo">⚙ Engineering AI</div>
+          <div class="login-sub">Multi-Agent System</div>
+        </div>
+        """, unsafe_allow_html=True)
 
-    with st.form("login_form", clear_on_submit=False):
-        user  = st.text_input("Kullanıcı Adı", placeholder="username")
-        pwd   = st.text_input("Şifre", type="password", placeholder="••••••••")
-        submitted = st.form_submit_button("Giriş Yap", use_container_width=True)
+        with st.form("login_form", clear_on_submit=False):
+            user = st.text_input("Username", placeholder="username",
+                                  label_visibility="visible")
+            pwd  = st.text_input("Password", type="password",
+                                  placeholder="••••••••",
+                                  label_visibility="visible")
+            st.markdown('<div style="margin-top:0.4rem"></div>', unsafe_allow_html=True)
+            submitted = st.form_submit_button("Sign In", use_container_width=True)
 
-        if submitted:
-            if user == expected_user and pwd == expected_pass:
-                st.session_state["_authenticated"] = True
-                st.rerun()
-            else:
-                st.error("❌ Kullanıcı adı veya şifre hatalı.")
+            if submitted:
+                if user == expected_user and pwd == expected_pass:
+                    st.session_state["_authenticated"] = True
+                    st.rerun()
+                else:
+                    st.error("Incorrect username or password.")
 
     return False  # henüz doğrulanmadı — ana uygulama gösterilmez
 
@@ -1504,10 +1174,10 @@ if not _login_check():
 with st.sidebar:
     st.markdown("""
     <div class="logo-area">
-        <div class="logo-icon">⚙</div>
+        <div class="logo-icon">⚙️</div>
         <div>
             <div class="logo-text">Engineering AI</div>
-            <div class="logo-sub">Multi-Agent · v2</div>
+            <div class="logo-sub">Multi-Agent System</div>
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -1527,7 +1197,7 @@ with st.sidebar:
         if st.button(f"{'● ' if is_active else ''}{title}", key=f"mode_btn_{num}", use_container_width=True):
             st.session_state.mode = num
             st.rerun()
-        st.markdown(f'<div style="font-size:0.72rem;color:var(--text-1);margin:-0.4rem 0 0.5rem 0.3rem">{desc}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div style="font-size:0.72rem;color:#9998A3;margin:-0.4rem 0 0.5rem 0.3rem">{desc}</div>', unsafe_allow_html=True)
 
     if st.session_state.mode in (3, 4):
         st.markdown('<div class="section-label">Döngü Ayarı</div>', unsafe_allow_html=True)
@@ -1581,7 +1251,7 @@ with st.sidebar:
     else:
         st.session_state.cost_limit = 0.0
         st.markdown(
-            '<div style="font-size:0.68rem;color:var(--text-2);margin:2px 0 6px">'
+            '<div style="font-size:0.68rem;color:#5A5A65;margin:2px 0 6px">'
             'Sınırsız — config değerleri kullanılır</div>',
             unsafe_allow_html=True
         )
@@ -1603,9 +1273,9 @@ with st.sidebar:
     # Maliyet tahmini göster
     _dm = st.session_state.get("domain_model", "sonnet")
     if _dm == "sonnet":
-        st.markdown('<div style="font-size:0.7rem;color:var(--ok);margin:-0.3rem 0 0.8rem 0.2rem">💡 final_rapor + sentez Opus&#39;ta kalır</div>', unsafe_allow_html=True)
+        st.markdown('<div style="font-size:0.7rem;color:#2DB87A;margin:-0.3rem 0 0.8rem 0.2rem">💡 final_rapor + sentez Opus&#39;ta kalır</div>', unsafe_allow_html=True)
     else:
-        st.markdown('<div style="font-size:0.7rem;color:var(--warn);margin:-0.3rem 0 0.8rem 0.2rem">⚠️ Tüm domain ajanları Opus — maliyet yüksek</div>', unsafe_allow_html=True)
+        st.markdown('<div style="font-size:0.7rem;color:#E8A838;margin:-0.3rem 0 0.8rem 0.2rem">⚠️ Tüm domain ajanları Opus — maliyet yüksek</div>', unsafe_allow_html=True)
 
     st.markdown("---")
     st.markdown('<div class="section-label">Oturum Maliyeti</div>', unsafe_allow_html=True)
@@ -1628,10 +1298,10 @@ with st.sidebar:
     _saved = st.session_state.get("cache_saved_usd", 0.0)
     if _total_in > 0:
         st.markdown(f"""
-        <div style="margin-top:0.6rem;font-size:0.65rem;color:var(--text-2)">
+        <div style="margin-top:0.6rem;font-size:0.65rem;color:#5A5A65">
           <div>↑ {_total_in:,} in · ↓ {_total_out:,} out</div>
           <div style="margin-top:2px">📦 write {_cache_w:,} · read {_cache_r:,}</div>
-          <div style="margin-top:2px;color:var(--ok)">💰 tasarruf ${_saved:.4f}</div>
+          <div style="margin-top:2px;color:#2DB87A">💰 tasarruf ${_saved:.4f}</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -1664,10 +1334,10 @@ with st.sidebar:
                 maliyet = f"${analiz['cost']:.3f}"
                 mod_etiket = {1:"M1",2:"M2",3:"M3",4:"M4"}.get(analiz.get("mode",4),"M?")
                 st.markdown(f"""
-                <div style="background:var(--surface-1);border:1px solid var(--border-0);border-radius:6px;
+                <div style="background:#131316;border:1px solid #2A2A32;border-radius:6px;
                             padding:6px 10px;margin-bottom:4px;cursor:default">
-                  <div style="font-size:0.68rem;color:var(--accent)">{tarih} · {mod_etiket} · {maliyet}</div>
-                  <div style="font-size:0.7rem;color:var(--text-1);margin-top:2px">{brief_kisa}...</div>
+                  <div style="font-size:0.68rem;color:#E05A2B">{tarih} · {mod_etiket} · {maliyet}</div>
+                  <div style="font-size:0.7rem;color:#9998A3;margin-top:2px">{brief_kisa}...</div>
                 </div>
                 """, unsafe_allow_html=True)
     except Exception:
@@ -1679,13 +1349,13 @@ with st.sidebar:
 # ═════════════════════════════════════════════════════════════
 mode_labels = {1: "Tekli Ajan", 2: "Çift Ajan", 3: "Yarı Otomatik", 4: "Tam Otomatik"}
 st.markdown(f"""
-<div style="margin-bottom:1.8rem">
-    <div style="font-family:var(--font-mono);font-size:0.6rem;color:var(--text-2);
-                letter-spacing:0.14em;text-transform:uppercase;margin-bottom:6px">
-        MOD {st.session_state.mode} &nbsp;·&nbsp; {mode_labels[st.session_state.mode]}
+<div style="margin-bottom:1.5rem">
+    <div style="font-family:'JetBrains Mono',monospace;font-size:0.65rem;color:#5A5A65;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:4px">
+        MOD {st.session_state.mode} · {mode_labels[st.session_state.mode]}
     </div>
-    <div class="hero-title">Engineering Analysis</div>
-    <div class="hero-sub">Multi-agent · {len(AGENTS)//2} domains · Parallel execution</div>
+    <h1 style="font-family:'Syne',sans-serif;font-size:1.8rem;font-weight:800;color:#F0EFED;margin:0;letter-spacing:-0.03em">
+        Mühendislik Analizi
+    </h1>
 </div>
 """, unsafe_allow_html=True)
 
@@ -1699,8 +1369,8 @@ if st.session_state.step == "input":
     brief_input = st.text_area(
         label="brief",
         label_visibility="collapsed",
-        placeholder="Describe the engineering problem in detail...\n\nExample: Hypersonic missile material selection and thermal protection system design. Mach 8, 25 km altitude, 300 s flight duration.",
-        height=160,
+        placeholder="Describe the engineering problem in detail...\n\nExample: Hypersonic missile — material selection and TPS design. Mach 8, 25 km altitude, 300 s flight duration, max surface temp 2200°C.",
+        height=220,
         key="brief_input_widget"
     )
 
@@ -1714,28 +1384,23 @@ if st.session_state.step == "input":
         (4,"sonnet"): (0.80, 2.00), (4,"opus"): (4.00,12.00),
     }
     lo, hi = _est.get((_mode, _dm), (0.5, 2.0))
-    _color = "#2DB87A" if hi < 1 else "#E8A838" if hi < 4 else "#E05A2B"
+    _cok = "var(--ok)" if hi < 1 else "var(--warn)" if hi < 4 else "var(--accent)"
     st.markdown(f"""
-    <div style="background:var(--surface-1);border:1px solid {_color}40;border-radius:8px;
-                padding:8px 14px;margin-bottom:1rem;font-family:var(--mono)">
-      <span style="font-size:0.65rem;color:var(--text-2);text-transform:uppercase;letter-spacing:0.1em">
-        Tahmini Maliyet
+    <div style="background:var(--bg2);border:1px solid var(--b0);border-radius:8px;
+                padding:8px 14px;margin-bottom:0.8rem;display:flex;align-items:center;gap:12px">
+      <span style="font-size:0.62rem;color:var(--t2);text-transform:uppercase;
+                   letter-spacing:0.1em;font-family:var(--mono)">Est. Cost</span>
+      <span style="font-size:0.88rem;color:{_cok};font-weight:700;font-family:var(--mono)">
+        ${lo:.2f}–${hi:.2f}
       </span>
-      <span style="font-size:0.85rem;color:{_color};margin-left:10px;font-weight:700">
-        ${lo:.2f} – ${hi:.2f}
-      </span>
-      <span style="font-size:0.65rem;color:var(--text-2);margin-left:6px">
-        (~{lo*KUR:.0f}–{hi*KUR:.0f} TL)
-      </span>
+      <span style="font-size:0.7rem;color:var(--t2)">≈ {lo*KUR:.0f}–{hi*KUR:.0f} TL</span>
     </div>
     """, unsafe_allow_html=True)
 
     # Maliyet limiti
     _limit = st.session_state.get("cost_limit", 0.0)
 
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        start = st.button("⚡ Analizi Başlat", use_container_width=True, key="start_btn")
+    start = st.button("⚡ Start Analysis", use_container_width=True, key="start_btn")
 
     if start:
         if not brief_input.strip():
