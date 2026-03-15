@@ -49,12 +49,18 @@ class RAGStore:
              cost: float = 0.0,
              quality_score: int = None,
              open_questions: str = "",
-             agent_log: list = None) -> str:
+             agent_log: list = None,
+             observer_full: str = "",
+             crossval_full: str = "",
+             round_scores: list = None) -> str:
         """
-        Analizi kaydet.
-        quality_score: Observer'ın verdiği puan (0-100)
-        open_questions: Çözülemeyen / açık kalan sorular
-        agent_log: Ajan çıktıları listesi (domain bazlı özetler için)
+        Analizi kaydet — geliştirme odaklı tam kayıt.
+        quality_score: Observer son turu puanı (0-100)
+        open_questions: soru_uretici ajanının tam çıktısı
+        agent_log: Tüm ajan çıktıları [{key, name, output, cevap, dusunce, cost}]
+        observer_full: Observer ajanının tam değerlendirme metni (tüm turlar)
+        crossval_full: Cross-validation ajanının tam bulgu metni
+        round_scores: Tur bazlı puan listesi [{tur, puan}]
         """
         import uuid
         zaman  = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -70,21 +76,43 @@ class RAGStore:
             f"Open questions: {open_questions[:200]}"
         )
 
-        # Domain bazlı özetler — her domain için ilgili ajanın çıktısını sakla
-        domain_summaries = {}
+        # Ajan çıktılarını kategorize et
+        domain_summaries  = {}   # domain _a/_b çıktıları
+        support_outputs   = {}   # destek ajan çıktıları (tam metin)
+        thinking_logs     = {}   # thinking/reasoning blokları
+
         if agent_log:
             for entry in agent_log:
-                key = entry.get("key", "")
-                output = entry.get("output", "") or entry.get("cevap", "")
-                if output and not output.startswith("ERROR"):
-                    # Domain anahtarını temizle (_a, _b suffix'ini kaldır)
-                    domain_key = key.rstrip("_ab").rstrip("_")
+                key     = entry.get("key", "")
+                output  = entry.get("output", "") or entry.get("cevap", "")
+                thinking = entry.get("dusunce", "") or entry.get("thinking", "")
+                name    = entry.get("name", key)
+
+                if not output or output.startswith("ERROR") or output == "STOPPED":
+                    continue
+
+                is_domain = key.endswith("_a") or key.endswith("_b")
+
+                if is_domain:
+                    domain_key = key[:-2]  # _a/_b kaldır
                     if domain_key not in domain_summaries:
                         domain_summaries[domain_key] = []
-                    # İlk 300 kelime
-                    words = output.split()
-                    summary = " ".join(words[:300])
-                    domain_summaries[domain_key].append(summary)
+                    domain_summaries[domain_key].append({
+                        "agent": key,
+                        "name":  name,
+                        "cost":  entry.get("cost", 0),
+                        "output": output,  # TAM metin — özet değil
+                    })
+                else:
+                    support_outputs[key] = {
+                        "name":   name,
+                        "cost":   entry.get("cost", 0),
+                        "output": output,
+                    }
+
+                # Thinking varsa sakla (final_rapor, risk, fmea)
+                if thinking:
+                    thinking_logs[key] = thinking
 
         self.collection.add(
             ids=[doc_id],
@@ -101,10 +129,15 @@ class RAGStore:
             }]
         )
 
-        # Tam raporu dosyaya kaydet
+        # ── Tam kayıt dosyasına yaz ──────────────────────────────
         os.makedirs(DB_PATH, exist_ok=True)
         rapor_path = os.path.join(DB_PATH, f"{doc_id}_report.txt")
+
+        SEP  = _REPORT_SEP
+        SEP2 = "─" * 60
+
         with open(rapor_path, "w", encoding="utf-8") as f:
+            # ── Header ────────────────────────────────────────────
             f.write(f"ID: {doc_id}\n")
             f.write(f"DATE: {zaman}\n")
             f.write(f"BRIEF: {brief}\n")
@@ -112,16 +145,62 @@ class RAGStore:
             f.write(f"MODE: {mode}\n")
             f.write(f"COST: ${cost:.4f}\n")
             f.write(f"QUALITY_SCORE: {quality_score or 'N/A'}\n")
+            if round_scores:
+                scores_str = " | ".join(f"R{r['tur']}:{r.get('puan','?')}" for r in round_scores)
+                f.write(f"ROUND_SCORES: {scores_str}\n")
+
+            # ── Açık sorular (soru_uretici tam çıktısı) ───────────
             if open_questions:
-                f.write(f"OPEN_QUESTIONS:\n{open_questions}\n")
-            f.write(_REPORT_SEP + "\n")
+                f.write(f"\n{SEP}\nOPEN QUESTIONS\n{SEP}\n")
+                f.write(open_questions + "\n")
+
+            # ── Observer tam değerlendirmesi ──────────────────────
+            if observer_full:
+                f.write(f"\n{SEP}\nOBSERVER EVALUATION (FULL)\n{SEP}\n")
+                f.write(observer_full + "\n")
+
+            # ── Cross-validation tam bulguları ────────────────────
+            if crossval_full:
+                f.write(f"\n{SEP}\nCROSS-VALIDATION FINDINGS (FULL)\n{SEP}\n")
+                f.write(crossval_full + "\n")
+
+            # ── Final rapor ───────────────────────────────────────
+            f.write(f"\n{SEP}\nFINAL REPORT\n{SEP}\n")
             f.write(final_report)
+
+            # ── Domain ajan çıktıları (tam metin) ─────────────────
             if domain_summaries:
-                f.write(f"\n\n{_REPORT_SEP}\nDOMAIN AGENT SUMMARIES\n{_REPORT_SEP}\n")
-                for dk, summaries in domain_summaries.items():
-                    f.write(f"\n[{dk.upper()}]\n")
-                    for s in summaries:
-                        f.write(s + "\n")
+                f.write(f"\n\n{SEP}\nDOMAIN AGENT OUTPUTS\n{SEP}\n")
+                for dk, entries in domain_summaries.items():
+                    for entry in entries:
+                        f.write(f"\n{SEP2}\n")
+                        f.write(f"AGENT: {entry['name']} | COST: ${entry['cost']:.5f}\n")
+                        f.write(f"{SEP2}\n")
+                        f.write(entry["output"] + "\n")
+
+            # ── Destek ajan çıktıları ─────────────────────────────
+            if support_outputs:
+                # gozlemci ve capraz_dogrulama özellikle önemli
+                priority_order = ["gozlemci", "capraz_dogrulama", "varsayim_belirsizlik",
+                                  "risk_guvenilirlik", "celisiki_cozum", "soru_uretici",
+                                  "alternatif_senaryo", "sentez"]
+                ordered_keys = [k for k in priority_order if k in support_outputs]
+                ordered_keys += [k for k in support_outputs if k not in ordered_keys]
+
+                f.write(f"\n\n{SEP}\nSUPPORT AGENT OUTPUTS\n{SEP}\n")
+                for k in ordered_keys:
+                    entry = support_outputs[k]
+                    f.write(f"\n{SEP2}\n")
+                    f.write(f"AGENT: {entry['name']} ({k}) | COST: ${entry['cost']:.5f}\n")
+                    f.write(f"{SEP2}\n")
+                    f.write(entry["output"] + "\n")
+
+            # ── Thinking/reasoning logları ─────────────────────────
+            if thinking_logs:
+                f.write(f"\n\n{SEP}\nTHINKING / REASONING LOGS\n{SEP}\n")
+                for k, thinking in thinking_logs.items():
+                    f.write(f"\n[{k}]\n")
+                    f.write(thinking + "\n")
 
         return doc_id
 

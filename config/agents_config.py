@@ -2195,7 +2195,9 @@ CONFLICT_[N]: [Agent A claim] vs [Agent B claim] — [resolution directive or ES
 If score ≥ 85: EARLY_TERMINATION: YES — [one sentence why quality is sufficient]
 If score < 85: EARLY_TERMINATION: NO — [top 2 improvements needed for next round]
 
-Always write in English."""
+Always write in English.
+
+PIPELINE POSITION: Your output is read by: the Conflict Resolution agent, the Final Report Writer, and the orchestration system (quality score determines whether analysis continues)."""
     },
 
     "final_rapor": {
@@ -2235,7 +2237,8 @@ ABSOLUTE RULES:
 - If an agent's output was weak or vague, say so explicitly rather than embellishing it
 - Write in the same language as the problem brief
 - Always write in English, regardless of the language of the input brief or agent outputs.
-"""
+
+PIPELINE POSITION: Your output IS the final deliverable — converted to a formatted DOCX report delivered to the user."""
     },
 
     "prompt_muhendisi": {
@@ -2259,7 +2262,9 @@ OUTPUT FORMAT — use these exact labels:
 3. ENHANCED BRIEF:
 [Comprehensive enhanced brief in English, regardless of input language.
 Include: operating conditions, load cases, constraints, evaluation criteria, applicable standards, and explicit analysis requirements.
-Reference past analysis findings where relevant.]"""
+Reference past analysis findings where relevant.]
+
+PIPELINE POSITION: Your output (ENHANCED BRIEF) is used by the Domain Selector and all domain agents as their primary problem statement."""
     },
 
     
@@ -2291,7 +2296,9 @@ ERRORS_FOUND: [count] critical, [count] high, [count] medium
 BLOCKING_ISSUES: [list any that prevent analysis from proceeding]
 If no issues found in a part, write: [PART N: NO ISSUES FOUND]
 
-Always write in English."""
+Always write in English.
+
+PIPELINE POSITION: Your output is read by: the Observer agent (quality scoring), the Synthesis agent, and the Final Report Writer."""
     },
 
     "varsayim_belirsizlik": {
@@ -2317,7 +2324,9 @@ SUMMARY:
 CRITICAL_ASSUMPTIONS: [count] require immediate validation
 HIGH_UNCERTAINTY_ITEMS: [count] materially affect conclusions
 
-Always write in English."""
+Always write in English.
+
+PIPELINE POSITION: Your output is read by: the Observer agent and the Synthesis agent."""
     },
 
     
@@ -2347,7 +2356,9 @@ Flag any data points that appear to be from superseded standards or pre-date sig
 
 SUMMARY: [count] reference issues, [count] literature gaps, [count] IP flags
 
-Always write in English."""
+Always write in English.
+
+PIPELINE POSITION: Your output is read by: the Observer agent and the Final Report Writer."""
     },
 
     "celisiki_cozum": {
@@ -2371,7 +2382,9 @@ UNRESOLVED_SUMMARY:
 List all UNRESOLVABLE items with their blocking requirements.
 BLOCKING_COUNT: [N conflicts remain open and must be addressed before design can proceed]
 
-Always write in English."""
+Always write in English.
+
+PIPELINE POSITION: Your output is read by: the Final Report Writer (cross-domain analysis section)."""
     },
 
     "risk_guvenilirlik": {
@@ -2405,7 +2418,9 @@ MARGIN_[N]: [parameter] | Calculated SF=[value] | Required SF=[standard+value] |
 PART 4 — RELIABILITY SUMMARY:
 Top 3 RPN items in descending order. Overall risk classification: LOW/MEDIUM/HIGH/CRITICAL.
 
-Always write in English."""
+Always write in English.
+
+PIPELINE POSITION: Your output is read by: the Final Report Writer and the report generator (FMEA chart — maintain exact format)."""
     },
 
     "soru_uretici": {
@@ -2433,7 +2448,9 @@ HIGH_COUNT: [N]
 MEDIUM_COUNT: [N]
 TOP_PRIORITY: [Single most important open question in one sentence]
 
-Always write in English."""
+Always write in English.
+
+PIPELINE POSITION: Your output is read by: the Final Report Writer and stored in the Knowledge Base for future analyses."""
     },
 
     "alternatif_senaryo": {
@@ -2464,7 +2481,9 @@ CONCLUSION:
 If optimizing for [criterion]: choose [alternative] because [reason].
 If optimizing for [criterion]: choose [alternative] because [reason].
 
-Always write in English."""
+Always write in English.
+
+PIPELINE POSITION: Your output is read by: the Final Report Writer and the Synthesis agent."""
     },
 
     "sentez": {
@@ -2495,7 +2514,9 @@ Do not hedge with generic language.
 ## 5. KNOWLEDGE BASE NOTES
 Key insights and lessons learned from this analysis for future reference.
 
-Always write in English, regardless of the language of the input brief or agent outputs."""
+Always write in English, regardless of the language of the input brief or agent outputs.
+
+PIPELINE POSITION: Your output is the PRIMARY input to the Final Report Writer — structure and completeness directly determine report quality."""
     },
 
     "ozet_ve_sunum": {
@@ -2521,7 +2542,9 @@ Numbered list. Each: [Decision] — [Deadline: before next design phase / immedi
 ## TOP 3 RISKS (plain language)
 [Risk] — [Consequence] — [Mitigation]
 
-Always write in English."""
+Always write in English.
+
+PIPELINE POSITION: Your output is included as an executive summary in the final deliverable."""
     },
 
     "kalibrasyon": {
@@ -2545,7 +2568,9 @@ ANOMALIES: [count] — [list the most critical]
 OPTIMIZATION_OPPORTUNITIES: [count] — [top opportunity in one sentence]
 TECHNOLOGY_RISKS: [count items at or beyond state-of-the-art]
 
-Always write in English."""
+Always write in English.
+
+PIPELINE POSITION: Your output is read by: the Final Report Writer (benchmarks and anomaly flags)."""
     },
 
     "dogrulama_standartlar": {
@@ -2571,7 +2596,9 @@ VV_[N]: [Activity type: analysis/test/inspection/review] | [What it verifies] | 
 
 COMPLIANCE_SUMMARY: [count] blocking gaps, [count] non-blocking gaps, [count] V&V requirements
 
-Always write in English."""
+Always write in English.
+
+PIPELINE POSITION: Your output is read by: the Final Report Writer (standards compliance section)."""
     },
 
     "entegrasyon_arayuz": {
@@ -2595,7 +2622,9 @@ HIGH_RISK_INTERFACES: [count and list]
 UNDEFINED_INTERFACES: [count — these are blocking for detail design]
 CROSS-DOMAIN FLAG for each uncontrolled interface that another domain must address.
 
-Always write in English."""
+Always write in English.
+
+PIPELINE POSITION: Your output is read by: the Final Report Writer (integration risks section)."""
     },
 
     "simulasyon_koordinator": {
@@ -2622,7 +2651,9 @@ SIMULATION PLAN SUMMARY:
 CRITICAL_SIMS: [count] — [list]
 TOTAL_EFFORT_ESTIMATE: [rough total]
 
-Always write in English."""
+Always write in English.
+
+PIPELINE POSITION: Your output is read by: the Final Report Writer (simulation strategy section)."""
     },
 
     "dokumantasyon_hafiza": {
@@ -2649,7 +2680,9 @@ WARN_[N]: [Common mistake or trap] — [How to avoid it]
 
 Be concise. Bullet points preferred. Focus on non-obvious insights, not generic advice.
 
-Always write in English."""
+Always write in English.
+
+PIPELINE POSITION: Your output is stored in the Knowledge Base to improve future similar analyses."""
     },
 
     "maliyet_pazar": {
@@ -2676,7 +2709,9 @@ OPPORTUNITY_[N]: [Design change] | Estimated saving=[X%] | Impact on performance
 
 COST_SUMMARY: Total ROM estimate, top 3 cost drivers, top supply chain risk.
 
-Always write in English."""
+Always write in English.
+
+PIPELINE POSITION: Your output is read by: the Final Report Writer (cost and market context section)."""
     },
 
     
@@ -2727,6 +2762,8 @@ Output format — EXACTLY this, nothing else:
 SELECTED_DOMAINS: [1,3,4]
 REASONING: [one sentence per domain explaining why it is essential]
 
-Note: Format output exactly as specified above regardless of input language."""
+Note: Format output exactly as specified above regardless of input language.
+
+PIPELINE POSITION: Your output activates the domain agents — only agents for selected domains will run."""
     },
 }

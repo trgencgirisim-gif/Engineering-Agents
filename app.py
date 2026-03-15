@@ -524,11 +524,87 @@ button[kind="header"] {
     color: var(--accent);
 }
 
+/* ── KB Popup ── */
+.kb-popup-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.65);
+    z-index: 9998;
+    backdrop-filter: blur(2px);
+}
+.kb-popup {
+    position: fixed;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: min(860px, 90vw);
+    max-height: 82vh;
+    background: #18181C;
+    border: 1px solid #2A2A32;
+    border-radius: 14px;
+    display: flex;
+    flex-direction: column;
+    z-index: 9999;
+    box-shadow: 0 24px 60px rgba(0,0,0,0.6);
+}
+.kb-popup-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1rem 1.4rem 0.8rem;
+    border-bottom: 1px solid #2A2A32;
+    flex-shrink: 0;
+}
+.kb-popup-title {
+    font-family: var(--sans);
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: #F0EFED;
+}
+.kb-popup-meta {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.65rem;
+    color: #5A5A65;
+    margin-top: 2px;
+}
+.kb-popup-body {
+    overflow-y: auto;
+    padding: 1.2rem 1.4rem;
+    flex: 1;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem;
+    line-height: 1.65;
+    color: #B0B0BA;
+    white-space: pre-wrap;
+}
+.kb-popup-body h3 {
+    font-family: var(--sans);
+    font-size: 0.8rem;
+    color: #E05A2B;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin: 1rem 0 0.4rem;
+    padding-bottom: 4px;
+    border-bottom: 1px solid #2A2A32;
+}
+.kb-close-btn {
+    background: #1E1E24;
+    border: 1px solid #2A2A32;
+    border-radius: 6px;
+    color: #9998A3;
+    cursor: pointer;
+    font-size: 1rem;
+    width: 28px; height: 28px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+}
+.kb-close-btn:hover { background: #2A2A32; color: #F0EFED; }
+
 /* Mobile tweaks */
 @media (max-width: 768px) {
     .stat-bar { flex-direction: column; }
     .agent-log { height: 220px; }
     .output-box { max-height: 400px; }
+    .kb-popup { width: 95vw; }
 }
 </style>
 """, unsafe_allow_html=True)
@@ -608,37 +684,39 @@ def _login_check() -> bool:
     if st.session_state.get("_authenticated"):
         return True
 
-    # ── Login formu ──────────────────────────────────────────
-    st.markdown("""
-    <style>
-    .login-wrap {
-        max-width: 380px;
-        margin: 10vh auto 0;
-        padding: 2.5rem 2rem;
-        background: #18181C;
-        border: 1px solid #2A2A32;
-        border-radius: 14px;
-    }
-    .login-title { font-size: 1.4rem; font-weight: 800; margin-bottom: 0.3rem; }
-    .login-sub   { font-size: 0.75rem; color: #9998A3; margin-bottom: 1.8rem; letter-spacing: 0.08em; text-transform: uppercase; }
-    </style>
-    <div class="login-wrap">
-        <div class="login-title">⚙️ Engineering AI</div>
-        <div class="login-sub">Multi-Agent System — Giriş</div>
-    </div>
-    """, unsafe_allow_html=True)
+    # ── Login formu — ortalanmış kart ───────────────────────
+    _, col_mid, _ = st.columns([1, 1.1, 1])
+    with col_mid:
+        st.markdown("""
+        <div style="
+            background: #18181C;
+            border: 1px solid #2A2A32;
+            border-radius: 14px;
+            padding: 2.4rem 2rem 2rem;
+            margin-top: 8vh;
+        ">
+            <div style="font-size:1.35rem;font-weight:800;color:#F0EFED;margin-bottom:4px">
+                ⚙ Engineering AI
+            </div>
+            <div style="font-size:0.7rem;color:#5A5A65;letter-spacing:0.1em;
+                        text-transform:uppercase;margin-bottom:1.8rem">
+                Multi-Agent System
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
-    with st.form("login_form", clear_on_submit=False):
-        user  = st.text_input("Kullanıcı Adı", placeholder="username")
-        pwd   = st.text_input("Şifre", type="password", placeholder="••••••••")
-        submitted = st.form_submit_button("Giriş Yap", use_container_width=True)
+        with st.form("login_form", clear_on_submit=False):
+            user = st.text_input("Username", placeholder="username")
+            pwd  = st.text_input("Password", type="password", placeholder="••••••••")
+            st.markdown('<div style="margin-top:0.3rem"></div>', unsafe_allow_html=True)
+            submitted = st.form_submit_button("Sign In", use_container_width=True)
 
-        if submitted:
-            if user == expected_user and pwd == expected_pass:
-                st.session_state["_authenticated"] = True
-                st.rerun()
-            else:
-                st.error("❌ Kullanıcı adı veya şifre hatalı.")
+            if submitted:
+                if user == expected_user and pwd == expected_pass:
+                    st.session_state["_authenticated"] = True
+                    st.rerun()
+                else:
+                    st.error("Incorrect username or password.")
 
     return False  # henüz doğrulanmadı — ana uygulama gösterilmez
 
@@ -1090,6 +1168,10 @@ def ajan_calistir_paralel(gorevler: List[Tuple], max_workers: int = 6) -> List[s
             try:
                 idx, r = fut.result()
                 results_map[idx] = r
+                # Stop sinyali gelince mevcut future'ları iptal et
+                if st.session_state.get("stop_requested", False):
+                    for f2 in futures:
+                        f2.cancel()
             except Exception as e:
                 idx = futures[fut]
                 results_map[idx] = {
@@ -1147,21 +1229,34 @@ def prompt_engineer_auto(brief):
 
 def domain_sec_ai(brief):
     sonuc = ajan_calistir("domain_selector", brief)
-    eslesme = re.search(r'SELECTED_DOMAINS:\s*([\d,\s]+)', sonuc)
+    # Hem [1,3,4] hem 1, 3, 4 formatını destekle
+    eslesme = re.search(r'SELECTED_DOMAINS:\s*[\[\(]?([\d,\s]+)[\]\)]?', sonuc)
     if eslesme:
         secilen = []
-        for s in eslesme.group(1).split(","):
-            s = s.strip()
+        # Virgülle veya boşlukla ayrılmış sayıları parse et
+        nums = re.findall(r'\d+', eslesme.group(1))
+        for s in nums:
             if s in DOMAINS:
                 secilen.append(DOMAINS[s])
-        return secilen
-    return [("yanma", "Combustion"), ("malzeme", "Materials")]
+        if secilen:
+            return secilen
+    # Fallback: açık domain isimleri aranabilir
+    fallback = []
+    for num, (key, name) in DOMAINS.items():
+        if name.lower() in sonuc.lower():
+            fallback.append((key, name))
+    return fallback[:4] if fallback else [("malzeme", "Materials"), ("yapisal", "Structural & Static")]
 
 
 def soru_uret(brief):
     sonuc = ajan_calistir("soru_uretici_pm", brief)
+    # SORU_1: format
     sorular = re.findall(r'SORU_\d+:\s*(.+)', sonuc)
-    return sorular
+    if sorular:
+        return [s.strip() for s in sorular]
+    # Fallback: numaralı liste formatı (1. veya [1])
+    sorular = re.findall(r'(?:^|\n)\s*(?:\[?\d+\]?\.?)\s*(.{20,})', sonuc)
+    return [s.strip() for s in sorular[:7]] if sorular else []
 
 
 def kaydet_txt(brief, mod, final, alan_isimleri, tur_ozeti):
@@ -1441,19 +1536,35 @@ def run_full_loop(brief, aktif_alanlar, max_tur):
         )
 
         # ── Shared context güncelle ─────────────────────────────
-        # Her tur sonunda shared_ctx'e bu turun domain çıktıları eklenir.
-        # Sonraki tur validasyon ajanları önceki turları da görecek.
-        # Tur 1: [user: brief, assistant: tur1_ciktilar]
-        # Tur 2: [user: brief, assistant: tur1, user: round2_brief, assistant: tur2]
-        # CACHE: shared_ctx prefix sabit kaldığı sürece HIT alır.
+        # Tur 1: tam domain çıktıları → conversation history
+        # Tur 2: tur 1 + tur 2 çıktıları (cache prefix devam eder)
+        # Tur 3+: context şişmesini önlemek için önceki turları özetle
+        #   (~18K token birikmesini engellemek için)
+        _CTX_WORD_LIMIT = 8000  # yaklaşık 10K token sınırı
+
         if tur == 1:
             shared_ctx = _build_ctx_history(brief, tum_ciktilar)
         else:
-            # Önceki shared_ctx'e bu turun çıktısını ekle
-            shared_ctx = shared_ctx + [
-                {"role": "user",      "content": f"Round {tur} domain analysis:"},
-                {"role": "assistant", "content": tum_ciktilar},
-            ]
+            # Mevcut context boyutunu ölç
+            _ctx_words = sum(
+                len(m.get("content","").split())
+                for m in shared_ctx
+            )
+            if _ctx_words > _CTX_WORD_LIMIT:
+                # Sadece son turun çıktısını tut, öncekini özetlenmiş header ile
+                _summary_note = (
+                    f"[Context compressed: rounds 1-{tur-1} available in full analysis. "
+                    f"Key validated parameters and conflicts passed forward via Observer notes.]"
+                )
+                shared_ctx = [
+                    {"role": "user",      "content": f"Domain analysis request:\n{brief}\n\n{_summary_note}"},
+                    {"role": "assistant", "content": tum_ciktilar},
+                ]
+            else:
+                shared_ctx = shared_ctx + [
+                    {"role": "user",      "content": f"Round {tur} domain analysis:"},
+                    {"role": "assistant", "content": tum_ciktilar},
+                ]
 
         # ── GRUP B: Validasyon paralel ──────────────────────────
         # shared_ctx'i gecmis olarak kullanıyor → PREAMBLE cache HIT alır,
@@ -1561,6 +1672,9 @@ def run_full_loop(brief, aktif_alanlar, max_tur):
         f"OBSERVER EVALUATION: {gozlemci_cevabi}\n"
         f"QUESTIONS: {soru_cevap}\n"
         f"ALTERNATIVES: {alt_cevap}\n"
+        f"CALIBRATION & BENCHMARKS: {kalib_cevap}\n"
+        f"STANDARDS COMPLIANCE: {std_cevap}\n"
+        f"COST & MARKET ANALYSIS: {maliyet_cevap}\n"
         f"SYNTHESIZED FINDINGS: {sentez_cevap}"
         f"{final_rag_note_loop}\n\n"
         f"All domain agent technical findings are in the conversation history above.\n"
@@ -1573,17 +1687,24 @@ def run_full_loop(brief, aktif_alanlar, max_tur):
         f"Reference knowledge base findings where relevant. Always write in English.",
         gecmis=shared_ctx)
 
-    # ── GRUP E: Dokümantasyon + Özet paralel ────────────────────
-    ajan_calistir_paralel([
-        ("dokumantasyon_hafiza",
-         f"Problem: {brief}\nFinal report: {final}\n"
-         f"Identify documentation tree and traceability requirements. "
-         f"Capture key decisions, lessons learned, and reusable insights.",
-         None, None),
+    # ── GRUP E: Özet (her modda) + Dokümantasyon (Mod 3/4) ──────
+    _mode_val = st.session_state.get("mode", 4)
+    _grup_e_tasks = [
         ("ozet_ve_sunum",
-         f"Final report:\n{final}\nProduce executive summary for non-technical stakeholders.",
+         f"Final report:\n{final}\n"
+         f"Produce executive summary for non-technical stakeholders.",
          None, None),
-    ], max_workers=2)
+    ]
+    # Dokümantasyon ve lessons learned yalnızca Mod 3/4'te değer üretir
+    if _mode_val in (3, 4):
+        _grup_e_tasks.append((
+            "dokumantasyon_hafiza",
+            f"Problem: {brief}\nFinal report: {final}\n"
+            f"Identify documentation tree and traceability requirements. "
+            f"Capture key decisions, lessons learned, and reusable insights.",
+            None, None
+        ))
+    ajan_calistir_paralel(_grup_e_tasks, max_workers=2)
 
     return final, tur_ozeti
 
@@ -1593,6 +1714,85 @@ def run_full_loop(brief, aktif_alanlar, max_tur):
 # ═════════════════════════════════════════════════════════════
 if not _login_check():
     st.stop()
+
+# ── KB Popup — tüm step'lerde üzerinde görünür ──────────────
+if st.session_state.get("kb_view_id"):
+    _kb_id = st.session_state.kb_view_id
+    _kb_raw = get_rag().get_full_report(_kb_id)
+    if _kb_raw:
+        # Header parse
+        _kbh = {}
+        for _l in _kb_raw.split("\n")[:10]:
+            if ":" in _l and not _l.startswith("=") and not _l.startswith("─"):
+                _k2, _v2 = _l.split(":", 1)
+                _kbh[_k2.strip()] = _v2.strip()
+
+        # Bölümleri ayır
+        _SEP = "=" * 60
+        _parts = _kb_raw.split(_SEP)
+        _sections = {}
+        _sec_labels = ["OPEN QUESTIONS", "OBSERVER EVALUATION (FULL)",
+                       "CROSS-VALIDATION FINDINGS (FULL)", "FINAL REPORT",
+                       "DOMAIN AGENT OUTPUTS", "SUPPORT AGENT OUTPUTS",
+                       "THINKING / REASONING LOGS"]
+        for _pi, _ptext in enumerate(_parts):
+            _ptext_s = _ptext.strip()
+            for _sl in _sec_labels:
+                if _ptext_s.startswith(_sl):
+                    _sections[_sl] = _ptext_s[len(_sl):].strip()
+                    break
+            else:
+                if _pi == 0:
+                    _sections["_header"] = _ptext_s
+                elif "FINAL REPORT" not in _sections and _pi > 0:
+                    _sections["FINAL REPORT"] = _ptext_s
+
+        # Popup HTML — overlay + kart
+        _date_s  = _kbh.get("DATE", "")[:10]
+        _brief_s = _kbh.get("BRIEF", "")[:80]
+        _score_s = _kbh.get("QUALITY_SCORE", "—")
+        _cost_s  = _kbh.get("COST", "—")
+        _mode_s  = _kbh.get("MODE", "—")
+
+        # Popup içeriğini oluştur
+        _content_html = ""
+        _display_order = [
+            ("FINAL REPORT",                  "📄 Final Report"),
+            ("OPEN QUESTIONS",                "❓ Open Questions"),
+            ("OBSERVER EVALUATION (FULL)",    "👁 Observer Evaluation"),
+            ("CROSS-VALIDATION FINDINGS (FULL)", "🔢 Cross-Validation"),
+            ("DOMAIN AGENT OUTPUTS",          "🔬 Domain Agent Outputs"),
+            ("SUPPORT AGENT OUTPUTS",         "⚙ Support Agent Outputs"),
+            ("THINKING / REASONING LOGS",     "💭 Thinking Logs"),
+        ]
+        for _sec_key, _sec_label in _display_order:
+            if _sec_key in _sections and _sections[_sec_key]:
+                _text = _sections[_sec_key][:8000]  # 8000 char limit per section
+                _escaped = _text.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;")
+                _content_html += f'<h3>{_sec_label}</h3><div style="white-space:pre-wrap">{_escaped}</div>'
+
+        st.markdown(f"""
+        <div class="kb-popup-overlay" onclick="this.style.display='none'"></div>
+        <div class="kb-popup">
+            <div class="kb-popup-header">
+                <div>
+                    <div class="kb-popup-title">📂 {_brief_s}...</div>
+                    <div class="kb-popup-meta">
+                        {_date_s} &nbsp;·&nbsp; Mode {_mode_s} &nbsp;·&nbsp;
+                        Quality {_score_s}/100 &nbsp;·&nbsp; {_cost_s}
+                    </div>
+                </div>
+            </div>
+            <div class="kb-popup-body">{_content_html}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # Kapatma butonu — Streamlit native (JS olmadan)
+        _popup_cols = st.columns([8, 1])
+        with _popup_cols[1]:
+            if st.button("✕ Kapat", key="kb_popup_close", use_container_width=True):
+                st.session_state.kb_view_id = None
+                st.rerun()
 
 with st.sidebar:
     st.markdown("""
@@ -1792,39 +1992,8 @@ with st.sidebar:
     except Exception:
         pass
 
-    # KB raporu ana alanda göster
-    if st.session_state.get("kb_view_id") and st.session_state.step == "input":
-        _kb_id = st.session_state.kb_view_id
-        _kb_content = get_rag().get_full_report(_kb_id)
-        if _kb_content:
-            st.markdown('<div class="section-label">📂 Knowledge Base — Rapor</div>', unsafe_allow_html=True)
-            # Header bilgilerini parse et
-            _lines = _kb_content.split("\n")[:8]
-            _header = {l.split(":")[0].strip(): ":".join(l.split(":")[1:]).strip()
-                       for l in _lines if ":" in l and not l.startswith("=")}
-            col_a, col_b, col_c = st.columns(3)
-            col_a.metric("Tarih", _header.get("DATE","")[:10])
-            col_b.metric("Maliyet", "$" + _header.get("COST","?").replace("$",""))
-            col_c.metric("Kalite", _header.get("QUALITY_SCORE","?") + "/100" if _header.get("QUALITY_SCORE") else "?")
-
-            # Rapor içeriği
-            _sep = "=" * 60
-            if _sep in _kb_content:
-                _rapor = _kb_content.split(_sep)[-1].strip()
-                # Domain agent summaries kısmını ayır
-                if "DOMAIN AGENT SUMMARIES" in _rapor:
-                    _rapor = _rapor.split("DOMAIN AGENT SUMMARIES")[0].strip()
-            else:
-                _rapor = _kb_content
-
-            with st.expander("📄 Tam Rapor", expanded=True):
-                st.text_area("rapor", _rapor, height=500,
-                             label_visibility="collapsed",
-                             key="kb_rapor_view", disabled=True)
-
-            if st.button("✕ Kapat", key="kb_close_btn"):
-                st.session_state.kb_view_id = None
-                st.rerun()
+    # KB popup — step değişkeni yokken de çalışsın
+    # Popup state sidebar butonu ile tetikleniyor, içerik ana alanda gösteriliyor
 
 
 # ═════════════════════════════════════════════════════════════
@@ -1852,8 +2021,8 @@ if st.session_state.step == "input":
     brief_input = st.text_area(
         label="brief",
         label_visibility="collapsed",
-        placeholder="Analiz etmek istediğiniz mühendislik problemini detaylıca açıklayın...\n\nÖrnek: Hipersonik füze için malzeme seçimi ve termal koruma sistemi tasarımı. Mach 8 hız, 25km irtifa, 300 saniyelik uçuş süresi hedefleniyor.",
-        height=160,
+        placeholder="Describe the engineering problem in detail...\n\nExample: Hypersonic missile — material selection and TPS design. Mach 8, 25 km altitude, 300 s flight duration, max surface temp 2200°C.",
+        height=220,
         key="brief_input_widget"
     )
 
@@ -2289,15 +2458,30 @@ elif st.session_state.step == "done":
             tur_ozeti
         )
 
-        # RAG: analizi knowledge base'e kaydet (bir kez) — zengin metadata
+        # RAG: analizi knowledge base'e kaydet (bir kez) — tam geliştirme kaydı
         if not st.session_state.get("rag_saved", False):
-            _open_q = ""
-            for _entry in st.session_state.get("agent_log", []):
-                if _entry.get("key") == "soru_uretici":
-                    _open_q = _entry.get("output", "") or _entry.get("cevap", "")
-                    break
+            _log = st.session_state.get("agent_log", [])
+            # Soru üretici çıktısı
+            _open_q = next(
+                (e.get("output","") or e.get("cevap","")
+                 for e in _log if e.get("key") == "soru_uretici"),
+                ""
+            )
+            # Observer tam metni
+            _observer_full = next(
+                (e.get("output","") or e.get("cevap","")
+                 for e in _log if e.get("key") == "gozlemci"),
+                ""
+            )
+            # Cross-validation tam metni
+            _crossval_full = next(
+                (e.get("output","") or e.get("cevap","")
+                 for e in _log if e.get("key") == "capraz_dogrulama"),
+                ""
+            )
             _scores = st.session_state.get("round_scores", [])
             _quality = _scores[-1].get("puan") if _scores else None
+
             get_rag().save(
                 brief=st.session_state.brief,
                 domains=alan_isimleri,
@@ -2306,7 +2490,10 @@ elif st.session_state.step == "done":
                 cost=st.session_state.total_cost,
                 quality_score=_quality,
                 open_questions=_open_q,
-                agent_log=st.session_state.get("agent_log", [])
+                agent_log=_log,
+                observer_full=_observer_full,
+                crossval_full=_crossval_full,
+                round_scores=_scores,
             )
             st.session_state.rag_saved = True
 

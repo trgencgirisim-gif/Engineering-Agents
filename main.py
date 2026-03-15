@@ -299,7 +299,7 @@ class Session:
 
     def domain_sec_ai(self, brief: str) -> list:
         sonuc = self.ajan_calistir("domain_selector", brief)
-        m = re.search(r'SELECTED_DOMAINS:\s*([\d,\s]+)', sonuc)
+        m = re.search(r'SELECTED_DOMAINS:\s*[\[\(]?([\d,\s]+)[\]\)]?', sonuc)
         if m:
             secilen = []
             for s in m.group(1).split(","):
@@ -566,7 +566,7 @@ Produce comprehensive professional engineering report.""")
                 sorular_raw = self.ajan_calistir("soru_uretici_pm", self.brief)
                 sorular = re.findall(r'SORU_\d+:\s*(.+)', sorular_raw)
                 if not sorular:
-                    sorular = re.findall(r'\d+\.\s*(.+)', sorular_raw)
+                    sorular = re.findall(r'(?:^|\n)\s*(?:\[?\d+\]?\.?)\s*(.{20,})', sorular_raw)
                 self.qa_questions = sorular[:5] if sorular else []
                 self.enhanced_brief = self.brief
 
@@ -632,12 +632,33 @@ Produce comprehensive professional engineering report.""")
             # RAG'a kaydet
             if rag:
                 try:
-                    rag.kaydet(
+                    # Observer ve cross-validation tam çıktılarını çek
+                    _observer_full = next(
+                        (e.get("output","") for e in self.agent_log
+                         if e.get("key") == "gozlemci"), ""
+                    )
+                    _crossval_full = next(
+                        (e.get("output","") for e in self.agent_log
+                         if e.get("key") == "capraz_dogrulama"), ""
+                    )
+                    _open_q = next(
+                        (e.get("output","") for e in self.agent_log
+                         if e.get("key") == "soru_uretici"), ""
+                    )
+                    _quality = (self.round_scores[-1].get("puan")
+                                if getattr(self, "round_scores", []) else None)
+                    rag.save(
                         brief=self.brief,
                         domains=[n for _, n in self.domains],
                         final_report=final,
                         mode=self.mode,
                         cost=self.total_cost,
+                        quality_score=_quality,
+                        open_questions=_open_q,
+                        agent_log=self.agent_log,
+                        observer_full=_observer_full,
+                        crossval_full=_crossval_full,
+                        round_scores=getattr(self, "round_scores", []),
                     )
                 except Exception:
                     pass
