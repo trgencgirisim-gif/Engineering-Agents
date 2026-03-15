@@ -184,6 +184,167 @@ OUTPUT FORMAT DISCIPLINE
 - Conclude each section with a concise summary of key numerical results and open questions.
 - Preserve all numerical values exactly — do not round or paraphrase computed results.
 ════════════════════════════════════════════════════════════════════
+
+═══════════════════════════════════════════════════════════════
+ENGINEERING STANDARDS REFERENCE LIBRARY
+═══════════════════════════════════════════════════════════════
+
+The following standards and methodologies govern this analysis system.
+All domain agents must align their outputs with the applicable standards below.
+
+──────────────────────────────────────────────────────────────
+STRUCTURAL & MECHANICAL
+──────────────────────────────────────────────────────────────
+ASME BPVC (Boiler and Pressure Vessel Code) — Sections I–XII govern
+pressure-containing equipment. Section VIII Div.1 for unfired pressure vessels,
+Div.2 for alternative rules. Yield and ultimate strengths must be referenced
+from ASME Section II Part D material tables.
+
+AISC 360 (Specification for Structural Steel Buildings) — Load and Resistance
+Factor Design (LRFD) and Allowable Strength Design (ASD). Chapter H covers
+combined loading; Chapter E covers compression members.
+
+Eurocode 3 (EN 1993) — Steel structures. EN 1993-1-1 for general rules;
+EN 1993-1-5 for plated structures; EN 1993-1-9 for fatigue. Partial factors:
+γM0=1.0 (yielding), γM1=1.0 (instability), γM2=1.25 (fracture).
+
+Eurocode 9 (EN 1999) — Aluminium structures. EN 1999-1-1 general rules.
+Material properties for AA 6061-T6: fy=260 MPa, fu=310 MPa (characteristic).
+
+MMPDS-12 / MIL-HDBK-5J — Metallic Materials Properties Development and
+Standardization. S-basis, A-basis, B-basis allowables. Primary reference for
+aerospace structural design allowables.
+
+Safety factor conventions:
+- Static (metallic): SF ≥ 1.5 (yield), SF ≥ 2.0 (ultimate), typical aerospace
+- Fatigue (metallic): SF ≥ 4.0 (infinite life), SF ≥ 2.0 (finite life, known spectrum)
+- Pressure vessels: SF = 3.5 (ASME), SF = 4.0 (legacy codes)
+- Composite structures: SF ≥ 2.0 (B-basis), SF ≥ 1.5 (A-basis with inspection
+
+──────────────────────────────────────────────────────────────
+THERMAL & FLUID SYSTEMS
+──────────────────────────────────────────────────────────────
+ASHRAE 90.1 — Energy standard for buildings. ASHRAE 62.1 ventilation.
+ASHRAE Fundamentals Handbook — psychrometrics, heat transfer, refrigeration.
+
+ISO 5167 — Measurement of fluid flow by differential pressure devices.
+ISO 4126 — Safety devices for protection against excessive pressure (PSV sizing).
+TEMA — Tubular Exchanger Manufacturers Association. Class R (severe),
+Class C (commercial), Class B (general process). Shell-and-tube heat exchanger
+design basis, baffle spacing, tube sheet thickness calculations.
+
+Dimensionless parameters governing regime and correlation selection:
+Reynolds (Re = ρVL/μ): laminar <2300, transitional 2300–4000, turbulent >4000
+Nusselt (Nu = hL/k): forced convection correlations (Dittus-Boelter, Gnielinski)
+Prandtl (Pr = cpμ/k): fluid property ratio for heat transfer correlations
+Mach (Ma = V/a): subsonic <0.8, transonic 0.8–1.2, supersonic >1.2, hypersonic >5
+
+Heat transfer mode selection criteria:
+- Conduction: solid media, Fourier's law, q = -kA(dT/dx)
+- Convection: forced (active flow), natural (buoyancy-driven, Ra = Gr·Pr)
+- Radiation: dominates above 800°C or in vacuum, q = εσA(T1⁴-T2⁴)
+
+──────────────────────────────────────────────────────────────
+MATERIALS & FAILURE ANALYSIS
+──────────────────────────────────────────────────────────────
+ASM Handbook series — Vol.1 (Iron), Vol.2 (Nonferrous), Vol.4 (Heat Treating),
+Vol.11 (Failure Analysis), Vol.19 (Fatigue), Vol.21 (Composites).
+
+Failure mode hierarchy for metallic structures:
+1. Yielding (ductile, recoverable with unloading)
+2. Plastic collapse (limit load exceeded, large deformation)
+3. Buckling (elastic: Euler, inelastic: Johnson, local: plate)
+4. Fatigue (crack initiation → propagation → fracture, S-N or LEFM approach)
+5. Fracture (brittle, K_I ≥ K_IC; Charpy CVN for toughness screening)
+6. Corrosion (uniform, pitting, crevice, galvanic, SCC, HIC)
+7. Creep (time-dependent, above ~0.4 Tm for metals)
+
+LEFM parameters: K_I = σ√(πa)·F(a/W), failure when K_I ≥ K_IC.
+Paris law: da/dN = C(ΔK)^m — crack growth per cycle.
+Wöhler (S-N) curve: endurance limit at 10^6–10^7 cycles for ferrous alloys.
+Goodman diagram: σ_a/σ_e + σ_m/σ_u = 1 (modified Goodman criterion).
+
+Common material selection indices (Ashby methodology):
+- Stiffness/weight: E^(1/2)/ρ (plate bending), E^(1/3)/ρ (panel)
+- Strength/weight: σ_y/ρ
+- Thermal shock resistance: σ_y·k/(E·α) — higher is better
+
+──────────────────────────────────────────────────────────────
+CONTROL & SYSTEMS ENGINEERING
+──────────────────────────────────────────────────────────────
+IEEE 829 — Software test documentation.
+MIL-STD-882E — System Safety. Hazard severity × probability matrix.
+Severity: Catastrophic(I), Critical(II), Marginal(III), Negligible(IV).
+Probability: Frequent(A), Probable(B), Occasional(C), Remote(D), Improbable(E).
+
+Control system performance specifications:
+- Rise time (10%→90%), Overshoot (%), Settling time (±2% or ±5% band)
+- Phase margin (PM ≥ 45°), Gain margin (GM ≥ 6 dB) for robust stability
+- Bandwidth: determines speed of response; ωBW ≈ 4/ts (first-order approx)
+
+PID tuning methods: Ziegler-Nichols (aggressive, oscillatory),
+Cohen-Coon (process reaction curve), IMC-based (λ-tuning), SIMC rules.
+Nyquist criterion: for stability count encirclements of (-1, j0).
+Bode plot: phase and gain as function of frequency.
+
+Reliability metrics:
+- MTBF (Mean Time Between Failures) = 1/λ for exponential distribution
+- Availability = MTBF / (MTBF + MTTR)
+- FIT (Failures In Time) = failures per 10^9 device-hours
+- Series system: R_s = ΠR_i; Parallel: R_p = 1 - Π(1-R_i)
+
+──────────────────────────────────────────────────────────────
+RISK ASSESSMENT — FMEA / FMECA
+──────────────────────────────────────────────────────────────
+Risk Priority Number: RPN = Severity (S) × Occurrence (O) × Detection (D)
+Each factor rated 1–10. Standard thresholds:
+- RPN ≥ 200: Critical — immediate design change mandatory
+- 100 ≤ RPN < 200: High — corrective action required before release
+- 50 ≤ RPN < 100: Medium — action recommended, track
+- RPN < 50: Low — monitor
+
+Severity scale (S): 10=safety/regulatory hazard, 7-9=major function loss,
+4-6=degraded performance, 1-3=minor nuisance.
+Occurrence scale (O): 10=inevitable, 7-9=frequent, 4-6=occasional,
+1-3=rare, <1 per 10^6 operations.
+Detection scale (D): 10=undetectable, 7-9=unlikely detected, 4-6=moderate,
+1-3=likely detected before delivery.
+
+──────────────────────────────────────────────────────────────
+REPORT LANGUAGE AND FORMAT REQUIREMENTS
+──────────────────────────────────────────────────────────────
+ALL agent outputs MUST be written in English, regardless of the language
+of the input brief, user queries, or other agents' outputs.
+
+All numerical values must be reported with:
+- Value, unit, and reference standard (e.g., "σ_y = 276 MPa [MMPDS-12, Table 3.3.7]")
+- Safety factor calculation explicitly shown (e.g., "SF = 276/27.98 = 9.86")
+- Confidence level where applicable: HIGH (verified source), MEDIUM (estimated),
+  LOW (assumption — must be labeled [ASSUMPTION])
+
+Assumptions must be labeled [ASSUMPTION] and classified:
+  (a) Standard simplification — well-established engineering practice
+  (b) Problem-specific — inferred from context, not stated in brief
+  (c) Conservative bound — deliberate overestimate for safety
+
+Cross-domain dependencies must be flagged with:
+  CROSS-DOMAIN FLAG → [Target Domain]: [Description of dependency]
+
+
+──────────────────────────────────────────────────────────────
+ANALYSIS QUALITY TARGETS
+──────────────────────────────────────────────────────────────
+Observer scoring rubric weights: technical accuracy 30%, internal consistency 25%,
+assumption transparency 20%, analysis depth 15%, cross-validation quality 10%.
+Target score for early termination: ≥ 85/100.
+Minimum acceptable score: 70/100 (below triggers mandatory revision round).
+All quantitative claims must be traceable to a cited source or labeled [ASSUMPTION].
+Unit consistency must be verified across all agent outputs before synthesis.
+SI units are preferred; imperial units acceptable when citing US standards (AISC, ASME).
+──────────────────────────────────────────────────────────────
+═══════════════════════════════════════════════════════════════
+END OF STANDARDS REFERENCE LIBRARY
+═══════════════════════════════════════════════════════════════
 """
 
 

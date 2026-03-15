@@ -40,262 +40,495 @@ st.set_page_config(
 # ═════════════════════════════════════════════════════════════
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&family=JetBrains+Mono:wght@400&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&family=Syne:wght@400;600;700;800&display=swap');
 
-/* ── Design Tokens ── */
+/* ── Root & Body ── */
 :root {
-    --bg0: #0D0D0F; --bg1: #111114; --bg2: #16161A;
-    --bg3: #1C1C22; --bg4: #23232C;
-    --b0: rgba(255,255,255,0.06);
-    --b1: rgba(255,255,255,0.10);
-    --b2: rgba(255,255,255,0.16);
-    --t0: #F0EFED; --t1: #B5B4BD; --t2: #6A6978; --t3: #3A3948;
-    --accent: #DA6A42;
-    --accent-dim: rgba(218,106,66,0.12);
-    --ok: #3DBF82; --warn: #E8A838; --err: #CF4F4F;
-    --sans: 'Plus Jakarta Sans', system-ui, sans-serif;
-    --mono: 'JetBrains Mono', monospace;
-    --r: 8px; --r2: 12px; --r3: 16px;
+    --bg-primary:    #0C0C0E;
+    --bg-secondary:  #131316;
+    --bg-card:       #18181C;
+    --bg-hover:      #1E1E24;
+    --border:        #2A2A32;
+    --border-active: #E05A2B;
+    --accent:        #E05A2B;
+    --accent-soft:   rgba(224, 90, 43, 0.12);
+    --accent-glow:   rgba(224, 90, 43, 0.25);
+    --text-primary:  #F0EFED;
+    --text-secondary:#9998A3;
+    --text-muted:    #5A5A65;
+    --success:       #2DB87A;
+    --warning:       #E8A838;
+    --error:         #E05A2B;
+    --mono:          'JetBrains Mono', monospace;
+    --sans:          'Syne', sans-serif;
 }
 
+/* Global reset */
 html, body, [class*="css"] {
     font-family: var(--sans) !important;
-    background: var(--bg0) !important;
-    color: var(--t0) !important;
+    background-color: var(--bg-primary) !important;
+    color: var(--text-primary) !important;
 }
-.stApp { background: var(--bg0) !important; }
 
-/* ── Hide chrome ── */
-#MainMenu, footer, .stDeployButton { display: none !important; }
+.stApp {
+    background-color: var(--bg-primary) !important;
+}
+
+/* ── Hide Streamlit Branding ── */
+#MainMenu { display: none !important; }
+footer { display: none !important; }
+.stDeployButton { display: none !important; }
+
+/* ── Header tamamen gizle ── */
 header[data-testid="stHeader"] { display: none !important; }
+
+/* ── Sidebar collapse/expand butonlarını gizle — sidebar sabit kalır ── */
 [data-testid="collapsedControl"],
 [data-testid="stSidebarCollapseButton"],
 [data-testid="stSidebarExpandButton"],
-button[kind="header"] { display: none !important; }
+button[kind="header"] {
+    display: none !important;
+}
 
-/* ── Sidebar ── */
+/* ── Sidebar — sabit, gizlenemez ── */
 [data-testid="stSidebar"] {
-    background: var(--bg1) !important;
-    border-right: 1px solid var(--b0) !important;
-    display: block !important; visibility: visible !important;
-    transform: none !important; min-width: 268px !important;
-    max-width: 268px !important; width: 268px !important;
-    position: relative !important; left: 0 !important;
+    background-color: var(--bg-secondary) !important;
+    border-right: 1px solid var(--border) !important;
+    display: block !important;
+    visibility: visible !important;
+    transform: none !important;
+    min-width: 260px !important;
+    max-width: 260px !important;
+    width: 260px !important;
+    position: relative !important;
+    left: 0 !important;
 }
-[data-testid="stSidebar"][aria-expanded="false"] {
-    display: block !important; visibility: visible !important;
-    transform: none !important; left: 0 !important;
-    width: 268px !important; min-width: 268px !important;
-}
-[data-testid="stSidebar"] > div { padding: 1.4rem 1.1rem !important; }
 
-/* ── Buttons — NO transform/box-shadow transitions ── */
+/* Collapsed state override — asla gizleme */
+[data-testid="stSidebar"][aria-expanded="false"] {
+    display: block !important;
+    visibility: visible !important;
+    transform: none !important;
+    left: 0 !important;
+    width: 260px !important;
+    min-width: 260px !important;
+}
+
+[data-testid="stSidebar"] > div {
+    padding: 1.5rem 1rem !important;
+}
+
+/* ── Buttons ── */
 .stButton > button {
     background: var(--accent) !important;
-    color: #fff !important; border: none !important;
-    border-radius: var(--r) !important;
+    color: #fff !important;
+    border: none !important;
+    border-radius: 8px !important;
     font-family: var(--sans) !important;
-    font-weight: 600 !important; font-size: 0.88rem !important;
-    letter-spacing: 0.01em !important;
-    padding: 0.58rem 1.2rem !important;
+    font-weight: 600 !important;
+    font-size: 0.9rem !important;
+    letter-spacing: 0.03em !important;
+    padding: 0.6rem 1.4rem !important;
+    transition: all 0.2s ease !important;
     width: 100% !important;
 }
-.stButton > button:hover { background: #C45A32 !important; }
-.stButton > button:disabled {
-    background: var(--bg3) !important; color: var(--t2) !important;
-}
-.stButton > button[kind="secondary"] {
-    background: var(--bg3) !important;
-    color: var(--t1) !important;
-    border: 1px solid var(--b0) !important;
-}
-.stButton > button[kind="secondary"]:hover {
-    background: var(--bg4) !important; color: var(--t0) !important;
+
+.stButton > button:hover {
+    background: #c44d22 !important;
+    transform: translateY(-1px) !important;
+    box-shadow: 0 4px 20px var(--accent-glow) !important;
 }
 
-/* ── Text inputs ── */
-.stTextArea textarea, .stTextInput input {
-    background: var(--bg2) !important; border: 1px solid var(--b0) !important;
-    border-radius: var(--r) !important; color: var(--t0) !important;
-    font-family: var(--sans) !important; font-size: 0.92rem !important;
-    line-height: 1.6 !important;
+.stButton > button:disabled {
+    background: var(--bg-hover) !important;
+    color: var(--text-muted) !important;
 }
+
+/* ── Text Input ── */
+.stTextArea textarea, .stTextInput input {
+    background-color: var(--bg-card) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 8px !important;
+    color: var(--text-primary) !important;
+    font-family: var(--mono) !important;
+    font-size: 0.85rem !important;
+}
+
 .stTextArea textarea:focus, .stTextInput input:focus {
     border-color: var(--accent) !important;
-    box-shadow: 0 0 0 2px var(--accent-dim) !important;
+    box-shadow: 0 0 0 2px var(--accent-soft) !important;
 }
 
-/* ── Number input ── */
-[data-testid="stNumberInput"] input {
-    background: var(--bg2) !important; border: 1px solid var(--b0) !important;
-    border-radius: 6px !important; color: var(--t0) !important;
-    font-family: var(--mono) !important; font-size: 0.85rem !important;
+/* ── Select box & Radio ── */
+.stSelectbox div, .stRadio div {
+    color: var(--text-primary) !important;
 }
 
-/* ── Checkbox / Slider / Radio ── */
-.stCheckbox label { color: var(--t1) !important; font-size: 0.88rem !important; }
-.stRadio label    { color: var(--t1) !important; font-size: 0.88rem !important; }
+[data-testid="stSelectbox"] > div > div {
+    background-color: var(--bg-card) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 8px !important;
+}
+
+.stRadio label {
+    color: var(--text-secondary) !important;
+    font-size: 0.88rem !important;
+}
+
+/* ── Multiselect ── */
+[data-testid="stMultiSelect"] > div {
+    background-color: var(--bg-card) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 8px !important;
+}
 
 /* ── Metrics ── */
 [data-testid="stMetric"] {
-    background: var(--bg2) !important; border: 1px solid var(--b0) !important;
-    border-radius: var(--r2) !important; padding: 0.9rem 1rem !important;
+    background: var(--bg-card) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 10px !important;
+    padding: 1rem !important;
 }
+
 [data-testid="stMetricValue"] {
-    color: var(--accent) !important; font-family: var(--mono) !important;
-    font-size: 1.3rem !important; font-weight: 500 !important;
+    color: var(--accent) !important;
+    font-family: var(--mono) !important;
+    font-size: 1.4rem !important;
 }
+
 [data-testid="stMetricLabel"] {
-    color: var(--t2) !important; font-size: 0.68rem !important;
-    text-transform: uppercase !important; letter-spacing: 0.1em !important;
+    color: var(--text-secondary) !important;
+    font-size: 0.75rem !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.08em !important;
 }
 
 /* ── Expander ── */
 [data-testid="stExpander"] {
-    background: var(--bg2) !important; border: 1px solid var(--b0) !important;
-    border-radius: var(--r2) !important;
+    background: var(--bg-card) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 10px !important;
 }
+
 [data-testid="stExpander"] summary {
-    color: var(--t0) !important; font-weight: 500 !important;
+    color: var(--text-primary) !important;
+    font-weight: 600 !important;
 }
 
-/* ── Tabs ── */
-[data-testid="stTabs"] [role="tablist"] {
-    border-bottom: 1px solid var(--b0) !important;
-}
-[data-testid="stTabs"] [role="tab"] {
-    background: transparent !important; border: none !important;
-    color: var(--t2) !important; font-family: var(--sans) !important;
-    font-size: 0.88rem !important; font-weight: 500 !important;
-    padding: 0.5rem 1rem !important;
-}
-[data-testid="stTabs"] [role="tab"]:hover { color: var(--t0) !important; }
-[data-testid="stTabs"] [role="tab"][aria-selected="true"] {
-    color: var(--accent) !important;
-    border-bottom: 2px solid var(--accent) !important;
+/* ── Progress bar ── */
+.stProgress > div > div {
+    background-color: var(--accent) !important;
+    border-radius: 4px !important;
 }
 
-/* ── Progress ── */
-.stProgress > div > div { background: var(--accent) !important; border-radius: 3px !important; }
-.stProgress > div       { background: var(--bg3) !important; border-radius: 3px !important; }
+.stProgress > div {
+    background-color: var(--bg-hover) !important;
+    border-radius: 4px !important;
+}
 
 /* ── Scrollbar ── */
-::-webkit-scrollbar { width: 5px; height: 5px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 3px; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--bg-secondary); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 
-/* ══ CUSTOM COMPONENTS ══ */
+/* ── Custom Components ── */
 
 .logo-area {
-    display: flex; align-items: center; gap: 10px;
-    margin-bottom: 1.6rem; padding-bottom: 1.3rem;
-    border-bottom: 1px solid var(--b0);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 2rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--border);
 }
-.logo-icon { font-size: 1.4rem; }
-.logo-text { font-family: var(--sans); font-size: 1.0rem; font-weight: 700; color: var(--t0); }
-.logo-sub  { font-size: 0.62rem; font-family: var(--mono); color: var(--t2);
-              letter-spacing: 0.08em; text-transform: uppercase; margin-top: 1px; }
+
+.logo-icon {
+    font-size: 1.6rem;
+}
+
+.logo-text {
+    font-family: var(--sans);
+    font-size: 1.1rem;
+    font-weight: 800;
+    color: var(--text-primary);
+    letter-spacing: -0.02em;
+}
+
+.logo-sub {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-top: 1px;
+}
+
+.mode-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.1rem 1.2rem;
+    margin-bottom: 0.6rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.mode-card:hover {
+    border-color: var(--accent);
+    background: var(--bg-hover);
+}
+
+.mode-card.active {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+}
+
+.mode-number {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    color: var(--accent);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 3px;
+}
+
+.mode-title {
+    font-weight: 700;
+    font-size: 0.9rem;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+}
+
+.mode-desc {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    line-height: 1.4;
+}
 
 .section-label {
-    font-family: var(--mono); font-size: 0.6rem; color: var(--t2);
-    letter-spacing: 0.14em; text-transform: uppercase;
-    margin-bottom: 0.5rem; margin-top: 1.2rem;
-}
-
-.hero-title {
-    font-family: var(--sans); font-size: 1.8rem; font-weight: 800;
-    color: var(--t0); letter-spacing: -0.025em; line-height: 1.15;
-    margin-bottom: 0.2rem;
-}
-.hero-sub {
-    font-size: 0.88rem; color: var(--t2); margin-bottom: 1.6rem; font-weight: 400;
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    margin-bottom: 0.5rem;
+    margin-top: 1.2rem;
 }
 
 .agent-log {
-    background: var(--bg1); border: 1px solid var(--b0);
-    border-radius: var(--r2); padding: 0.8rem;
-    height: 300px; overflow-y: auto;
-    font-family: var(--mono); font-size: 0.75rem;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1rem;
+    height: 320px;
+    overflow-y: auto;
+    font-family: var(--mono);
+    font-size: 0.78rem;
 }
+
 .agent-row {
-    display: flex; align-items: center; gap: 9px;
-    padding: 5px 7px; border-radius: 6px; margin-bottom: 2px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 8px;
+    border-radius: 6px;
+    margin-bottom: 3px;
 }
-.agent-row.running { background: var(--accent-dim); border-left: 2px solid var(--accent); }
-.agent-row.done    { color: var(--t2); }
-.agent-row.done .agent-status { color: var(--ok); }
-.agent-status { min-width: 14px; text-align: center; }
-.agent-name   { flex: 1; color: var(--t1); }
-.agent-cost   { color: var(--t2); font-size: 0.66rem; }
-.agent-cost:nth-child(3) { color: var(--t3); font-size: 0.62rem; letter-spacing: 0.04em; }
+
+.agent-row.running {
+    background: var(--accent-soft);
+    border-left: 2px solid var(--accent);
+}
+
+.agent-row.done {
+    color: var(--text-secondary);
+}
+
+.agent-row.done .agent-status { color: var(--success); }
+
+.agent-status {
+    min-width: 16px;
+    text-align: center;
+}
+
+.agent-name { flex: 1; }
+.agent-cost {
+    color: var(--text-muted);
+    font-size: 0.68rem;
+}
+.agent-cost:nth-child(3) {
+    color: #5A5A75;
+    font-size: 0.63rem;
+    letter-spacing: 0.04em;
+}
 
 .output-box {
-    background: var(--bg1); border: 1px solid var(--b0);
-    border-radius: var(--r3); padding: 1.5rem 1.8rem;
-    font-family: var(--sans); font-size: 0.92rem;
-    line-height: 1.72; color: var(--t0);
-    white-space: pre-wrap; max-height: 640px; overflow-y: auto;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.5rem;
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    line-height: 1.7;
+    color: var(--text-primary);
+    white-space: pre-wrap;
+    max-height: 600px;
+    overflow-y: auto;
 }
 
-.stat-bar  { display: flex; gap: 0.7rem; margin: 0.8rem 0; flex-wrap: wrap; }
-.stat-item { background: var(--bg2); border: 1px solid var(--b0);
-             border-radius: var(--r); padding: 0.6rem 0.9rem; flex: 1; min-width: 90px; }
-.stat-val  { font-family: var(--mono); font-size: 1.05rem; font-weight: 500;
-             color: var(--accent); line-height: 1.2; }
-.stat-lbl  { font-size: 0.63rem; color: var(--t2); text-transform: uppercase;
-             letter-spacing: 0.1em; margin-top: 2px; }
+.stat-bar {
+    display: flex;
+    gap: 1rem;
+    margin: 1rem 0;
+    flex-wrap: wrap;
+}
+
+.stat-item {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.7rem 1rem;
+    flex: 1;
+    min-width: 100px;
+}
+
+.stat-val {
+    font-family: var(--mono);
+    font-size: 1.1rem;
+    font-weight: 500;
+    color: var(--accent);
+}
+
+.stat-lbl {
+    font-size: 0.68rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-top: 2px;
+}
 
 .domain-chip {
-    display: inline-block; background: var(--accent-dim);
-    border: 1px solid rgba(218,106,66,0.28); color: var(--accent);
-    border-radius: 20px; padding: 3px 9px;
-    font-size: 0.7rem; font-family: var(--mono); margin: 2px;
+    display: inline-block;
+    background: var(--accent-soft);
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    border-radius: 20px;
+    padding: 3px 10px;
+    font-size: 0.73rem;
+    font-family: var(--mono);
+    margin: 3px;
 }
-.domain-count { font-family: var(--mono); font-size: 0.62rem; color: var(--t2); margin-bottom: 0.7rem; }
 
-.qa-box { background: var(--bg2); border: 1px solid var(--b0);
-          border-left: 3px solid var(--accent); border-radius: var(--r2);
-          padding: 0.9rem 1.1rem; margin-bottom: 0.7rem; }
-.qa-question { font-size: 0.9rem; color: var(--t0); font-weight: 500; line-height: 1.5; }
-.qa-num      { font-family: var(--mono); font-size: 0.62rem; color: var(--accent);
-               letter-spacing: 0.1em; margin-bottom: 4px; }
+/* ── Tıklanabilir domain kartları ── */
+.domain-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 1rem 0 1.5rem 0;
+}
 
-.round-badge { display: inline-flex; align-items: center; gap: 5px;
-               background: var(--bg2); border: 1px solid var(--b0);
-               border-radius: 20px; padding: 3px 10px;
-               font-family: var(--mono); font-size: 0.7rem; color: var(--t2); margin-right: 5px; }
+.domain-tile {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 7px 14px;
+    font-family: var(--mono);
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+    user-select: none;
+    transition: all 0.15s ease;
+}
+
+.domain-tile:hover {
+    border-color: var(--accent);
+    color: var(--text-primary);
+    background: var(--bg-hover);
+}
+
+.domain-tile.selected {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.domain-tile.selected::before {
+    content: "✓ ";
+    font-size: 0.68rem;
+}
+
+.domain-count {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    margin-bottom: 0.8rem;
+}
+
+.qa-box {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1rem 1.2rem;
+    margin-bottom: 0.8rem;
+}
+
+.qa-question {
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+}
+
+.qa-num {
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    color: var(--accent);
+    letter-spacing: 0.08em;
+    margin-bottom: 4px;
+}
+
+.round-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 4px 12px;
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    margin-right: 6px;
+}
+
 .round-badge.active { border-color: var(--accent); color: var(--accent); }
-.round-badge.done   { border-color: var(--ok);     color: var(--ok); }
+.round-badge.done { border-color: var(--success); color: var(--success); }
 
-.model-toggle { display: flex; gap: 4px; margin: 0.5rem 0 0.3rem; }
-.model-btn {
-    flex: 1; background: var(--bg3); border: 1px solid var(--b0);
-    border-radius: 6px; padding: 5px 0; font-size: 0.7rem;
-    font-family: var(--mono); color: var(--t2); cursor: pointer; text-align: center;
-}
-.model-btn:hover  { border-color: var(--b1); color: var(--t0); }
-.model-btn.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
-
-/* Login */
-.login-card {
-    max-width: 360px; margin: 8vh auto 0;
-    background: var(--bg2); border: 1px solid var(--b1);
-    border-radius: var(--r3); padding: 2.8rem 2.2rem;
-}
-.login-logo {
-    font-family: var(--sans); font-size: 1.05rem; font-weight: 700;
-    color: var(--t0); margin-bottom: 4px;
-}
-.login-sub {
-    font-family: var(--mono); font-size: 0.6rem; color: var(--t2);
-    letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 2rem;
+.download-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.6rem 1.2rem;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-decoration: none;
+    color: var(--text-primary);
 }
 
+.download-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+/* Mobile tweaks */
 @media (max-width: 768px) {
-    .stat-bar  { flex-direction: column; }
-    .agent-log { height: 200px; }
-    .output-box { max-height: 380px; }
-    .hero-title { font-size: 1.4rem; }
+    .stat-bar { flex-direction: column; }
+    .agent-log { height: 220px; }
+    .output-box { max-height: 400px; }
 }
 </style>
 """, unsafe_allow_html=True)
@@ -376,31 +609,36 @@ def _login_check() -> bool:
         return True
 
     # ── Login formu ──────────────────────────────────────────
-    # Ortala: boş sütun + form + boş sütun
-    _, col_mid, _ = st.columns([1, 1.2, 1])
-    with col_mid:
-        st.markdown("""
-        <div class="login-card">
-          <div class="login-logo">⚙ Engineering AI</div>
-          <div class="login-sub">Multi-Agent System</div>
-        </div>
-        """, unsafe_allow_html=True)
+    st.markdown("""
+    <style>
+    .login-wrap {
+        max-width: 380px;
+        margin: 10vh auto 0;
+        padding: 2.5rem 2rem;
+        background: #18181C;
+        border: 1px solid #2A2A32;
+        border-radius: 14px;
+    }
+    .login-title { font-size: 1.4rem; font-weight: 800; margin-bottom: 0.3rem; }
+    .login-sub   { font-size: 0.75rem; color: #9998A3; margin-bottom: 1.8rem; letter-spacing: 0.08em; text-transform: uppercase; }
+    </style>
+    <div class="login-wrap">
+        <div class="login-title">⚙️ Engineering AI</div>
+        <div class="login-sub">Multi-Agent System — Giriş</div>
+    </div>
+    """, unsafe_allow_html=True)
 
-        with st.form("login_form", clear_on_submit=False):
-            user = st.text_input("Username", placeholder="username",
-                                  label_visibility="visible")
-            pwd  = st.text_input("Password", type="password",
-                                  placeholder="••••••••",
-                                  label_visibility="visible")
-            st.markdown('<div style="margin-top:0.4rem"></div>', unsafe_allow_html=True)
-            submitted = st.form_submit_button("Sign In", use_container_width=True)
+    with st.form("login_form", clear_on_submit=False):
+        user  = st.text_input("Kullanıcı Adı", placeholder="username")
+        pwd   = st.text_input("Şifre", type="password", placeholder="••••••••")
+        submitted = st.form_submit_button("Giriş Yap", use_container_width=True)
 
-            if submitted:
-                if user == expected_user and pwd == expected_pass:
-                    st.session_state["_authenticated"] = True
-                    st.rerun()
-                else:
-                    st.error("Incorrect username or password.")
+        if submitted:
+            if user == expected_user and pwd == expected_pass:
+                st.session_state["_authenticated"] = True
+                st.rerun()
+            else:
+                st.error("❌ Kullanıcı adı veya şifre hatalı.")
 
     return False  # henüz doğrulanmadı — ana uygulama gösterilmez
 
@@ -669,11 +907,37 @@ def _ajan_api(ajan_key: str, mesaj: str,
     if _is_domain and not _protected:
         ajan["model"] = "claude-sonnet-4-6" if domain_model == "sonnet" else "claude-opus-4-6"
 
-    sistem_promptu_extended = (
-        (CACHE_PREAMBLE + "\n" + ajan["sistem_promptu"]) if CACHE_PREAMBLE
-        else ajan["sistem_promptu"]
-    )
+    # ── System prompt: 2 ayrı cache block ──────────────────────
+    # Block 1: CACHE_PREAMBLE — tüm ajanlar paylaşır → 1hr TTL
+    #   Sonnet: ~4175 tok ≥ 1024 threshold ✅
+    #   Opus:   ~4175 tok ≥ 4096 threshold ✅
+    # Block 2: Ajan sistem promptu — ajan bazında farklı → 5dk TTL
+    if CACHE_PREAMBLE:
+        system_blocks = [
+            {
+                "type": "text",
+                "text": CACHE_PREAMBLE,
+                "cache_control": {"type": "ephemeral", "ttl": "1h"},
+            },
+            {
+                "type": "text",
+                "text": ajan["sistem_promptu"],
+                "cache_control": {"type": "ephemeral"},
+            },
+        ]
+    else:
+        system_blocks = [
+            {
+                "type": "text",
+                "text": ajan["sistem_promptu"],
+                "cache_control": {"type": "ephemeral"},
+            }
+        ]
 
+    # ── User message: cache_context artık KULLANILMIYOR ─────────
+    # tum_ciktilar artık messages dizisinde assistant turn olarak geliyor
+    # (run_* fonksiyonlarından gecmis parametresi ile)
+    # cache_context geriye dönük uyumluluk için <800 char kısa içerikler için tutuldu
     if cache_context and len(cache_context) > 800:
         user_content = [
             {"type": "text", "text": cache_context, "cache_control": {"type": "ephemeral"}},
@@ -701,11 +965,7 @@ def _ajan_api(ajan_key: str, mesaj: str,
             yanit = client.messages.create(
                 model=ajan["model"],
                 max_tokens=ajan.get("max_tokens", 2000),
-                system=[{
-                    "type": "text",
-                    "text": sistem_promptu_extended,
-                    "cache_control": {"type": "ephemeral"},
-                }],
+                system=system_blocks,
                 messages=mesajlar,
                 **extra_kwargs,
             )
@@ -739,6 +999,10 @@ def _ajan_api(ajan_key: str, mesaj: str,
     model = ajan["model"]
     if "opus" in model:
         r_in, r_out = 15/1_000_000, 75/1_000_000
+        # cache_creation: 5dk TTL=18.75, 1hr TTL=30.0 (2× base)
+        # Anthropic API usage.cache_creation_input_tokens birleşik döndürür
+        # Gerçekte 1hr write = 30/M ama API'de ayrı alan yok — 18.75 kullanıyoruz
+        # (konservatif maliyet tahmini; gerçek maliyet biraz daha yüksek olabilir)
         r_cre, r_rd = 18.75/1_000_000, 1.5/1_000_000
     elif "sonnet" in model:
         r_in, r_out = 3/1_000_000, 15/1_000_000
@@ -927,9 +1191,25 @@ def kaydet_txt(brief, mod, final, alan_isimleri, tur_ozeti):
 # ═════════════════════════════════════════════════════════════
 # ANALYSIS RUNNERS
 # ═════════════════════════════════════════════════════════════
+def _build_ctx_history(brief_msg: str, tum_ciktilar: str) -> list:
+    """
+    tum_ciktilar'ı conversation history formatına dönüştür.
+    user: domain analizini iste
+    assistant: tum_ciktilar (domain çıktıları)
+    Bu şekilde validasyon ajanları context'i cache HIT ile okur.
+    """
+    return [
+        {"role": "user",      "content": f"Domain analysis request:\n{brief_msg}"},
+        {"role": "assistant", "content": tum_ciktilar},
+    ]
+
+
 def run_tekli(brief, aktif_alanlar):
     alan_isimleri = [name for _, name in aktif_alanlar]
+
     # ── GRUP A: Domain ajanları paralel ────────────────────────
+    # Sonuç: Her ajan kendi sistem prompt cache'ini yazar (PREAMBLE paylaşılır).
+    # Eş zamanlı paralel — cache HIT yok, sadece WRITE (paralel kısıt).
     gorev_a  = [(f"{key}_a", brief, None, None) for key, _ in aktif_alanlar]
     sonuc_a  = ajan_calistir_paralel(gorev_a, max_workers=6)
     tum_ciktilar_parts = [
@@ -938,30 +1218,43 @@ def run_tekli(brief, aktif_alanlar):
     ]
     tum_ciktilar = "\n\n".join(tum_ciktilar_parts)
 
+    # ── Shared context history ───────────────────────────────────
+    # tum_ciktilar artık cache_context değil, conversation history olarak geçiyor.
+    # İlk validasyon ajanı: WRITE (history Anthropic tarafından cache'lenir).
+    # Sonraki ajanlar: READ (aynı prefix → cache HIT).
+    shared_ctx = _build_ctx_history(brief, tum_ciktilar)
+
     # ── GRUP B: Capraz + Soru paralel ───────────────────────────
+    # Her ikisi de shared_ctx'i gecmis olarak alıyor.
+    # İlk tamamlanan cache'i yazar; 2. okur.
     b_sonuc = ajan_calistir_paralel([
         ("capraz_dogrulama",
-         "Check all numerical values for physical and mathematical consistency.",
-         None, tum_ciktilar),
+         "Check all numerical values, units, and physical consistency across all domain outputs.",
+         shared_ctx, None),
         ("soru_uretici",
-         f"Problem: {brief}\nList unanswered critical questions.",
-         None, tum_ciktilar),
+         f"Problem: {brief}\nList unanswered critical questions needing further analysis.",
+         shared_ctx, None),
     ], max_workers=2)
     capraz, sorular = b_sonuc
 
+    # ── Gözlemci ────────────────────────────────────────────────
     gozlemci = ajan_calistir("gozlemci",
-        f"Problem: {brief}\nActive domains: {', '.join(alan_isimleri)}\n\nCROSS-VALIDATION: {capraz}\n\nEvaluate outputs. Assign KALİTE PUANI: XX/100.",
-        cache_context=tum_ciktilar)
+        f"Problem: {brief}\nActive domains: {', '.join(alan_isimleri)}\n"
+        f"CROSS-VALIDATION:\n{capraz}\n\n"
+        f"Evaluate all domain outputs. Assign KALİTE PUANI: XX/100.",
+        gecmis=shared_ctx)
 
+    # ── Final rapor ──────────────────────────────────────────────
     final = ajan_calistir("final_rapor",
-        f"""Single-agent analysis. Domains: {', '.join(alan_isimleri)}
-PROBLEM: {brief}
-OBSERVER: {gozlemci}
-QUESTIONS: {sorular}
-Each domain agent's technical findings are in the context above.
-Write a professional engineering report: lead with what each agent found (preserve numbers/calculations),
-then observer evaluation, then recommendations (max 25% of report).""",
-        cache_context=tum_ciktilar)
+        f"Single-agent analysis. Domains: {', '.join(alan_isimleri)}\n"
+        f"PROBLEM: {brief}\n"
+        f"OBSERVER: {gozlemci}\n"
+        f"QUESTIONS: {sorular}\n"
+        f"Domain agent technical findings are in the conversation history above.\n"
+        f"Write a professional engineering report: lead with each domain's technical "
+        f"findings (preserve all numbers and calculations), then observer evaluation, "
+        f"then recommendations (max 25% of report). Always write in English.",
+        gecmis=shared_ctx)
 
     puan = kalite_puani_oku(gozlemci)
     return final, [{"tur": 1, "puan": puan}]
@@ -969,7 +1262,6 @@ then observer evaluation, then recommendations (max 25% of report).""",
 
 def run_cift(brief, aktif_alanlar):
     alan_isimleri = [name for _, name in aktif_alanlar]
-    tum_ciktilar_parts = []
 
     # ── GRUP A: Domain A+B ajanları paralel ──────────────────────
     gorev_a = []
@@ -982,45 +1274,56 @@ def run_cift(brief, aktif_alanlar):
     for i, (_, name) in enumerate(aktif_alanlar):
         cevap_a = sonuc_a[i * 2]
         cevap_b = sonuc_a[i * 2 + 1]
-        tum_ciktilar_parts.append(f"{name.upper()} EXPERT A:\n{cevap_a}\n\n{name.upper()} EXPERT B:\n{cevap_b}")
+        tum_ciktilar_parts.append(
+            f"{name.upper()} EXPERT A:\n{cevap_a}\n\n"
+            f"{name.upper()} EXPERT B:\n{cevap_b}"
+        )
     tum_ciktilar = "\n\n".join(tum_ciktilar_parts)
+    shared_ctx = _build_ctx_history(brief, tum_ciktilar)
 
     # ── GRUP B: Validasyon paralel ───────────────────────────────
-    b_sonuc  = ajan_calistir_paralel([
-        ("capraz_dogrulama",    "Check all numerical values for physical and mathematical consistency.", None, tum_ciktilar),
-        ("varsayim_belirsizlik","Identify all hidden and unstated assumptions across expert outputs.",   None, tum_ciktilar),
+    b_sonuc = ajan_calistir_paralel([
+        ("capraz_dogrulama",
+         "Check all numerical values for physical and mathematical consistency.",
+         shared_ctx, None),
+        ("varsayim_belirsizlik",
+         "Identify all hidden and unstated assumptions across expert outputs.",
+         shared_ctx, None),
     ], max_workers=2)
     capraz, varsayim = b_sonuc
 
     gozlemci = ajan_calistir("gozlemci",
-        f"Problem: {brief}\nDomains: {', '.join(alan_isimleri)}\n\nCROSS-VAL: {capraz}\nASSUMPTIONS: {varsayim}\n\nEvaluate. KALİTE PUANI: XX/100. Identify key A vs B conflicts.",
-        cache_context=tum_ciktilar)
+        f"Problem: {brief}\nDomains: {', '.join(alan_isimleri)}\n"
+        f"CROSS-VAL: {capraz}\nASSUMPTIONS: {varsayim}\n\n"
+        f"Evaluate all outputs. KALİTE PUANI: XX/100. Identify key A vs B conflicts.",
+        gecmis=shared_ctx)
 
     # ── GRUP C: Çelişki + Soru + Alternatif paralel ─────────────
     c_sonuc = ajan_calistir_paralel([
         ("celisiki_cozum",
-         f"OBSERVER:\n{gozlemci}\n\nResolve A vs B expert conflicts. Which position is better supported?",
-         None, tum_ciktilar),
+         f"OBSERVER:\n{gozlemci}\n\nResolve A vs B expert conflicts.",
+         shared_ctx, None),
         ("soru_uretici",
          f"Problem: {brief}\nList unanswered critical questions.",
-         None, tum_ciktilar),
+         shared_ctx, None),
         ("alternatif_senaryo",
          f"Problem: {brief}\nEvaluate at least 3 alternative design/solution approaches.",
-         None, tum_ciktilar),
+         shared_ctx, None),
     ], max_workers=3)
     celiski, sorular, alternatif = c_sonuc
 
     final = ajan_calistir("final_rapor",
-        f"""Dual-agent analysis. Domains: {', '.join(alan_isimleri)}
-PROBLEM: {brief}
-OBSERVER: {gozlemci}
-CONFLICTS RESOLVED: {celiski}
-QUESTIONS: {sorular}
-ALTERNATIVES: {alternatif}
-Domain agent technical findings are in the context above.
-Write a professional engineering report: lead with each domain's technical findings (preserve numbers),
-then conflicts, then recommendations (max 25% of report).""",
-        cache_context=tum_ciktilar)
+        f"Dual-agent analysis. Domains: {', '.join(alan_isimleri)}\n"
+        f"PROBLEM: {brief}\n"
+        f"OBSERVER: {gozlemci}\n"
+        f"CONFLICTS RESOLVED: {celiski}\n"
+        f"QUESTIONS: {sorular}\n"
+        f"ALTERNATIVES: {alternatif}\n"
+        f"Domain agent technical findings are in the conversation history above.\n"
+        f"Write a professional engineering report: lead with each domain's technical "
+        f"findings (preserve all numbers), then conflicts, then recommendations "
+        f"(max 25% of report). Always write in English.",
+        gecmis=shared_ctx)
 
     puan = kalite_puani_oku(gozlemci)
     return final, [{"tur": 1, "puan": puan}]
@@ -1030,20 +1333,27 @@ def run_full_loop(brief, aktif_alanlar, max_tur):
     alan_isimleri = [name for _, name in aktif_alanlar]
     alan_keyleri  = [key  for key, _ in aktif_alanlar]
 
+    # Domain ajanlarının çok-turlu geçmişi (her ajan kendi zincirini tutar)
     gecmis = {f"{key}_{ab}": [] for key in alan_keyleri for ab in ("a", "b")}
-    tur_ozeti    = []
-    gozlemci_notu = ""
-    tum_ciktilar  = ""
+    tur_ozeti       = []
+    gozlemci_notu   = ""
+    tum_ciktilar    = ""
     gozlemci_cevabi = ""
+    shared_ctx      = []   # validasyon ajanları için conversation history
 
     for tur in range(1, max_tur + 1):
         st.session_state.current_round = tur
         st.session_state.round_scores.append({"tur": tur, "puan": None})
 
-        mesaj = brief if tur == 1 else f"{brief}\n\nOBSERVER NOTES:\n{gozlemci_notu}"
+        mesaj = brief if tur == 1 else (
+            f"{brief}\n\nOBSERVER NOTES FROM ROUND {tur-1}:\n{gozlemci_notu}"
+        )
+
         son_tur_cikti = {}
 
-        # ── GRUP A: Domain ajanları paralel ─────────────────────
+        # ── GRUP A: Domain ajanları paralel ────────────────────
+        # Her domain ajanı kendi gecmis chain'ini taşıyor (çok-turlu iterasyon).
+        # CACHE: Her ajan kendi sistem_promptu cache'ini yazar (PREAMBLE paylaşılır).
         gorev_a = []
         for key, name in aktif_alanlar:
             gorev_a.append((f"{key}_a", mesaj, gecmis[f"{key}_a"], None))
@@ -1055,45 +1365,76 @@ def run_full_loop(brief, aktif_alanlar, max_tur):
             cevap_b = sonuc_a[i * 2 + 1]
             son_tur_cikti[f"{key}_a"] = cevap_a
             son_tur_cikti[f"{key}_b"] = cevap_b
-            gecmis[f"{key}_a"] += [{"role": "user", "content": mesaj}, {"role": "assistant", "content": cevap_a}]
-            gecmis[f"{key}_b"] += [{"role": "user", "content": mesaj}, {"role": "assistant", "content": cevap_b}]
+            gecmis[f"{key}_a"] += [
+                {"role": "user",      "content": mesaj},
+                {"role": "assistant", "content": cevap_a},
+            ]
+            gecmis[f"{key}_b"] += [
+                {"role": "user",      "content": mesaj},
+                {"role": "assistant", "content": cevap_b},
+            ]
 
+        # tum_ciktilar: bu turun domain çıktıları
         tum_ciktilar = "\n\n".join(
-            f"{name.upper()} EXPERT A:\n{son_tur_cikti[f'{key}_a']}\n\n{name.upper()} EXPERT B:\n{son_tur_cikti[f'{key}_b']}"
+            f"{name.upper()} EXPERT A:\n{son_tur_cikti[f'{key}_a']}\n\n"
+            f"{name.upper()} EXPERT B:\n{son_tur_cikti[f'{key}_b']}"
             for key, name in aktif_alanlar
         )
 
-        # ── GRUP B: Validasyon paralel ────────────────────────────
+        # ── Shared context güncelle ─────────────────────────────
+        # Her tur sonunda shared_ctx'e bu turun domain çıktıları eklenir.
+        # Sonraki tur validasyon ajanları önceki turları da görecek.
+        # Tur 1: [user: brief, assistant: tur1_ciktilar]
+        # Tur 2: [user: brief, assistant: tur1, user: round2_brief, assistant: tur2]
+        # CACHE: shared_ctx prefix sabit kaldığı sürece HIT alır.
+        if tur == 1:
+            shared_ctx = _build_ctx_history(brief, tum_ciktilar)
+        else:
+            # Önceki shared_ctx'e bu turun çıktısını ekle
+            shared_ctx = shared_ctx + [
+                {"role": "user",      "content": f"Round {tur} domain analysis:"},
+                {"role": "assistant", "content": tum_ciktilar},
+            ]
+
+        # ── GRUP B: Validasyon paralel ──────────────────────────
+        # shared_ctx'i gecmis olarak kullanıyor → PREAMBLE cache HIT alır,
+        # ctx prefix aynı kalan kısımlar için de HIT alır.
         b_sonuc = ajan_calistir_paralel([
-            ("capraz_dogrulama",    f"ROUND {tur}: Check all numerical values for physical and mathematical consistency.", None, tum_ciktilar),
-            ("varsayim_belirsizlik",f"ROUND {tur}: Identify all hidden and unstated assumptions.",                         None, tum_ciktilar),
-            ("varsayim_belirsizlik",f"ROUND {tur}: List all missing, ambiguous, or conflicting points.",                   None, tum_ciktilar),
-            ("literatur_patent",    f"ROUND {tur}: Check cited standards and references. Flag IP risks.",                  None, tum_ciktilar),
+            ("capraz_dogrulama",
+             f"ROUND {tur}: Check all numerical values, units, and physical consistency.",
+             shared_ctx, None),
+            ("varsayim_belirsizlik",
+             f"ROUND {tur}: Identify all hidden and unstated assumptions.",
+             shared_ctx, None),
+            ("varsayim_belirsizlik",
+             f"ROUND {tur}: List all missing, ambiguous, or conflicting points.",
+             shared_ctx, None),
+            ("literatur_patent",
+             f"ROUND {tur}: Check cited standards and references. Flag IP risks.",
+             shared_ctx, None),
         ], max_workers=4)
         capraz, varsayim, belirsiz, literatur = b_sonuc
 
         gozlemci_cevabi = ajan_calistir("gozlemci",
-            f"""Problem: {brief}
-Domains: {', '.join(alan_isimleri)} — ROUND {tur}
-CROSS-VAL: {capraz}
-ASSUMPTIONS: {varsayim}
-UNCERTAINTY: {belirsiz}
-LITERATURE: {literatur}
-Evaluate all outputs. KALİTE PUANI: XX/100. Specify corrections for next round.""",
-            cache_context=tum_ciktilar)
+            f"Problem: {brief}\nDomains: {', '.join(alan_isimleri)} — ROUND {tur}\n"
+            f"CROSS-VAL: {capraz}\nASSUMPTIONS: {varsayim}\n"
+            f"UNCERTAINTY: {belirsiz}\nLITERATURE: {literatur}\n"
+            f"Evaluate all outputs. KALİTE PUANI: XX/100. Specify corrections for next round.",
+            gecmis=shared_ctx)
 
         puan = kalite_puani_oku(gozlemci_cevabi)
         gozlemci_notu = gozlemci_cevabi
         st.session_state.round_scores[-1]["puan"] = puan
 
-        # ── GRUP C: Risk + Çelişki paralel ────────────────────────
+        # ── GRUP C: Risk + Çelişki paralel ─────────────────────
         ajan_calistir_paralel([
             ("risk_guvenilirlik",
              f"ROUND {tur}: FMEA on all proposed designs. Identify critical failure scenarios and RPN values.",
-             None, tum_ciktilar),
+             shared_ctx, None),
             ("celisiki_cozum",
-             f"OBSERVER REPORT:\n{gozlemci_cevabi}\n\nResolve all conflicts. Which agent position is better supported?",
-             None, tum_ciktilar),
+             f"OBSERVER REPORT:\n{gozlemci_cevabi}\n\n"
+             f"Resolve all A vs B conflicts. Which position is better supported?",
+             shared_ctx, None),
         ], max_workers=2)
 
         tur_ozeti.append({"tur": tur, "puan": puan})
@@ -1101,54 +1442,71 @@ Evaluate all outputs. KALİTE PUANI: XX/100. Specify corrections for next round.
         if puan >= 85:
             break
 
-    # Post-loop
+    # ── Post-loop: shared_ctx artık tüm turları içeriyor ────────
+    # GRUP D ajanları shared_ctx ile çalışır → cache HIT maksimum
+
     # ── GRUP D: 8 destek ajanı paralel ─────────────────────────
     d_sonuc = ajan_calistir_paralel([
-        ("soru_uretici",          f"Problem: {brief}\nList unanswered critical questions requiring further analysis.",        None, tum_ciktilar),
-        ("alternatif_senaryo",    f"Problem: {brief}\nEvaluate at least 3 alternative design/solution approaches.",           None, tum_ciktilar),
-        ("kalibrasyon",           f"Problem: {brief}\nCompare proposed parameters against benchmarks. Flag anomalies.",       None, tum_ciktilar),
-        ("dogrulama_standartlar", f"Problem: {brief}\nAssess compliance with industry standards. Identify certification roadblocks.", None, tum_ciktilar),
-        ("entegrasyon_arayuz",    f"Problem: {brief}\nIdentify interface risks between subsystems.",                          None, tum_ciktilar),
-        ("simulasyon_koordinator",f"Problem: {brief}\nRecommend simulation strategy. Which analyses need CFD/FEA?",           None, tum_ciktilar),
-        ("maliyet_pazar",         f"Problem: {brief}\nCost estimation, market context, supply chain assessment.",             None, tum_ciktilar),
-        ("capraz_dogrulama",      f"Problem: {brief}\nAnalyze data quality. Flag gaps and statistical anomalies.",            None, tum_ciktilar),
+        ("soru_uretici",
+         f"Problem: {brief}\nList unanswered critical questions requiring further analysis.",
+         shared_ctx, None),
+        ("alternatif_senaryo",
+         f"Problem: {brief}\nEvaluate at least 3 alternative design/solution approaches.",
+         shared_ctx, None),
+        ("kalibrasyon",
+         f"Problem: {brief}\nCompare proposed parameters against benchmarks. Flag anomalies.",
+         shared_ctx, None),
+        ("dogrulama_standartlar",
+         f"Problem: {brief}\nAssess compliance with industry standards. Identify certification roadblocks.",
+         shared_ctx, None),
+        ("entegrasyon_arayuz",
+         f"Problem: {brief}\nIdentify interface risks between subsystems.",
+         shared_ctx, None),
+        ("simulasyon_koordinator",
+         f"Problem: {brief}\nRecommend simulation strategy. Which analyses need CFD/FEA?",
+         shared_ctx, None),
+        ("maliyet_pazar",
+         f"Problem: {brief}\nCost estimation, market context, supply chain assessment.",
+         shared_ctx, None),
+        ("capraz_dogrulama",
+         f"Problem: {brief}\nAnalyze data quality. Flag gaps and statistical anomalies.",
+         shared_ctx, None),
     ], max_workers=6)
-    soru_cevap, alt_cevap, kalib_cevap, std_cevap,     enteg_cevap, sim_cevap, maliyet_cevap, veri_cevap = d_sonuc
+    soru_cevap, alt_cevap, kalib_cevap, std_cevap, \
+        enteg_cevap, sim_cevap, maliyet_cevap, veri_cevap = d_sonuc
 
+    # ── Sentez + Final rapor ─────────────────────────────────────
     baglam_cevap = ajan_calistir("sentez",
-        f"Problem: {brief}\nSummarize confirmed parameters and key decisions.",
-        cache_context=tum_ciktilar)
+        f"Problem: {brief}\nSummarize confirmed parameters and key decisions from all rounds.",
+        gecmis=shared_ctx)
 
     sentez_cevap = ajan_calistir("sentez",
-        f"""Problem: {brief} — Domains: {', '.join(alan_isimleri)}
-OBSERVER: {gozlemci_cevabi}
-QUESTIONS: {soru_cevap}
-ALTERNATIVES: {alt_cevap}
-CALIBRATION: {kalib_cevap}
-STANDARDS: {std_cevap}
-INTEGRATION: {enteg_cevap}
-SIMULATION: {sim_cevap}
-COST & MARKET: {maliyet_cevap}
-DATA: {veri_cevap}
-CONTEXT: {baglam_cevap}
-Synthesize all findings. Resolve conflicts. Produce clean summary for Final Report Writer.""",
-        cache_context=tum_ciktilar)
+        f"Problem: {brief} — Domains: {', '.join(alan_isimleri)}\n"
+        f"OBSERVER: {gozlemci_cevabi}\n"
+        f"QUESTIONS: {soru_cevap}\nALTERNATIVES: {alt_cevap}\n"
+        f"CALIBRATION: {kalib_cevap}\nSTANDARDS: {std_cevap}\n"
+        f"INTEGRATION: {enteg_cevap}\nSIMULATION: {sim_cevap}\n"
+        f"COST & MARKET: {maliyet_cevap}\nDATA: {veri_cevap}\n"
+        f"CONTEXT: {baglam_cevap}\n"
+        f"Synthesize all findings. Resolve conflicts. Produce clean summary for Final Report Writer.",
+        gecmis=shared_ctx)
 
     final = ajan_calistir("final_rapor",
-        f"""Analysis completed in {len(tur_ozeti)} round(s). Domains: {', '.join(alan_isimleri)}
-PROBLEM: {brief}
-OBSERVER EVALUATION: {gozlemci_cevabi}
-QUESTIONS: {soru_cevap}
-ALTERNATIVES: {alt_cevap}
-SYNTHESIZED FINDINGS: {sentez_cevap}
-Domain agent technical findings are in the context above.
-REPORT STRUCTURE REQUIRED:
-1. For each active domain: heading + full technical findings (preserve all numbers, calculations, safety factors)
-2. Cross-domain conflicts and resolutions
-3. Observer quality assessment
-4. Recommendations (max 25% of total report)
-5. Next steps and open questions""",
-        cache_context=tum_ciktilar)
+        f"Analysis completed in {len(tur_ozeti)} round(s). Domains: {', '.join(alan_isimleri)}\n"
+        f"PROBLEM: {brief}\n"
+        f"OBSERVER EVALUATION: {gozlemci_cevabi}\n"
+        f"QUESTIONS: {soru_cevap}\n"
+        f"ALTERNATIVES: {alt_cevap}\n"
+        f"SYNTHESIZED FINDINGS: {sentez_cevap}\n"
+        f"All domain agent technical findings are in the conversation history above.\n"
+        f"REPORT STRUCTURE REQUIRED:\n"
+        f"1. For each active domain: heading + full technical findings (preserve all numbers, calculations, safety factors)\n"
+        f"2. Cross-domain conflicts and resolutions\n"
+        f"3. Observer quality assessment\n"
+        f"4. Recommendations (max 25% of total report)\n"
+        f"5. Next steps and open questions\n"
+        f"Always write in English.",
+        gecmis=shared_ctx)
 
     # ── GRUP E: Dokümantasyon + Özet paralel ────────────────────
     ajan_calistir_paralel([
@@ -1369,8 +1727,8 @@ if st.session_state.step == "input":
     brief_input = st.text_area(
         label="brief",
         label_visibility="collapsed",
-        placeholder="Describe the engineering problem in detail...\n\nExample: Hypersonic missile — material selection and TPS design. Mach 8, 25 km altitude, 300 s flight duration, max surface temp 2200°C.",
-        height=220,
+        placeholder="Analiz etmek istediğiniz mühendislik problemini detaylıca açıklayın...\n\nÖrnek: Hipersonik füze için malzeme seçimi ve termal koruma sistemi tasarımı. Mach 8 hız, 25km irtifa, 300 saniyelik uçuş süresi hedefleniyor.",
+        height=160,
         key="brief_input_widget"
     )
 
@@ -1384,23 +1742,28 @@ if st.session_state.step == "input":
         (4,"sonnet"): (0.80, 2.00), (4,"opus"): (4.00,12.00),
     }
     lo, hi = _est.get((_mode, _dm), (0.5, 2.0))
-    _cok = "var(--ok)" if hi < 1 else "var(--warn)" if hi < 4 else "var(--accent)"
+    _color = "#2DB87A" if hi < 1 else "#E8A838" if hi < 4 else "#E05A2B"
     st.markdown(f"""
-    <div style="background:var(--bg2);border:1px solid var(--b0);border-radius:8px;
-                padding:8px 14px;margin-bottom:0.8rem;display:flex;align-items:center;gap:12px">
-      <span style="font-size:0.62rem;color:var(--t2);text-transform:uppercase;
-                   letter-spacing:0.1em;font-family:var(--mono)">Est. Cost</span>
-      <span style="font-size:0.88rem;color:{_cok};font-weight:700;font-family:var(--mono)">
-        ${lo:.2f}–${hi:.2f}
+    <div style="background:#131316;border:1px solid {_color}40;border-radius:8px;
+                padding:8px 14px;margin-bottom:1rem;font-family:var(--mono)">
+      <span style="font-size:0.65rem;color:#5A5A65;text-transform:uppercase;letter-spacing:0.1em">
+        Tahmini Maliyet
       </span>
-      <span style="font-size:0.7rem;color:var(--t2)">≈ {lo*KUR:.0f}–{hi*KUR:.0f} TL</span>
+      <span style="font-size:0.85rem;color:{_color};margin-left:10px;font-weight:700">
+        ${lo:.2f} – ${hi:.2f}
+      </span>
+      <span style="font-size:0.65rem;color:#5A5A65;margin-left:6px">
+        (~{lo*KUR:.0f}–{hi*KUR:.0f} TL)
+      </span>
     </div>
     """, unsafe_allow_html=True)
 
     # Maliyet limiti
     _limit = st.session_state.get("cost_limit", 0.0)
 
-    start = st.button("⚡ Start Analysis", use_container_width=True, key="start_btn")
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        start = st.button("⚡ Analizi Başlat", use_container_width=True, key="start_btn")
 
     if start:
         if not brief_input.strip():

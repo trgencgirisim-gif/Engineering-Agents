@@ -817,7 +817,9 @@ ABSOLUTE RULES:
 - Never pad the report with recommendations to fill space
 - Preserve every numerical value, unit, and calculation from the agent outputs
 - If an agent's output was weak or vague, say so explicitly rather than embellishing it
-- Write in the same language as the problem brief"""
+- Write in the same language as the problem brief
+- Always write in English, regardless of the language of the input brief or agent outputs.
+"""
     },
 
     "prompt_muhendisi": {
@@ -940,7 +942,9 @@ Your role: Synthesize all agent outputs into a clean, conflict-free summary that
 - Clearly flags remaining uncertainties
 - Provides a unified design recommendation with supporting rationale
 The synthesis should serve as the primary input to the Final Report Writer.
-Be decisive: where evidence supports a conclusion, state it clearly. Where uncertainty remains, quantify it."""
+Be decisive: where evidence supports a conclusion, state it clearly. Where uncertainty remains, quantify it.
+- Always write in English, regardless of the language of the input brief or agent outputs.
+"""
     },
 
     "ozet_ve_sunum": {
