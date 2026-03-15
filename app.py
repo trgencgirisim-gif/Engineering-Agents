@@ -887,7 +887,7 @@ def _ajan_api(ajan_key: str, mesaj: str,
                 "cevap": "STOPPED", "dusunce": "",
                 "cost": 0, "inp": 0, "out": 0, "c_cre": 0, "c_rd": 0, "saved": 0}
     
-    if st.session_state.get("cost_limit", 0) > 0:
+    if st.session_state.get("budget_mode") and st.session_state.get("cost_limit", 0) > 0:
         if st.session_state.get("total_cost", 0) >= st.session_state.cost_limit:
             return {"key": ajan_key, "name": ajan_key, "model": "?",
                     "cevap": f"LIMIT_REACHED: ${st.session_state.cost_limit:.2f} limitine ulaşıldı.",
@@ -1003,7 +1003,7 @@ def _session_update(r: dict):
         "key":     r["key"],
         "name":    r["name"],
         "model":   r["model"],
-        "status":  "error" if r["cevap"].startswith("ERROR") else "done",
+        "status":  "error" if r["cevap"].startswith("ERROR") else "stopped" if r["cevap"].startswith(("STOPPED", "LIMIT_REACHED")) else "done",
         "cost":    r["cost"],
         "output":  r["cevap"],
         "thinking": r["dusunce"],
@@ -1457,7 +1457,7 @@ with st.sidebar:
         cost_limit = st.number_input(
             "Maksimum harcama (USD)",
             min_value=0.1, max_value=50.0,
-            value=st.session_state.get("cost_limit", 3.0),
+            value=max(0.1, st.session_state.get("cost_limit", 3.0)),
             step=0.5, format="%.1f",
             key="cost_limit_input",
             label_visibility="collapsed"
