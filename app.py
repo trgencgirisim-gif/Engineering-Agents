@@ -1196,6 +1196,7 @@ def kaydet_txt(brief, mod, final, alan_isimleri, tur_ozeti):
 # ═════════════════════════════════════════════════════════════
 # ANALYSIS RUNNERS
 # ═════════════════════════════════════════════════════════════
+
 def _build_ctx_history(brief_msg: str, tum_ciktilar: str) -> list:
     """
     tum_ciktilar'ı conversation history formatına dönüştür.
@@ -1207,7 +1208,6 @@ def _build_ctx_history(brief_msg: str, tum_ciktilar: str) -> list:
         {"role": "user",      "content": f"Domain analysis request:\n{brief_msg}"},
         {"role": "assistant", "content": tum_ciktilar},
     ]
-
 
 def run_tekli(brief, aktif_alanlar):
     alan_isimleri = [name for _, name in aktif_alanlar]
@@ -1737,11 +1737,11 @@ with st.sidebar:
             init_state()
             st.rerun()
 
-    # Knowledge base istatistiği
+    # Knowledge base — dosya erişimi ile
     st.markdown("---")
     st.markdown('<div class="section-label">Knowledge Base</div>', unsafe_allow_html=True)
     try:
-        kb_stats = rag.istatistik()
+        kb_stats = get_rag().istatistik()
         toplam = kb_stats["toplam"]
         st.markdown(f"""
         <div class="stat-item">
@@ -1749,22 +1749,82 @@ with st.sidebar:
             <div class="stat-lbl">Kayıtlı Analiz</div>
         </div>
         """, unsafe_allow_html=True)
+
         if toplam > 0 and kb_stats["analizler"]:
-            st.markdown('<div style="margin-top:0.6rem"></div>', unsafe_allow_html=True)
-            for analiz in kb_stats["analizler"][:5]:  # en yeni 5
-                tarih = analiz["date"][:10]
-                brief_kisa = analiz["brief"][:50].rstrip(".")
-                maliyet = f"${analiz['cost']:.3f}"
-                mod_etiket = {1:"M1",2:"M2",3:"M3",4:"M4"}.get(analiz.get("mode",4),"M?")
+            # Aktif görüntüleme state
+            if "kb_view_id" not in st.session_state:
+                st.session_state.kb_view_id = None
+
+            st.markdown('<div style="margin-top:0.5rem"></div>', unsafe_allow_html=True)
+            for analiz in kb_stats["analizler"][:6]:
+                tarih    = analiz["date"][:10]
+                brief_k  = analiz["brief"][:45].rstrip(".")
+                maliyet  = f"${analiz['cost']:.3f}"
+                quality  = analiz.get("quality", 0)
+                has_oq   = analiz.get("has_open_q", 0)
+                mod_lbl  = {1:"M1",2:"M2",3:"M3",4:"M4"}.get(analiz.get("mode",4),"M?")
+                doc_id   = analiz["id"]
+
+                # Kalite rengi
+                qcolor = "#2DB87A" if quality >= 85 else "#E8A838" if quality >= 70 else "#9998A3"
+                q_badge = f'<span style="color:{qcolor}">{quality}/100</span>' if quality else ""
+                oq_badge = ' · <span style="color:#E8A838">⚠ open Q</span>' if has_oq else ""
+
+                is_active = st.session_state.kb_view_id == doc_id
+                bg_color  = "#1A1015" if is_active else "#131316"
+                border_c  = "#E05A2B" if is_active else "#2A2A32"
+
                 st.markdown(f"""
-                <div style="background:#131316;border:1px solid #2A2A32;border-radius:6px;
-                            padding:6px 10px;margin-bottom:4px;cursor:default">
-                  <div style="font-size:0.68rem;color:#E05A2B">{tarih} · {mod_etiket} · {maliyet}</div>
-                  <div style="font-size:0.7rem;color:#9998A3;margin-top:2px">{brief_kisa}...</div>
+                <div style="background:{bg_color};border:1px solid {border_c};
+                            border-radius:6px;padding:6px 10px;margin-bottom:3px">
+                  <div style="font-size:0.65rem;color:#E05A2B">
+                    {tarih} · {mod_lbl} · {maliyet} · {q_badge}{oq_badge}
+                  </div>
+                  <div style="font-size:0.7rem;color:#9998A3;margin-top:2px">{brief_k}...</div>
                 </div>
                 """, unsafe_allow_html=True)
+
+                btn_label = "▲ Kapat" if is_active else "📄 Görüntüle"
+                if st.button(btn_label, key=f"kb_view_{doc_id}", use_container_width=True):
+                    st.session_state.kb_view_id = None if is_active else doc_id
+                    st.rerun()
+
     except Exception:
         pass
+
+    # KB raporu ana alanda göster
+    if st.session_state.get("kb_view_id") and st.session_state.step == "input":
+        _kb_id = st.session_state.kb_view_id
+        _kb_content = get_rag().get_full_report(_kb_id)
+        if _kb_content:
+            st.markdown('<div class="section-label">📂 Knowledge Base — Rapor</div>', unsafe_allow_html=True)
+            # Header bilgilerini parse et
+            _lines = _kb_content.split("\n")[:8]
+            _header = {l.split(":")[0].strip(): ":".join(l.split(":")[1:]).strip()
+                       for l in _lines if ":" in l and not l.startswith("=")}
+            col_a, col_b, col_c = st.columns(3)
+            col_a.metric("Tarih", _header.get("DATE","")[:10])
+            col_b.metric("Maliyet", "$" + _header.get("COST","?").replace("$",""))
+            col_c.metric("Kalite", _header.get("QUALITY_SCORE","?") + "/100" if _header.get("QUALITY_SCORE") else "?")
+
+            # Rapor içeriği
+            _sep = "=" * 60
+            if _sep in _kb_content:
+                _rapor = _kb_content.split(_sep)[-1].strip()
+                # Domain agent summaries kısmını ayır
+                if "DOMAIN AGENT SUMMARIES" in _rapor:
+                    _rapor = _rapor.split("DOMAIN AGENT SUMMARIES")[0].strip()
+            else:
+                _rapor = _kb_content
+
+            with st.expander("📄 Tam Rapor", expanded=True):
+                st.text_area("rapor", _rapor, height=500,
+                             label_visibility="collapsed",
+                             key="kb_rapor_view", disabled=True)
+
+            if st.button("✕ Kapat", key="kb_close_btn"):
+                st.session_state.kb_view_id = None
+                st.rerun()
 
 
 # ═════════════════════════════════════════════════════════════
@@ -2229,19 +2289,15 @@ elif st.session_state.step == "done":
             tur_ozeti
         )
 
-        # RAG: analizi knowledge base'e kaydet (bir kez) — zengin metadata ile
+        # RAG: analizi knowledge base'e kaydet (bir kez) — zengin metadata
         if not st.session_state.get("rag_saved", False):
-            # Açık soruları agent_log'dan çek
             _open_q = ""
             for _entry in st.session_state.get("agent_log", []):
                 if _entry.get("key") == "soru_uretici":
                     _open_q = _entry.get("output", "") or _entry.get("cevap", "")
                     break
-
-            # Quality score
             _scores = st.session_state.get("round_scores", [])
             _quality = _scores[-1].get("puan") if _scores else None
-
             get_rag().save(
                 brief=st.session_state.brief,
                 domains=alan_isimleri,
