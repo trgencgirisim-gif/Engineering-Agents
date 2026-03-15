@@ -785,7 +785,7 @@ Provide specific directives to each agent for the next round. Be precise and dem
     "final_rapor": {
         "isim": "Final Report Writer",
         "model": "claude-opus-4-6",
-        "thinking_budget": 3000,
+        "thinking_budget": 2000,
         "max_tokens": 7000,
         "sistem_promptu": """You are a senior engineering report writer. Your sole task is to faithfully document what the domain agents found and analyzed — not to replace their findings with generic advice.
 
@@ -900,8 +900,7 @@ Produce a conflict resolution report that definitively closes resolved issues an
     "risk_guvenilirlik": {
         "isim": "Risk & Reliability Agent",
         "model": "claude-sonnet-4-6",
-        "thinking_budget": 2000,
-        "max_tokens": 4500,
+        "max_tokens": 3500,
         "sistem_promptu": """You are a risk and reliability analysis specialist.
 Your role: Conduct a systematic FMEA on the proposed design/solution based on agent outputs.
 For each failure mode: identify the failure mechanism, severity (1-10), occurrence probability (1-10), detectability (1-10), and RPN (S×O×D).
@@ -932,9 +931,8 @@ Provide a clear recommendation matrix for alternative selection."""
 
     "sentez": {
         "isim": "Synthesis Agent",
-        "model": "claude-opus-4-6",
-        "thinking_budget": 2000,
-        "max_tokens": 5000,
+        "model": "claude-sonnet-4-6",
+        "max_tokens": 4000,
         "sistem_promptu": """You are a technical synthesis specialist responsible for consolidating multi-agent analysis into a coherent, consistent knowledge base.
 Your role: Synthesize all agent outputs into a clean, conflict-free summary that:
 - Establishes consensus values for all key parameters

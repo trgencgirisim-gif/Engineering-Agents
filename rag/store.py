@@ -51,14 +51,11 @@ class RAGStore:
         )
 
     # ─────────────────────────────────────────────────────────
-    # Analiz kaydet
+    # Save analysis
     # ─────────────────────────────────────────────────────────
-    def kaydet(self, brief: str, domains: list, final_report: str,
-               mode: int = 4, cost: float = 0.0) -> str:
-        """
-        Tamamlanan bir analizi vektör veritabanına kaydeder.
-        Döndürdüğü ID ileride referans için kullanılabilir.
-        """
+    def save(self, brief: str, domains: list, final_report: str,
+             mode: int = 4, cost: float = 0.0) -> str:
+        """Save a completed analysis to the vector database. Returns the document ID."""
         import uuid
         zaman  = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         doc_id = f"analiz_{zaman}_{uuid.uuid4().hex[:6]}"
@@ -95,14 +92,10 @@ class RAGStore:
         return doc_id
 
     # ─────────────────────────────────────────────────────────
-    # Benzer analiz getir
+    # Get similar analyses
     # ─────────────────────────────────────────────────────────
-    def benzer_getir(self, sorgu: str, n: int = 3) -> str:
-        """
-        Sorguya en benzer n analizi getirir.
-        Prompt Engineer ve Final Rapor için kullanılır.
-        Döndürdüğü değer direkt prompt'a eklenebilir string.
-        """
+    def get_similar(self, query: str, n: int = 3) -> str:
+        """Return the n most similar past analyses as a formatted string for prompt injection."""
         toplam = self.collection.count()
         if toplam == 0:
             return ""  # Henüz kayıtlı analiz yok
@@ -110,7 +103,7 @@ class RAGStore:
         n = min(n, toplam)  # Kayıttan fazla isteme
 
         sonuclar = self.collection.query(
-            query_texts=[sorgu],
+            query_texts=[query],
             n_results=n,
             include=["documents", "metadatas", "distances"]
         )
@@ -167,8 +160,8 @@ Note: Use these past analyses as context and reference points, but conduct indep
     # ─────────────────────────────────────────────────────────
     # İstatistik
     # ─────────────────────────────────────────────────────────
-    def istatistik(self) -> dict:
-        """Veritabanı hakkında özet bilgi döndürür."""
+    def get_stats(self) -> dict:
+        """Return summary statistics about the knowledge base."""
         toplam = self.collection.count()
         if toplam == 0:
             return {"toplam": 0, "analizler": []}
@@ -193,23 +186,39 @@ Note: Use these past analyses as context and reference points, but conduct indep
         }
 
     # ─────────────────────────────────────────────────────────
-    # Analiz sil
+    # Delete analysis
     # ─────────────────────────────────────────────────────────
-    def sil(self, doc_id: str):
-        """Belirli bir analizi veritabanından siler."""
+    def delete(self, doc_id: str):
+        """Delete a specific analysis from the database."""
         self.collection.delete(ids=[doc_id])
         rapor_path = os.path.join(DB_PATH, f"{doc_id}_report.txt")
         if os.path.exists(rapor_path):
             os.remove(rapor_path)
 
     # ─────────────────────────────────────────────────────────
-    # Tümünü temizle
+    # Clear all
     # ─────────────────────────────────────────────────────────
-    def temizle(self):
-        """Tüm veritabanını sıfırlar. Dikkatli kullan."""
+    def clear(self):
+        """Reset the entire database. Use with caution."""
         self.client.delete_collection("engineering_analyses")
         self.collection = self.client.get_or_create_collection(
             name="engineering_analyses",
             embedding_function=_get_embed_fn(),
             metadata={"hnsw:space": "cosine"}
         )
+
+    # ── Backward-compat aliases (Turkish → English) ──────────
+    def kaydet(self, *args, **kwargs):
+        return self.save(*args, **kwargs)
+
+    def benzer_getir(self, sorgu: str, n: int = 3) -> str:
+        return self.get_similar(sorgu, n)
+
+    def istatistik(self) -> dict:
+        return self.get_stats()
+
+    def sil(self, doc_id: str):
+        return self.delete(doc_id)
+
+    def temizle(self):
+        return self.clear()
