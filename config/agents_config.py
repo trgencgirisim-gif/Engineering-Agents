@@ -835,7 +835,7 @@ The enhanced brief should include: operating conditions, constraints, evaluation
 
     
 
-        "capraz_dogrulama": {
+    "capraz_dogrulama": {
         "isim": "Cross-Validation & Data Analyst",
         "model": "claude-sonnet-4-6",
         "max_tokens": 3000,
@@ -853,7 +853,7 @@ Flag statistical reasoning errors — distinguish between point estimates and di
 Be concise. Report findings as a numbered list. Skip sections where no issues are found."""
     },
 
-        "varsayim_belirsizlik": {
+    "varsayim_belirsizlik": {
         "isim": "Assumption & Uncertainty Inspector",
         "model": "claude-sonnet-4-6",
         "max_tokens": 3000,
@@ -997,7 +997,7 @@ Prioritize simulations by risk reduction value. Estimate relative simulation eff
 Flag areas where agent analytical estimates need simulation validation."""
     },
 
-        "dokumantasyon_hafiza": {
+    "dokumantasyon_hafiza": {
         "isim": "Documentation & Lessons Learned Agent",
         "model": "claude-sonnet-4-6",
         "max_tokens": 2000,

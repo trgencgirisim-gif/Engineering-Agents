@@ -24,7 +24,7 @@ from fastapi.responses import HTMLResponse, StreamingResponse, PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 try:
-    from report_generator import generate_pdf_report
+    from report_generator import generate_docx_report as generate_pdf_report
     PDF_OK = True
 except ImportError:
     PDF_OK = False
@@ -154,6 +154,7 @@ class Session:
         self.qa_event     = threading.Event()
         self._cost_lock   = threading.Lock()  # thread-safe cost / log güncellemesi
 
+        self.domain_model = "sonnet"  # "sonnet" | "opus" — runtime override
         self.client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
     # ── SSE event gönder ──────────────────────────────────────
@@ -169,6 +170,16 @@ class Session:
         ajan = AGENTS.get(ajan_key) or DESTEK_AJANLARI.get(ajan_key)
         if not ajan:
             return f"ERROR: Agent '{ajan_key}' not found."
+
+        # Domain model override — app.py sidebar toggle ile uyumlu
+        ajan = dict(ajan)  # shallow copy — orijinali değiştirme
+        _is_domain = ajan_key in AGENTS
+        _protected = ajan_key in ("final_rapor", "sentez")
+        if _is_domain and not _protected:
+            if self.domain_model == "sonnet":
+                ajan["model"] = "claude-sonnet-4-6"
+            else:
+                ajan["model"] = "claude-opus-4-6"
 
         # CACHE_PREAMBLE sistem promptunu genişletir — cache eşiğini aşmak için
         sistem_promptu_extended = (
@@ -276,14 +287,19 @@ class Session:
             self.cache_read_tokens  += c_rd
             self.cache_saved_usd    += saved
             self.agent_log.append({
-                "key": ajan_key, "name": ajan["isim"],
-                "cost": actual_cost, "output": cevap[:3000],
+                "key":     ajan_key,
+                "name":    ajan["isim"],
+                "model":   ajan["model"],
+                "cost":    actual_cost,
+                "output":  cevap[:3000],
                 "thinking": dusunce[:2000] if dusunce else "",
             })
 
         self.emit("agent_done", {
-            "key": ajan_key, "name": ajan["isim"],
-            "cost": round(actual_cost, 6),
+            "key":        ajan_key,
+            "name":       ajan["isim"],
+            "model":      ajan["model"],
+            "cost":       round(actual_cost, 6),
             "total_cost": round(self.total_cost, 4),
             "cache_saved": round(self.cache_saved_usd, 4),
             "agent_count": len(self.agent_log),
@@ -674,6 +690,7 @@ class StartRequest(BaseModel):
     brief: str
     mode: int = 4
     max_rounds: int = 3
+    domain_model: str = "sonnet"   # "sonnet" | "opus"
 
 class ConfirmDomainsRequest(BaseModel):
     sid: str
@@ -704,6 +721,7 @@ async def start_analysis(req: StartRequest):
         raise HTTPException(500, "agents_config.py yüklenemedi.")
 
     sess = Session(brief=req.brief.strip(), mode=req.mode, max_rounds=req.max_rounds)
+    sess.domain_model = req.domain_model  # "sonnet" | "opus"
     sessions[sess.sid] = sess
 
     t = threading.Thread(target=sess.run, daemon=True)

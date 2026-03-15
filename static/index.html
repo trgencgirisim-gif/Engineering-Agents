@@ -306,6 +306,13 @@ textarea:focus { border-color: var(--accent); }
 .agent-status { min-width: 14px; text-align: center; }
 .agent-name { flex: 1; }
 .agent-cost { color: var(--fg3); font-size: 0.68rem; }
+.agent-model { color: var(--fg3); font-size: 0.63rem; letter-spacing: 0.04em; margin-right: 4px; }
+.model-toggle { display: flex; gap: 4px; margin: 0.6rem 0 0.4rem; }
+.model-btn { flex: 1; background: var(--bg3); border: 1px solid var(--border); border-radius: 6px;
+  padding: 5px 0; font-size: 0.7rem; font-family: var(--mono); color: var(--fg2);
+  cursor: pointer; text-align: center; transition: all 0.15s; }
+.model-btn:hover { border-color: var(--accent); color: var(--accent); }
+.model-btn.active { background: var(--accent-s); border-color: var(--accent); color: var(--accent); }
 
 /* ── Stats bar ───────────────────────────────────────────── */
 .stats-row {
@@ -437,6 +444,13 @@ textarea:focus { border-color: var(--accent); }
 
     <button class="mode-btn" id="m4" onclick="setMode(4)">Tam Otomatik</button>
     <div class="mode-desc">Hands-off · Maksimum derinlik</div>
+
+    <div class="section-label" style="margin-top:1rem">Domain Ajan Modeli</div>
+    <div class="model-toggle">
+      <button class="model-btn active" id="mb-sonnet" onclick="setDomainModel('sonnet')">⚡ Sonnet</button>
+      <button class="model-btn" id="mb-opus" onclick="setDomainModel('opus')">🎯 Opus</button>
+    </div>
+    <div id="model-meta" style="font-size:0.62rem;color:var(--fg3);margin-bottom:0.5rem">Hızlı & Ekonomik</div>
 
     <div id="round-wrap" style="display:none">
       <div class="slider-wrap">
@@ -608,6 +622,7 @@ textarea:focus { border-color: var(--accent); }
 ══════════════════════════════════════════════════════════════ */
 const S = {
   mode: 1,
+  domainModel: 'sonnet',
   maxRounds: 3,
   sid: null,
   totalCost: 0,
@@ -663,6 +678,14 @@ function toggleSidebar() {
 }
 
 /* ══ Mode ══════════════════════════════════════════════════════ */
+function setDomainModel(m) {
+  S.domainModel = m;
+  document.getElementById('mb-sonnet').classList.toggle('active', m === 'sonnet');
+  document.getElementById('mb-opus').classList.toggle('active', m === 'opus');
+  const meta = document.getElementById('model-meta');
+  if(meta) meta.textContent = m === 'sonnet' ? 'Hızlı & Ekonomik' : 'Derin & Güçlü';
+}
+
 function setMode(n) {
   S.mode = n;
   [1,2,3,4].forEach(i => {
@@ -705,7 +728,7 @@ async function startAnalysis() {
     const r = await fetch('/api/start', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({brief, mode: S.mode, max_rounds: S.maxRounds})
+      body: JSON.stringify({brief, mode: S.mode, max_rounds: S.maxRounds, domain_model: S.domainModel})
     });
     if (!r.ok) {
       const e = await r.json();
@@ -758,7 +781,7 @@ function handleEvent(msg) {
   switch(msg.type) {
 
     case 'agent_start':
-      S.agentLog.push({...msg.data, status:'running', cost:0});
+      S.agentLog.push({...msg.data, status:'running', cost:0, model: msg.data.model || ''});
       renderAgentLog();
       break;
 

@@ -12,7 +12,7 @@ from typing import List, Tuple, Optional
 from config.agents_config import AGENTS, DESTEK_AJANLARI
 from rag.store import RAGStore
 try:
-    from report_generator import generate_pdf_report
+    from report_generator import generate_docx_report as generate_pdf_report
     PDF_OK = True
 except ImportError:
     PDF_OK = False
@@ -1044,7 +1044,8 @@ Write a professional engineering report: lead with what each agent found (preser
 then observer evaluation, then recommendations (max 25% of report).""",
         cache_context=tum_ciktilar)
 
-    return final, []
+    puan = kalite_puani_oku(gozlemci)
+    return final, [{"tur": 1, "puan": puan}]
 
 
 def run_cift(brief, aktif_alanlar):
@@ -1102,7 +1103,8 @@ Write a professional engineering report: lead with each domain's technical findi
 then conflicts, then recommendations (max 25% of report).""",
         cache_context=tum_ciktilar)
 
-    return final, []
+    puan = kalite_puani_oku(gozlemci)
+    return final, [{"tur": 1, "puan": puan}]
 
 
 def run_full_loop(brief, aktif_alanlar, max_tur):
