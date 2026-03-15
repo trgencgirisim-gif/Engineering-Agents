@@ -1126,12 +1126,17 @@ def kalite_puani_oku(metin):
 
 
 def prompt_engineer_auto(brief):
-    rag_context = rag.benzer_getir(brief, n=2)
+    # Benzer geçmiş analizleri getir — açık sorular ve öğrenimler dahil
+    # max_tokens=600: brief güçlendirme için yeterli, fazla token harcamamak için
+    rag_context = get_rag().get_similar(brief, n=2, max_tokens=600)
     if rag_context:
-        words = rag_context.split()
-        if len(words) > 375:
-            rag_context = " ".join(words[:375]) + "\n[RAG context truncated]"
-        mesaj = f"{brief}\n\nRELEVANT PAST ANALYSES:\n{rag_context}"
+        mesaj = (
+            f"{brief}\n\n"
+            f"{rag_context}\n\n"
+            f"Using the past analyses above as reference, strengthen the brief. "
+            f"Pay special attention to previously unresolved questions — "
+            f"address them explicitly in the strengthened brief if applicable."
+        )
     else:
         mesaj = brief
     sonuc = ajan_calistir("prompt_muhendisi", mesaj)
@@ -1208,9 +1213,23 @@ def run_tekli(brief, aktif_alanlar):
     alan_isimleri = [name for _, name in aktif_alanlar]
 
     # ── GRUP A: Domain ajanları paralel ────────────────────────
-    # Sonuç: Her ajan kendi sistem prompt cache'ini yazar (PREAMBLE paylaşılır).
-    # Eş zamanlı paralel — cache HIT yok, sadece WRITE (paralel kısıt).
-    gorev_a  = [(f"{key}_a", brief, None, None) for key, _ in aktif_alanlar]
+    # Her domain ajanı kendi alanına özel geçmiş context alıyor.
+    # max_tokens=250: domain ajanı başına küçük tutuyoruz, paralel çalıştıklarında
+    # toplam context büyümesin. Asıl bilgi ajan sisteminde zaten var.
+    rag_inst = get_rag()
+    gorev_a = []
+    for key, domain_name in aktif_alanlar:
+        domain_ctx = rag_inst.get_similar_for_domain(brief, domain_name, max_tokens=250)
+        if domain_ctx:
+            domain_brief = (
+                f"{brief}\n\n"
+                f"PAST {domain_name.upper()} ANALYSIS CONTEXT:\n"
+                f"{domain_ctx}\n\n"
+                f"Build on confirmed past findings. Address previously unresolved questions."
+            )
+        else:
+            domain_brief = brief
+        gorev_a.append((f"{key}_a", domain_brief, None, None))
     sonuc_a  = ajan_calistir_paralel(gorev_a, max_workers=6)
     tum_ciktilar_parts = [
         f"{name.upper()} EXPERT:\n{sonuc_a[i]}"
@@ -1245,15 +1264,25 @@ def run_tekli(brief, aktif_alanlar):
         gecmis=shared_ctx)
 
     # ── Final rapor ──────────────────────────────────────────────
+    # Final rapor: genel RAG context — geçmiş analizlerden öğrenilenler
+    rag_final_ctx = get_rag().get_similar(brief, n=2, max_tokens=400)
+    final_rag_note = (
+        f"\n\nKNOWLEDGE BASE CONTEXT:\n{rag_final_ctx}"
+        if rag_final_ctx else ""
+    )
     final = ajan_calistir("final_rapor",
         f"Single-agent analysis. Domains: {', '.join(alan_isimleri)}\n"
         f"PROBLEM: {brief}\n"
         f"OBSERVER: {gozlemci}\n"
-        f"QUESTIONS: {sorular}\n"
+        f"QUESTIONS: {sorular}"
+        f"{final_rag_note}\n\n"
         f"Domain agent technical findings are in the conversation history above.\n"
         f"Write a professional engineering report: lead with each domain's technical "
         f"findings (preserve all numbers and calculations), then observer evaluation, "
-        f"then recommendations (max 25% of report). Always write in English.",
+        f"then recommendations (max 25% of report). "
+        f"If knowledge base context is provided, reference relevant past findings "
+        f"and explicitly address any previously unresolved questions. "
+        f"Always write in English.",
         gecmis=shared_ctx)
 
     puan = kalite_puani_oku(gozlemci)
@@ -1264,10 +1293,21 @@ def run_cift(brief, aktif_alanlar):
     alan_isimleri = [name for _, name in aktif_alanlar]
 
     # ── GRUP A: Domain A+B ajanları paralel ──────────────────────
+    rag_inst = get_rag()
     gorev_a = []
-    for key, _ in aktif_alanlar:
-        gorev_a.append((f"{key}_a", brief, None, None))
-        gorev_a.append((f"{key}_b", brief, None, None))
+    for key, domain_name in aktif_alanlar:
+        domain_ctx = rag_inst.get_similar_for_domain(brief, domain_name, max_tokens=250)
+        if domain_ctx:
+            domain_brief = (
+                f"{brief}\n\n"
+                f"PAST {domain_name.upper()} ANALYSIS CONTEXT:\n"
+                f"{domain_ctx}\n\n"
+                f"Build on confirmed past findings. Address previously unresolved questions."
+            )
+        else:
+            domain_brief = brief
+        gorev_a.append((f"{key}_a", domain_brief, None, None))
+        gorev_a.append((f"{key}_b", domain_brief, None, None))
     sonuc_a = ajan_calistir_paralel(gorev_a, max_workers=6)
 
     tum_ciktilar_parts = []
@@ -1312,17 +1352,24 @@ def run_cift(brief, aktif_alanlar):
     ], max_workers=3)
     celiski, sorular, alternatif = c_sonuc
 
+    rag_final_ctx_cift = get_rag().get_similar(brief, n=2, max_tokens=400)
+    final_rag_note_cift = (
+        f"\n\nKNOWLEDGE BASE CONTEXT:\n{rag_final_ctx_cift}"
+        if rag_final_ctx_cift else ""
+    )
     final = ajan_calistir("final_rapor",
         f"Dual-agent analysis. Domains: {', '.join(alan_isimleri)}\n"
         f"PROBLEM: {brief}\n"
         f"OBSERVER: {gozlemci}\n"
         f"CONFLICTS RESOLVED: {celiski}\n"
         f"QUESTIONS: {sorular}\n"
-        f"ALTERNATIVES: {alternatif}\n"
+        f"ALTERNATIVES: {alternatif}"
+        f"{final_rag_note_cift}\n\n"
         f"Domain agent technical findings are in the conversation history above.\n"
         f"Write a professional engineering report: lead with each domain's technical "
         f"findings (preserve all numbers), then conflicts, then recommendations "
-        f"(max 25% of report). Always write in English.",
+        f"(max 25% of report). Reference past knowledge base findings where relevant. "
+        f"Always write in English.",
         gecmis=shared_ctx)
 
     puan = kalite_puani_oku(gozlemci)
@@ -1352,12 +1399,24 @@ def run_full_loop(brief, aktif_alanlar, max_tur):
         son_tur_cikti = {}
 
         # ── GRUP A: Domain ajanları paralel ────────────────────
-        # Her domain ajanı kendi gecmis chain'ini taşıyor (çok-turlu iterasyon).
-        # CACHE: Her ajan kendi sistem_promptu cache'ini yazar (PREAMBLE paylaşılır).
+        # Tur 1: domain ajanları RAG context alır (geçmiş benzer analizler).
+        # Tur 2+: observer notları mesaja eklenmiş, RAG'a gerek yok (context büyümesini önlemek için).
+        rag_inst = get_rag()
         gorev_a = []
-        for key, name in aktif_alanlar:
-            gorev_a.append((f"{key}_a", mesaj, gecmis[f"{key}_a"], None))
-            gorev_a.append((f"{key}_b", mesaj, gecmis[f"{key}_b"], None))
+        for key, domain_name in aktif_alanlar:
+            if tur == 1:
+                domain_ctx = rag_inst.get_similar_for_domain(brief, domain_name, max_tokens=200)
+                if domain_ctx:
+                    domain_mesaj = (
+                        f"{mesaj}\n\n"
+                        f"PAST {domain_name.upper()} CONTEXT:\n{domain_ctx}"
+                    )
+                else:
+                    domain_mesaj = mesaj
+            else:
+                domain_mesaj = mesaj  # Tur 2+: observer notları yeterli
+            gorev_a.append((f"{key}_a", domain_mesaj, gecmis[f"{key}_a"], None))
+            gorev_a.append((f"{key}_b", domain_mesaj, gecmis[f"{key}_b"], None))
         sonuc_a = ajan_calistir_paralel(gorev_a, max_workers=6)
 
         for i, (key, name) in enumerate(aktif_alanlar):
@@ -1491,21 +1550,27 @@ def run_full_loop(brief, aktif_alanlar, max_tur):
         f"Synthesize all findings. Resolve conflicts. Produce clean summary for Final Report Writer.",
         gecmis=shared_ctx)
 
+    rag_final_ctx_loop = get_rag().get_similar(brief, n=2, max_tokens=400)
+    final_rag_note_loop = (
+        f"\n\nKNOWLEDGE BASE CONTEXT:\n{rag_final_ctx_loop}"
+        if rag_final_ctx_loop else ""
+    )
     final = ajan_calistir("final_rapor",
         f"Analysis completed in {len(tur_ozeti)} round(s). Domains: {', '.join(alan_isimleri)}\n"
         f"PROBLEM: {brief}\n"
         f"OBSERVER EVALUATION: {gozlemci_cevabi}\n"
         f"QUESTIONS: {soru_cevap}\n"
         f"ALTERNATIVES: {alt_cevap}\n"
-        f"SYNTHESIZED FINDINGS: {sentez_cevap}\n"
+        f"SYNTHESIZED FINDINGS: {sentez_cevap}"
+        f"{final_rag_note_loop}\n\n"
         f"All domain agent technical findings are in the conversation history above.\n"
         f"REPORT STRUCTURE REQUIRED:\n"
         f"1. For each active domain: heading + full technical findings (preserve all numbers, calculations, safety factors)\n"
         f"2. Cross-domain conflicts and resolutions\n"
         f"3. Observer quality assessment\n"
         f"4. Recommendations (max 25% of total report)\n"
-        f"5. Next steps and open questions\n"
-        f"Always write in English.",
+        f"5. Next steps and open questions — explicitly address any unresolved questions from past analyses\n"
+        f"Reference knowledge base findings where relevant. Always write in English.",
         gecmis=shared_ctx)
 
     # ── GRUP E: Dokümantasyon + Özet paralel ────────────────────
@@ -2164,14 +2229,28 @@ elif st.session_state.step == "done":
             tur_ozeti
         )
 
-        # RAG: analizi knowledge base'e kaydet (bir kez)
+        # RAG: analizi knowledge base'e kaydet (bir kez) — zengin metadata ile
         if not st.session_state.get("rag_saved", False):
-            rag.kaydet(
+            # Açık soruları agent_log'dan çek
+            _open_q = ""
+            for _entry in st.session_state.get("agent_log", []):
+                if _entry.get("key") == "soru_uretici":
+                    _open_q = _entry.get("output", "") or _entry.get("cevap", "")
+                    break
+
+            # Quality score
+            _scores = st.session_state.get("round_scores", [])
+            _quality = _scores[-1].get("puan") if _scores else None
+
+            get_rag().save(
                 brief=st.session_state.brief,
                 domains=alan_isimleri,
                 final_report=st.session_state.final_report,
                 mode=st.session_state.mode,
-                cost=st.session_state.total_cost
+                cost=st.session_state.total_cost,
+                quality_score=_quality,
+                open_questions=_open_q,
+                agent_log=st.session_state.get("agent_log", [])
             )
             st.session_state.rag_saved = True
 

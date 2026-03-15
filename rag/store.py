@@ -1,32 +1,21 @@
 """
-RAG Store — ChromaDB tabanlı mühendislik analizi belleği.
+RAG Store v2 — ChromaDB tabanlı mühendislik analizi belleği.
 
-Kullanım:
-    from rag.store import RAGStore
-    rag = RAGStore()
-
-    # Analiz kaydet (analiz bittikten sonra)
-    rag.kaydet(
-        brief="Hipersonik füze tasarımı...",
-        domains=["Aerodynamics", "Materials"],
-        final_report="...",
-        mode=4,
-        cost=1.23
-    )
-
-    # Benzer analizleri getir (Prompt Engineer ve Final Rapor için)
-    context = rag.benzer_getir("Hipersonik araç termal koruma sistemi", n=3)
+Yenilikler v2:
+- Zengin metadata: observer skoru, açık sorular, domain bazlı özet
+- Domain filtrelemeli benzer analiz çekme
+- Öğrenme odaklı context üretimi: hatalar, eksikler, öneriler
+- Dosya erişimi: tam raporu döndürme
 """
 
 import os
 import datetime
 import chromadb
 from chromadb.utils import embedding_functions
+from typing import List, Optional
 
-# ── Veritabanı yolu ───────────────────────────────────────────
 DB_PATH = os.path.join(os.path.dirname(__file__), "chroma_db")
 
-# ── Embedding fonksiyonu — lazy-load (import anında 90MB yüklenmez) ─
 _EMBED_FN = None
 
 def _get_embed_fn():
@@ -37,7 +26,6 @@ def _get_embed_fn():
         )
     return _EMBED_FN
 
-# ── Rapor ayırıcı (kaydet/getir tutarlılığı) ─────────────────
 _REPORT_SEP = "=" * 60
 
 
@@ -51,34 +39,71 @@ class RAGStore:
         )
 
     # ─────────────────────────────────────────────────────────
-    # Save analysis
+    # KAYDET — zengin metadata ile
     # ─────────────────────────────────────────────────────────
-    def save(self, brief: str, domains: list, final_report: str,
-             mode: int = 4, cost: float = 0.0) -> str:
-        """Save a completed analysis to the vector database. Returns the document ID."""
+    def save(self,
+             brief: str,
+             domains: list,
+             final_report: str,
+             mode: int = 4,
+             cost: float = 0.0,
+             quality_score: int = None,
+             open_questions: str = "",
+             agent_log: list = None) -> str:
+        """
+        Analizi kaydet.
+        quality_score: Observer'ın verdiği puan (0-100)
+        open_questions: Çözülemeyen / açık kalan sorular
+        agent_log: Ajan çıktıları listesi (domain bazlı özetler için)
+        """
         import uuid
         zaman  = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         doc_id = f"analiz_{zaman}_{uuid.uuid4().hex[:6]}"
 
-        # Embedding için: brief + domain listesi + raporun ilk 500 karakteri
-        embed_metni = f"{brief}\n\nDomains: {', '.join(domains)}\n\nKey findings: {final_report[:500]}"
+        # Embedding metni: brief + domains + rapor özeti + açık sorular
+        # Açık sorular özellikle önemli — gelecekte benzer problem gelince
+        # "bu sorular daha önce yanıtsız kaldı" bilgisi aktarılır
+        embed_metni = (
+            f"{brief}\n\n"
+            f"Domains: {', '.join(domains)}\n\n"
+            f"Key findings: {final_report[:400]}\n\n"
+            f"Open questions: {open_questions[:200]}"
+        )
+
+        # Domain bazlı özetler — her domain için ilgili ajanın çıktısını sakla
+        domain_summaries = {}
+        if agent_log:
+            for entry in agent_log:
+                key = entry.get("key", "")
+                output = entry.get("output", "") or entry.get("cevap", "")
+                if output and not output.startswith("ERROR"):
+                    # Domain anahtarını temizle (_a, _b suffix'ini kaldır)
+                    domain_key = key.rstrip("_ab").rstrip("_")
+                    if domain_key not in domain_summaries:
+                        domain_summaries[domain_key] = []
+                    # İlk 300 kelime
+                    words = output.split()
+                    summary = " ".join(words[:300])
+                    domain_summaries[domain_key].append(summary)
 
         self.collection.add(
             ids=[doc_id],
             documents=[embed_metni],
             metadatas=[{
-                "brief":       brief[:500],
-                "domains":     ", ".join(domains),
-                "mode":        mode,
-                "cost_usd":    round(cost, 4),
-                "date":        zaman,
-                "report_len":  len(final_report),
+                "brief":           brief[:500],
+                "domains":         ", ".join(domains),
+                "mode":            mode,
+                "cost_usd":        round(cost, 4),
+                "date":            zaman,
+                "report_len":      len(final_report),
+                "quality_score":   quality_score or 0,
+                "has_open_q":      1 if open_questions else 0,
             }]
         )
 
-        # Tam raporu ayrı dosyaya da kaydet (ChromaDB'de boyut limiti var)
-        rapor_path = os.path.join(DB_PATH, f"{doc_id}_report.txt")
+        # Tam raporu dosyaya kaydet
         os.makedirs(DB_PATH, exist_ok=True)
+        rapor_path = os.path.join(DB_PATH, f"{doc_id}_report.txt")
         with open(rapor_path, "w", encoding="utf-8") as f:
             f.write(f"ID: {doc_id}\n")
             f.write(f"DATE: {zaman}\n")
@@ -86,120 +111,218 @@ class RAGStore:
             f.write(f"DOMAINS: {', '.join(domains)}\n")
             f.write(f"MODE: {mode}\n")
             f.write(f"COST: ${cost:.4f}\n")
+            f.write(f"QUALITY_SCORE: {quality_score or 'N/A'}\n")
+            if open_questions:
+                f.write(f"OPEN_QUESTIONS:\n{open_questions}\n")
             f.write(_REPORT_SEP + "\n")
             f.write(final_report)
+            if domain_summaries:
+                f.write(f"\n\n{_REPORT_SEP}\nDOMAIN AGENT SUMMARIES\n{_REPORT_SEP}\n")
+                for dk, summaries in domain_summaries.items():
+                    f.write(f"\n[{dk.upper()}]\n")
+                    for s in summaries:
+                        f.write(s + "\n")
 
         return doc_id
 
     # ─────────────────────────────────────────────────────────
-    # Get similar analyses
+    # BENZERLERİ GETİR — öğrenme odaklı, domain filtreli
     # ─────────────────────────────────────────────────────────
-    def get_similar(self, query: str, n: int = 3) -> str:
-        """Return the n most similar past analyses as a formatted string for prompt injection."""
+    def get_similar(self,
+                    query: str,
+                    n: int = 3,
+                    domain_filter: str = None,
+                    max_tokens: int = 500) -> str:
+        """
+        Benzer geçmiş analizleri getir.
+        domain_filter: sadece bu domain'i içeren analizleri getir (opsiyonel)
+        max_tokens: döndürülecek maksimum yaklaşık token sayısı
+        """
         toplam = self.collection.count()
         if toplam == 0:
-            return ""  # Henüz kayıtlı analiz yok
+            return ""
 
-        n = min(n, toplam)  # Kayıttan fazla isteme
+        n = min(n, toplam)
 
-        sonuclar = self.collection.query(
-            query_texts=[query],
-            n_results=n,
-            include=["documents", "metadatas", "distances"]
-        )
+        where_filter = None
+        if domain_filter:
+            # ChromaDB'de domain içerikli analizleri filtrele
+            where_filter = {"domains": {"$contains": domain_filter}}
+
+        try:
+            sorgu_kwargs = dict(
+                query_texts=[query],
+                n_results=n,
+                include=["documents", "metadatas", "distances"]
+            )
+            if where_filter:
+                sorgu_kwargs["where"] = where_filter
+
+            sonuclar = self.collection.query(**sorgu_kwargs)
+        except Exception:
+            # Filtre başarısız olursa filtresiz dene
+            sonuclar = self.collection.query(
+                query_texts=[query],
+                n_results=n,
+                include=["documents", "metadatas", "distances"]
+            )
 
         if not sonuclar["ids"][0]:
             return ""
 
-        # Benzerlik eşiği: %40 altındaki sonuçları atla (cosine distance > 0.6)
-        _DIST_THRESHOLD = 0.60
+        _DIST_THRESHOLD = 0.65  # cosine distance eşiği
 
-        cikti_parts = []
-        for i, (doc_id, metadata, distance) in enumerate(zip(
+        parts = []
+        total_words = 0
+        max_words = max_tokens  # yaklaşık 1 token ≈ 1 kelime
+
+        for doc_id, metadata, distance in zip(
             sonuclar["ids"][0],
             sonuclar["metadatas"][0],
             sonuclar["distances"][0]
-        ), 1):
+        ):
             if distance > _DIST_THRESHOLD:
-                continue   # alakasız sonucu atla
+                continue
+
+            if total_words >= max_words:
+                break
 
             benzerlik = round((1 - distance) * 100, 1)
+            quality   = metadata.get("quality_score", 0)
+            has_open  = metadata.get("has_open_q", 0)
 
-            # Tam raporu oku — _REPORT_SEP ile tutarlı bölme
+            # Raporu oku
             rapor_path = os.path.join(DB_PATH, f"{doc_id}_report.txt")
-            tam_rapor  = ""
+            rapor_text = ""
+            open_q_text = ""
+
             if os.path.exists(rapor_path):
                 with open(rapor_path, "r", encoding="utf-8") as f:
                     icerik = f.read()
+
+                # Açık sorular ayrıştır
+                if "OPEN_QUESTIONS:" in icerik:
+                    oq_start = icerik.find("OPEN_QUESTIONS:") + len("OPEN_QUESTIONS:")
+                    oq_end   = icerik.find(_REPORT_SEP, oq_start)
+                    if oq_end > oq_start:
+                        open_q_text = icerik[oq_start:oq_end].strip()
+
+                # Rapor gövdesi
                 if _REPORT_SEP in icerik:
-                    tam_rapor = icerik.split(_REPORT_SEP)[-1].strip()
-                else:
-                    tam_rapor = icerik.strip()
+                    rapor_gövdesi = icerik.split(_REPORT_SEP)[1].strip()
+                    # Domain agent summaries bölümü varsa kaldır
+                    if "DOMAIN AGENT SUMMARIES" in rapor_gövdesi:
+                        rapor_gövdesi = rapor_gövdesi.split("DOMAIN AGENT SUMMARIES")[0].strip()
+                    rapor_text = rapor_gövdesi
 
-                # 375 kelime (~500 token) limiti
-                words = tam_rapor.split()
-                if len(words) > 375:
-                    tam_rapor = " ".join(words[:375]) + "\n[truncated]"
+            # Token bütçesine göre kırp
+            words = rapor_text.split()
+            remaining = max_words - total_words
+            if len(words) > remaining:
+                rapor_text = " ".join(words[:remaining]) + "\n[truncated]"
+                total_words = max_words
+            else:
+                total_words += len(words)
 
-            cikti_parts.append(f"""--- PAST ANALYSIS {i} (Similarity: {benzerlik}%) ---
-Date: {metadata.get('date', 'unknown')}
-Brief: {metadata.get('brief', '')}
-Domains: {metadata.get('domains', '')}
-Key findings (excerpt):
-{tam_rapor}
---- END PAST ANALYSIS {i} ---""")
+            # Öğrenme odaklı format: kalite skoru ve açık sorular öne çıkarılıyor
+            section = (
+                f"--- PAST ANALYSIS {len(parts)+1} "
+                f"(Similarity: {benzerlik}%"
+                f"{', Quality: ' + str(quality) + '/100' if quality else ''})"
+                f" ---\n"
+                f"Date: {metadata.get('date','')[:10]}  |  "
+                f"Domains: {metadata.get('domains','')}  |  "
+                f"Mode: {metadata.get('mode','')}\n"
+                f"Brief: {metadata.get('brief','')}\n"
+            )
 
-        if not cikti_parts:
+            if open_q_text and has_open:
+                section += (
+                    f"\nUNRESOLVED QUESTIONS FROM THIS ANALYSIS "
+                    f"(use these to improve current analysis):\n"
+                    f"{open_q_text}\n"
+                )
+
+            if rapor_text:
+                section += f"\nFINDINGS EXCERPT:\n{rapor_text}\n"
+
+            section += f"--- END PAST ANALYSIS {len(parts)+1} ---"
+            parts.append(section)
+
+        if not parts:
             return ""
 
-        return f"""RELEVANT PAST ANALYSES FROM KNOWLEDGE BASE:
-{chr(10).join(cikti_parts)}
+        return (
+            "RELEVANT PAST ANALYSES FROM KNOWLEDGE BASE:\n"
+            + "\n\n".join(parts)
+            + "\n\nINSTRUCTION: Reference these past analyses to:\n"
+            + "1. Avoid repeating known errors or gaps\n"
+            + "2. Build on confirmed findings rather than re-deriving\n"
+            + "3. Address previously unresolved questions if applicable\n"
+            + "4. Note where this problem differs from past analyses\n"
+        )
 
-Note: Use these past analyses as context and reference points, but conduct independent analysis for the current problem."""
+    def get_similar_for_domain(self, query: str, domain_name: str,
+                                max_tokens: int = 300) -> str:
+        """
+        Belirli bir domain için geçmiş bulguları getir.
+        Domain ajanları bunu kullanır — sadece kendi alanıyla ilgili context.
+        """
+        return self.get_similar(
+            query=query,
+            n=2,
+            domain_filter=domain_name,
+            max_tokens=max_tokens
+        )
+
+    def get_full_report(self, doc_id: str) -> Optional[str]:
+        """Tam raporu döndür (sidebar erişimi için)."""
+        rapor_path = os.path.join(DB_PATH, f"{doc_id}_report.txt")
+        if not os.path.exists(rapor_path):
+            return None
+        with open(rapor_path, "r", encoding="utf-8") as f:
+            return f.read()
+
+    def list_all(self) -> list:
+        """Tüm analizleri döndür (sidebar listesi için)."""
+        toplam = self.collection.count()
+        if toplam == 0:
+            return []
+        sonuclar = self.collection.get(
+            include=["metadatas"],
+            ids=self.collection.get()["ids"]
+        )
+        analizler = []
+        for doc_id, meta in zip(sonuclar["ids"], sonuclar["metadatas"]):
+            analizler.append({
+                "id":      doc_id,
+                "date":    meta.get("date", ""),
+                "brief":   meta.get("brief", "")[:80],
+                "domains": meta.get("domains", ""),
+                "cost":    meta.get("cost_usd", 0),
+                "mode":    meta.get("mode", 0),
+                "quality": meta.get("quality_score", 0),
+                "has_open_q": meta.get("has_open_q", 0),
+            })
+        analizler.sort(key=lambda x: x["date"], reverse=True)
+        return analizler
 
     # ─────────────────────────────────────────────────────────
     # İstatistik
     # ─────────────────────────────────────────────────────────
     def get_stats(self) -> dict:
-        """Return summary statistics about the knowledge base."""
         toplam = self.collection.count()
         if toplam == 0:
             return {"toplam": 0, "analizler": []}
+        return {"toplam": toplam, "analizler": self.list_all()}
 
-        sonuclar = self.collection.get(include=["metadatas"])
-        analizler = []
-        for meta in sonuclar["metadatas"]:
-            analizler.append({
-                "date":    meta.get("date", ""),
-                "brief":   meta.get("brief", "")[:80] + "...",
-                "domains": meta.get("domains", ""),
-                "cost":    meta.get("cost_usd", 0),
-                "mode":    meta.get("mode", 0),
-            })
-
-        # Tarihe göre sırala (en yeni önce)
-        analizler.sort(key=lambda x: x["date"], reverse=True)
-
-        return {
-            "toplam":    toplam,
-            "analizler": analizler,
-        }
-
-    # ─────────────────────────────────────────────────────────
-    # Delete analysis
-    # ─────────────────────────────────────────────────────────
     def delete(self, doc_id: str):
-        """Delete a specific analysis from the database."""
         self.collection.delete(ids=[doc_id])
         rapor_path = os.path.join(DB_PATH, f"{doc_id}_report.txt")
         if os.path.exists(rapor_path):
             os.remove(rapor_path)
 
-    # ─────────────────────────────────────────────────────────
-    # Clear all
-    # ─────────────────────────────────────────────────────────
     def clear(self):
-        """Reset the entire database. Use with caution."""
         self.client.delete_collection("engineering_analyses")
         self.collection = self.client.get_or_create_collection(
             name="engineering_analyses",
@@ -207,18 +330,9 @@ Note: Use these past analyses as context and reference points, but conduct indep
             metadata={"hnsw:space": "cosine"}
         )
 
-    # ── Backward-compat aliases (Turkish → English) ──────────
-    def kaydet(self, *args, **kwargs):
-        return self.save(*args, **kwargs)
-
-    def benzer_getir(self, sorgu: str, n: int = 3) -> str:
-        return self.get_similar(sorgu, n)
-
-    def istatistik(self) -> dict:
-        return self.get_stats()
-
-    def sil(self, doc_id: str):
-        return self.delete(doc_id)
-
-    def temizle(self):
-        return self.clear()
+    # Backward-compat aliases
+    def kaydet(self, *args, **kwargs):   return self.save(*args, **kwargs)
+    def benzer_getir(self, q, n=3):      return self.get_similar(q, n)
+    def istatistik(self):                return self.get_stats()
+    def sil(self, doc_id):               return self.delete(doc_id)
+    def temizle(self):                   return self.clear()
