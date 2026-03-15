@@ -216,30 +216,12 @@ class Session:
                         "cache_control": {"type": "ephemeral"},
                     }],
                     messages=mesajlar,
-                    betas=["prompt-caching-2024-07-31"],
                     **extra_kwargs,
                 )
                 break
             except Exception as e:
                 err_str = str(e)
-                if "betas" in err_str or "beta" in err_str.lower():
-                    try:
-                        yanit = self.client.messages.create(
-                            model=ajan["model"],
-                            max_tokens=ajan.get("max_tokens", 2000),
-                            system=[{
-                                "type": "text",
-                                "text": sistem_promptu_extended,
-                                "cache_control": {"type": "ephemeral"},
-                            }],
-                            messages=mesajlar,
-                            **extra_kwargs,
-                        )
-                        break
-                    except Exception as e2:
-                        self.emit("agent_error", {"key": ajan_key, "name": ajan["isim"], "error": str(e2)})
-                        raise e2
-                elif "thinking" in err_str.lower() and thinking_budget:
+                if "thinking" in err_str.lower() and thinking_budget:
                     extra_kwargs = {}
                     continue
                 elif "rate_limit" in err_str.lower() or "429" in err_str:

@@ -646,6 +646,17 @@ def generate_docx_report(
     # ─── BÖLÜM 4: AJAN LOGU ─────────────────────────────────
     if agent_log:
         _h1(doc, "4.  AGENT ACTIVITY LOG")
+        # Domain vs destek ajanı sayısını meta olarak göster
+        try:
+            from config.agents_config import AGENTS as _DOMAIN_KEYS
+            domain_count   = sum(1 for a in agent_log if a.get("key","") in _DOMAIN_KEYS)
+            support_count  = len(agent_log) - domain_count
+            _info_box(doc, "Agent Summary",
+                      [f"Domain agents: {domain_count}",
+                       f"Support agents: {support_count}",
+                       f"Total cost: ${total_cost:.4f} USD"])
+        except Exception:
+            pass
         _accent_rule(doc)
 
         log_rows = [[
@@ -661,26 +672,69 @@ def generate_docx_report(
         sp = doc.add_paragraph()
         sp.paragraph_format.space_after = Pt(6)
 
-        _h2(doc, "4.1  Agent Output Details")
-        _thin_rule(doc)
-        sp = doc.add_paragraph()
-        sp.paragraph_format.space_after = Pt(4)
+        try:
+            from config.agents_config import AGENTS as _DA
+        except Exception:
+            _DA = {}
+        domain_log  = [a for a in agent_log if a.get("key", "") in _DA]
+        support_log = [a for a in agent_log if a.get("key", "") not in _DA]
 
-        for i, a in enumerate(agent_log, 1):
-            name   = a.get("name") or a.get("key", "?")
-            cost   = a.get("cost", 0)
-            output = (a.get("output") or "").strip()
-
-            _info_box(doc, f"Agent {i}: {name}   ·   ${cost:.5f} USD", [])
-
-            if output:
-                _render_body(doc, output[:3000] + ("…" if len(output) > 3000 else ""))
-            else:
-                _body_para(doc, "(No output recorded)")
-
-            _thin_rule(doc, "E0E0E0")
+        if domain_log:
+            _h2(doc, "4.1  Domain Agent Outputs")
+            _thin_rule(doc)
             sp = doc.add_paragraph()
             sp.paragraph_format.space_after = Pt(4)
+
+            for i, a in enumerate(domain_log, 1):
+                name     = a.get("name") or a.get("key", "?")
+                cost     = a.get("cost", 0)
+                model    = a.get("model", "")
+                model_tag = "Opus" if "opus" in model else "Sonnet" if "sonnet" in model else ""
+                output   = (a.get("output") or "").strip()
+                thinking = (a.get("thinking") or "").strip()
+
+                _info_box(doc, f"{i}. {name}   ·   {model_tag}   ·   ${cost:.5f} USD", [])
+
+                if output:
+                    _render_body(doc, output[:5000] + ("…" if len(output) > 5000 else ""))
+                else:
+                    _body_para(doc, "(No output recorded)")
+
+                if thinking:
+                    _h2(doc, f"  ↳ Thinking — {name}")
+                    p = doc.add_paragraph()
+                    run = p.add_run(thinking[:2000] + ("…" if len(thinking) > 2000 else ""))
+                    run.font.size = Pt(8)
+                    run.font.color.rgb = RGBColor(0x7A, 0x7A, 0x85)
+                    run.font.italic = True
+                    p.paragraph_format.left_indent = Cm(0.8)
+
+                _thin_rule(doc, "E0E0E0")
+                sp = doc.add_paragraph()
+                sp.paragraph_format.space_after = Pt(4)
+
+        if support_log:
+            doc.add_page_break()
+            _h2(doc, "4.2  Support Agent Outputs")
+            _thin_rule(doc)
+            sp = doc.add_paragraph()
+            sp.paragraph_format.space_after = Pt(4)
+
+            for i, a in enumerate(support_log, 1):
+                name   = a.get("name") or a.get("key", "?")
+                cost   = a.get("cost", 0)
+                output = (a.get("output") or "").strip()
+
+                _info_box(doc, f"{i}. {name}   ·   ${cost:.5f} USD", [])
+
+                if output:
+                    _render_body(doc, output[:3000] + ("…" if len(output) > 3000 else ""))
+                else:
+                    _body_para(doc, "(No output recorded)")
+
+                _thin_rule(doc, "E0E0E0")
+                sp = doc.add_paragraph()
+                sp.paragraph_format.space_after = Pt(4)
 
     # ─── HEADER / FOOTER ────────────────────────────────────
     for section in doc.sections:

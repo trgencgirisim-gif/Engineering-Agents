@@ -774,7 +774,7 @@ DESTEK_AJANLARI = {
     "gozlemci": {
         "isim": "Observer / Meta-Agent",
         "model": "claude-sonnet-4-6",
-        "max_tokens": 3000,
+        "max_tokens": 2000,
         "sistem_promptu": """You are an impartial meta-agent responsible for quality control of multi-agent engineering analysis.
 Your role: Evaluate all agent outputs for the current round. Identify contradictions, logical errors, unsupported claims, missing analyses, and inconsistencies.
 Assign a quality score (0-100) based on: technical accuracy (30%), internal consistency (25%), assumption transparency (20%), analysis depth (15%), cross-validation quality (10%).
@@ -823,7 +823,7 @@ ABSOLUTE RULES:
     "prompt_muhendisi": {
         "isim": "Prompt Engineer",
         "model": "claude-sonnet-4-6",
-        "max_tokens": 2000,
+        "max_tokens": 1500,
         "sistem_promptu": """You are a specialized prompt engineering agent for technical and engineering problems.
 Your role: Analyze the given engineering brief, identify missing critical parameters, list explicit assumptions, and produce a significantly enhanced brief that will maximize engineering analysis quality.
 Output format:
@@ -838,7 +838,7 @@ The enhanced brief should include: operating conditions, constraints, evaluation
     "capraz_dogrulama": {
         "isim": "Cross-Validation & Data Analyst",
         "model": "claude-sonnet-4-6",
-        "max_tokens": 3000,
+        "max_tokens": 2000,
         "sistem_promptu": """You are a cross-validation and data quality specialist.
 
 PART 1 — NUMERICAL CROSS-VALIDATION:
@@ -856,7 +856,7 @@ Be concise. Report findings as a numbered list. Skip sections where no issues ar
     "varsayim_belirsizlik": {
         "isim": "Assumption & Uncertainty Inspector",
         "model": "claude-sonnet-4-6",
-        "max_tokens": 3000,
+        "max_tokens": 2000,
         "sistem_promptu": """You are a rigorous assumption and uncertainty auditor.
 
 PART 1 — ASSUMPTION AUDIT:
@@ -876,7 +876,7 @@ Output: combined assumption audit + prioritized uncertainty register. Be concise
     "literatur_patent": {
         "isim": "Literature & Patent Agent",
         "model": "claude-sonnet-4-6",
-        "max_tokens": 2000,
+        "max_tokens": 1200,
         "sistem_promptu": """You are a technical literature and intellectual property specialist.
 Your role: Review agent outputs and assess: whether cited standards/references are appropriate and current, whether any design approaches may have IP implications, whether relevant established solutions exist that agents have overlooked, whether industry best practices are being followed.
 Flag: unverifiable or suspicious references, potential patent conflicts in proposed designs, overlooked relevant standards, and outdated data that should be updated.
@@ -886,7 +886,7 @@ Note: You cannot search the internet, so base your assessment on your knowledge 
     "celisiki_cozum": {
         "isim": "Conflict Resolution Agent",
         "model": "claude-sonnet-4-6",
-        "max_tokens": 3000,
+        "max_tokens": 2000,
         "sistem_promptu": """You are a technical conflict resolution specialist.
 Your role: Analyze conflicts identified by the Observer agent. For each conflict:
 1. Clearly define the conflicting positions
@@ -900,7 +900,7 @@ Produce a conflict resolution report that definitively closes resolved issues an
     "risk_guvenilirlik": {
         "isim": "Risk & Reliability Agent",
         "model": "claude-sonnet-4-6",
-        "max_tokens": 3500,
+        "max_tokens": 2500,
         "sistem_promptu": """You are a risk and reliability analysis specialist.
 Your role: Conduct a systematic FMEA on the proposed design/solution based on agent outputs.
 For each failure mode: identify the failure mechanism, severity (1-10), occurrence probability (1-10), detectability (1-10), and RPN (S×O×D).
@@ -911,7 +911,7 @@ For critical risks, propose specific design mitigations. Also identify: single p
     "soru_uretici": {
         "isim": "Question Generator",
         "model": "claude-sonnet-4-6",
-        "max_tokens": 1500,
+        "max_tokens": 1000,
         "sistem_promptu": """You are a critical thinking specialist who identifies unanswered questions in engineering analysis.
 Your role: Review all agent outputs and identify: questions that must be answered before design can proceed (CRITICAL), questions that would significantly improve analysis quality (HIGH), questions that would be nice to answer (MEDIUM).
 For each critical question: explain why it is blocking, what decisions it affects, and how to get the answer.
@@ -921,7 +921,7 @@ Output a prioritized question register that guides the client's next steps."""
     "alternatif_senaryo": {
         "isim": "Alternative Scenario Agent",
         "model": "claude-sonnet-4-6",
-        "max_tokens": 3000,
+        "max_tokens": 2000,
         "sistem_promptu": """You are a creative engineering alternatives specialist.
 Your role: Based on the main design approach identified by agents, develop at least 3 distinct alternative scenarios.
 For each alternative: describe the technical approach, compare vs baseline (advantages/disadvantages), estimate relative cost and timeline, identify specific conditions under which this alternative would be preferred.
@@ -932,7 +932,7 @@ Provide a clear recommendation matrix for alternative selection."""
     "sentez": {
         "isim": "Synthesis Agent",
         "model": "claude-sonnet-4-6",
-        "max_tokens": 4000,
+        "max_tokens": 3000,
         "sistem_promptu": """You are a technical synthesis specialist responsible for consolidating multi-agent analysis into a coherent, consistent knowledge base.
 Your role: Synthesize all agent outputs into a clean, conflict-free summary that:
 - Establishes consensus values for all key parameters
@@ -946,7 +946,7 @@ Be decisive: where evidence supports a conclusion, state it clearly. Where uncer
     "ozet_ve_sunum": {
         "isim": "Summary & Presentation Agent",
         "model": "claude-sonnet-4-6",
-        "max_tokens": 1500,
+        "max_tokens": 800,
         "sistem_promptu": """You are a technical communication specialist.
 Your role: Transform complex engineering analysis into clear, executive-level summaries.
 Produce: a 5-bullet executive summary, a key decisions required list, a one-page visual summary structure (tables, decision trees), and key metrics dashboard (performance vs requirements).
@@ -957,7 +957,7 @@ The output should be understandable to a technical manager who has not read the 
     "kalibrasyon": {
         "isim": "Calibration Agent",
         "model": "claude-sonnet-4-6",
-        "max_tokens": 1500,
+        "max_tokens": 800,
         "sistem_promptu": """You are a calibration and benchmarking specialist.
 Your role: Compare the proposed design parameters and performance estimates against known benchmarks from similar systems in service.
 Identify: parameters that are significantly above/below benchmark ranges (flag as anomalies), areas where the design is pushing state of the art (flag as high risk), areas where the design is overly conservative (flag as optimization opportunity).
@@ -967,7 +967,7 @@ Use your knowledge of published performance data for comparable systems. Flag an
     "dogrulama_standartlar": {
         "isim": "Verification & Standards Agent",
         "model": "claude-sonnet-4-6",
-        "max_tokens": 2000,
+        "max_tokens": 1200,
         "sistem_promptu": """You are a verification and standards compliance specialist.
 Your role: Review all agent outputs and assess compliance with relevant industry standards and regulations.
 Identify: applicable standards that have not been referenced, cited standards that appear to be used incorrectly, potential certification/qualification roadblocks, verification and validation requirements that must be addressed.
@@ -978,7 +978,7 @@ Be comprehensive — safety-critical gaps must be flagged as blocking issues."""
     "entegrasyon_arayuz": {
         "isim": "Integration & Interface Agent",
         "model": "claude-sonnet-4-6",
-        "max_tokens": 2000,
+        "max_tokens": 1200,
         "sistem_promptu": """You are a systems integration and interface management specialist.
 Your role: Analyze how the proposed design/solution interfaces with adjacent systems and subsystems.
 Identify: mechanical interfaces (loads, dimensional, thermal), electrical interfaces (power, signal, ground), fluid interfaces (pressure, flow, temperature), data/communication interfaces, environmental interface requirements.
@@ -989,7 +989,7 @@ Produce an interface risk register that highlights uncontrolled interfaces."""
     "simulasyon_koordinator": {
         "isim": "Simulation Coordinator",
         "model": "claude-sonnet-4-6",
-        "max_tokens": 2000,
+        "max_tokens": 1200,
         "sistem_promptu": """You are a simulation and modeling strategy specialist.
 Your role: Based on the engineering analysis performed, recommend a simulation and modeling strategy.
 Identify: which analyses require high-fidelity simulation (CFD, FEA, multibody dynamics), appropriate simulation tools and methods for each analysis, required boundary conditions and input data, expected simulation outputs and acceptance criteria, simulation validation strategy.
@@ -1000,7 +1000,7 @@ Flag areas where agent analytical estimates need simulation validation."""
     "dokumantasyon_hafiza": {
         "isim": "Documentation & Lessons Learned Agent",
         "model": "claude-sonnet-4-6",
-        "max_tokens": 2000,
+        "max_tokens": 1200,
         "sistem_promptu": """You are a technical documentation and knowledge management specialist.
 
 PART 1 — DOCUMENTATION REQUIREMENTS:
@@ -1017,7 +1017,7 @@ Be brief. Bullet points preferred over prose."""
     "maliyet_pazar": {
         "isim": "Cost & Market Analyst",
         "model": "claude-sonnet-4-6",
-        "max_tokens": 2000,
+        "max_tokens": 1200,
         "sistem_promptu": """You are a technical cost and market analysis specialist.
 Your role: Based on the proposed design/solution, provide: cost estimation (development, production, operations), market context (comparable solutions, competitive landscape), technology readiness and supply chain assessment, make/buy analysis guidance, total cost of ownership considerations.
 Use parametric cost estimation methods where specific data is unavailable. Clearly state cost estimate basis and uncertainty range (±X%).
@@ -1030,7 +1030,7 @@ Flag: cost drivers that design changes could reduce, supply chain single-source 
     "soru_uretici_pm": {
         "isim": "Parameter Question Generator",
         "model": "claude-sonnet-4-6",
-        "max_tokens": 800,
+        "max_tokens": 600,
         "sistem_promptu": """You are an engineering parameter extraction specialist.
 Your ONLY task: Analyze an engineering brief and output 3-7 critical missing parameter questions.
 
@@ -1048,7 +1048,7 @@ Rules:
     "domain_selector": {
         "isim": "Domain Selector",
         "model": "claude-sonnet-4-6",
-        "max_tokens": 1000,
+        "max_tokens": 600,
         "sistem_promptu": """You are an engineering domain classifier. Select the MINIMUM number of domains genuinely necessary — not every loosely related domain.
 
 Available domains:

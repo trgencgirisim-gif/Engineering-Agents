@@ -213,30 +213,12 @@ def _api_call(ajan, sistem_promptu_extended, mesajlar):
                     "cache_control": {"type": "ephemeral"}
                 }],
                 messages=mesajlar,
-                betas=["prompt-caching-2024-07-31"],
                 **extra_kwargs,
             )
             return yanit
         except Exception as e:
             err = str(e)
-            if "betas" in err or "beta" in err.lower():
-                # Beta desteklenmiyorsa betas olmadan dene
-                try:
-                    yanit = client.messages.create(
-                        model=ajan["model"],
-                        max_tokens=max_tokens,
-                        system=[{
-                            "type": "text",
-                            "text": sistem_promptu_extended,
-                            "cache_control": {"type": "ephemeral"}
-                        }],
-                        messages=mesajlar,
-                        **extra_kwargs,
-                    )
-                    return yanit
-                except Exception as e2:
-                    raise e2
-            elif "thinking" in err.lower() and thinking_budget:
+            if "thinking" in err.lower() and thinking_budget:
                 # Thinking desteklenmiyorsa thinking olmadan dene
                 extra_kwargs = {}
                 print("⚠️  Thinking modu desteklenmedi, standart moda geçiliyor...")

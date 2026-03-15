@@ -645,7 +645,11 @@ def _login_check() -> bool:
 
 def init_state():
     defaults = {
+        "budget_mode":         False,
+        "cost_limit":          3.0,
+        "agent_token_budget":  {},
         "step":               "input",       # input | domains | qa | running | done
+        "stop_requested":     False,
         "mode":               4,
         "brief":              "",
         "enhanced_brief":     "",
@@ -711,6 +715,160 @@ rag = get_rag()
 _APP_COST_LOCK = threading.Lock()
 
 # ═════════════════════════════════════════════════════════════
+# BÜTÇE DAĞITICI
+# ═════════════════════════════════════════════════════════════
+def calculate_token_budgets(active_domains, mode, domain_model, total_budget, max_rounds=1):
+    if total_budget <= 0:
+        return {"budgets": {}, "warnings": [], "effective_rounds": max_rounds}
+
+    PRICE = {
+        "sonnet": {"in": 3/1e6,  "out": 15/1e6, "cw": 3.75/1e6, "cr": 0.3/1e6},
+        "opus":   {"in": 15/1e6, "out": 75/1e6, "cw": 18.75/1e6, "cr": 1.5/1e6},
+    }
+
+    def tier(model_str):
+        if "opus"  in model_str: return "opus"
+        if "haiku" in model_str: return "haiku"
+        return "sonnet"
+
+    def get_model(key):
+        if key in AGENTS and key not in ("final_rapor", "sentez"):
+            return domain_model
+        ajan = AGENTS.get(key) or DESTEK_AJANLARI.get(key)
+        return tier(ajan.get("model", "")) if ajan else "sonnet"
+
+    def get_config_max(key):
+        ajan = AGENTS.get(key) or DESTEK_AJANLARI.get(key)
+        return ajan.get("max_tokens", 2000) if ajan else 2000
+
+    p_dm = PRICE[domain_model]
+
+    SUPPORT_FIXED = {
+        1: ["capraz_dogrulama", "soru_uretici", "gozlemci"],
+        2: ["capraz_dogrulama", "varsayim_belirsizlik", "gozlemci",
+            "celisiki_cozum", "soru_uretici", "alternatif_senaryo"],
+        3: ["capraz_dogrulama", "varsayim_belirsizlik", "literatur_patent",
+            "gozlemci", "risk_guvenilirlik", "celisiki_cozum"],
+        4: ["capraz_dogrulama", "varsayim_belirsizlik", "literatur_patent",
+            "gozlemci", "risk_guvenilirlik", "celisiki_cozum"],
+    }
+    SUPPORT_POST = [
+        "soru_uretici", "alternatif_senaryo", "kalibrasyon",
+        "dogrulama_standartlar", "entegrasyon_arayuz",
+        "simulasyon_koordinator", "maliyet_pazar",
+        "sentez", "dokumantasyon_hafiza", "ozet_ve_sunum",
+    ]
+    PRIORITY = {
+        "final_rapor": 0, "sentez": 0, "gozlemci": 1,
+        "capraz_dogrulama": 1, "varsayim_belirsizlik": 1, "risk_guvenilirlik": 1,
+        "celisiki_cozum": 2, "literatur_patent": 2,
+        "alternatif_senaryo": 2, "soru_uretici": 2,
+        "dogrulama_standartlar": 3, "entegrasyon_arayuz": 3,
+        "simulasyon_koordinator": 3, "maliyet_pazar": 3,
+        "kalibrasyon": 3, "ozet_ve_sunum": 3, "dokumantasyon_hafiza": 3,
+    }
+
+    def estimate_input_cost(key, tur, ctx_tokens):
+        p = PRICE[get_model(key)]
+        SYS = 2300
+        sys_cost = SYS * (p["cw"] if tur == 0 else p["cr"])
+        if key in ("capraz_dogrulama", "varsayim_belirsizlik",
+                   "literatur_patent", "gozlemci", "risk_guvenilirlik",
+                   "celisiki_cozum"):
+            msg_tokens = min(ctx_tokens + 300, 9000)
+        elif key in ("final_rapor", "sentez"):
+            msg_tokens = min(ctx_tokens + 1500, 14000)
+        else:
+            msg_tokens = 500
+        return sys_cost + msg_tokens * p["in"]
+
+    warnings = []
+
+    # Strateji 1: Tur sayısını ayarla
+    effective_rounds = max_rounds if mode >= 3 else 1
+    if mode >= 3 and max_rounds > 1:
+        for test_rounds in range(max_rounds, 0, -1):
+            ctx = len(active_domains) * 2 * 1500
+            d_per_round = len(active_domains) * (1 if mode == 1 else 2)
+            inp = 0
+            for tur in range(test_rounds):
+                ctx_t = ctx * (tur + 1)
+                for _ in range(d_per_round):
+                    inp += estimate_input_cost("_domain", tur, 0)
+                for key in SUPPORT_FIXED.get(mode, []):
+                    inp += estimate_input_cost(key, tur, ctx_t)
+            for key in SUPPORT_POST:
+                inp += estimate_input_cost(key, 0, ctx * test_rounds)
+            inp += estimate_input_cost("final_rapor", 0, ctx * test_rounds)
+            total_a = d_per_round * test_rounds + len(SUPPORT_FIXED.get(mode,[])) * test_rounds + len(SUPPORT_POST) + 1
+            if inp + total_a * 400 * p_dm["out"] <= total_budget:
+                effective_rounds = test_rounds
+                break
+        if effective_rounds < max_rounds:
+            warnings.append(f"⚠️ Bütçe nedeniyle tur sayısı {max_rounds} → {effective_rounds} azaltıldı")
+
+    rounds = effective_rounds
+    ctx_tokens = len(active_domains) * 2 * 1500 * rounds
+
+    # Ajan listesi
+    all_keys = []
+    for tur in range(rounds):
+        for key, _ in active_domains:
+            all_keys.append(f"{key}_a")
+            if mode >= 2:
+                all_keys.append(f"{key}_b")
+        for key in SUPPORT_FIXED.get(mode, []):
+            all_keys.append(key)
+    if mode >= 3:
+        all_keys.extend(SUPPORT_POST)
+    all_keys.append("final_rapor")
+
+    def total_input_cost(keys):
+        cost = 0
+        seen = {}
+        for k in keys:
+            seen[k] = seen.get(k, -1) + 1
+            cost += estimate_input_cost(k, seen[k], ctx_tokens)
+        return cost
+
+    input_cost  = total_input_cost(all_keys)
+    output_budget = max(0, total_budget - input_cost)
+
+    # Strateji 2: Bütçe yetersizse LOW ajanları çıkar
+    if output_budget < len(all_keys) * 300 * p_dm["out"]:
+        filtered = [k for k in all_keys
+                    if PRIORITY.get(k, 1) <= 2 or k.endswith("_a") or k.endswith("_b")]
+        output_budget2 = max(0, total_budget - total_input_cost(filtered))
+        if output_budget2 > output_budget:
+            removed = len(set(all_keys)) - len(set(filtered))
+            if removed:
+                warnings.append(f"⚠️ Düşük öncelikli {removed} ajan bütçe nedeniyle atlandı")
+            all_keys = filtered
+            output_budget = output_budget2
+
+    # Token dağıtımı
+    WEIGHTS = {0: 5.0, 1: 2.5, 2: 1.5, 3: 0.8}
+    unique_keys = list(dict.fromkeys(all_keys))
+
+    total_wc = sum(
+        WEIGHTS.get(PRIORITY.get(k, 1), 1.5) * PRICE[get_model(k)]["out"]
+        for k in unique_keys
+    )
+
+    result = {}
+    for key in unique_keys:
+        w     = WEIGHTS.get(PRIORITY.get(key, 1), 1.5)
+        p_out = PRICE[get_model(key)]["out"]
+        tokens = int(output_budget * (w * p_out) / max(total_wc, 1e-9) / p_out)
+        tokens = max(400, min(tokens, get_config_max(key)))
+        result[key] = tokens
+
+    if not result:
+        warnings.append("❌ Bütçe input maliyetini karşılamıyor")
+
+    return {"budgets": result, "warnings": warnings, "effective_rounds": effective_rounds}
+
+# ═════════════════════════════════════════════════════════════
 # CORE: Saf API çağrısı — session_state KULLANMAZ
 # Thread'lerden güvenle çağrılabilir
 # ═════════════════════════════════════════════════════════════
@@ -723,6 +881,18 @@ def _ajan_api(ajan_key: str, mesaj: str,
     """
     if gecmis is None:
         gecmis = []
+    
+    if st.session_state.get("stop_requested", False):
+        return {"key": ajan_key, "name": ajan_key, "model": "?",
+                "cevap": "STOPPED", "dusunce": "",
+                "cost": 0, "inp": 0, "out": 0, "c_cre": 0, "c_rd": 0, "saved": 0}
+    
+    if st.session_state.get("cost_limit", 0) > 0:
+        if st.session_state.get("total_cost", 0) >= st.session_state.cost_limit:
+            return {"key": ajan_key, "name": ajan_key, "model": "?",
+                    "cevap": f"LIMIT_REACHED: ${st.session_state.cost_limit:.2f} limitine ulaşıldı.",
+                    "dusunce": "", "cost": 0, "inp": 0, "out": 0,
+                    "c_cre": 0, "c_rd": 0, "saved": 0}
 
     ajan = AGENTS.get(ajan_key) or DESTEK_AJANLARI.get(ajan_key)
     if not ajan:
@@ -752,6 +922,12 @@ def _ajan_api(ajan_key: str, mesaj: str,
 
     mesajlar = gecmis + [{"role": "user", "content": user_content}]
 
+    # Bütçe bazlı token override
+    _tb = st.session_state.get("agent_token_budget", {})
+    if _tb and ajan_key in _tb:
+        ajan = dict(ajan)
+        ajan["max_tokens"] = _tb[ajan_key]
+
     thinking_budget = ajan.get("thinking_budget", 0)
     extra_kwargs = {}
     if thinking_budget:
@@ -769,31 +945,12 @@ def _ajan_api(ajan_key: str, mesaj: str,
                     "cache_control": {"type": "ephemeral"},
                 }],
                 messages=mesajlar,
-                betas=["prompt-caching-2024-07-31"],
                 **extra_kwargs,
             )
             break
         except Exception as e:
             err = str(e)
-            if "betas" in err or "beta" in err.lower():
-                try:
-                    yanit = client.messages.create(
-                        model=ajan["model"],
-                        max_tokens=ajan.get("max_tokens", 2000),
-                        system=[{
-                            "type": "text",
-                            "text": sistem_promptu_extended,
-                            "cache_control": {"type": "ephemeral"},
-                        }],
-                        messages=mesajlar,
-                        **extra_kwargs,
-                    )
-                    break
-                except Exception as e2:
-                    return {"key": ajan_key, "name": ajan["isim"], "model": ajan["model"],
-                            "cevap": f"ERROR: {e2}", "dusunce": "",
-                            "cost": 0, "inp": 0, "out": 0, "c_cre": 0, "c_rd": 0, "saved": 0}
-            elif "thinking" in err.lower() and thinking_budget:
+            if "thinking" in err.lower() and thinking_budget:
                 extra_kwargs = {}
                 continue
             elif "rate_limit" in err.lower() or "429" in err:
@@ -1285,6 +1442,58 @@ with st.sidebar:
         st.session_state.max_rounds = st.slider("Maksimum Tur", 1, 5, 3, key="max_rounds_slider")
 
     # ── Domain Model Toggle ──────────────────────────────────
+    
+    st.markdown("---")
+    st.markdown('<div class="section-label">Bütçe Modu</div>', unsafe_allow_html=True)
+
+    budget_mode = st.checkbox(
+        "Bütçe sınırı uygula",
+        value=st.session_state.get("budget_mode", False),
+        key="budget_mode_cb"
+    )
+    st.session_state.budget_mode = budget_mode
+
+    if budget_mode:
+        cost_limit = st.number_input(
+            "Maksimum harcama (USD)",
+            min_value=0.1, max_value=50.0,
+            value=st.session_state.get("cost_limit", 3.0),
+            step=0.5, format="%.1f",
+            key="cost_limit_input",
+            label_visibility="collapsed"
+        )
+        st.session_state.cost_limit = cost_limit
+
+        _mode = st.session_state.mode
+        _dm   = st.session_state.get("domain_model", "sonnet")
+        _min_budgets = {
+            (1,"sonnet"):0.30,(1,"opus"):1.20,
+            (2,"sonnet"):0.55,(2,"opus"):2.30,
+            (3,"sonnet"):1.10,(3,"opus"):5.50,
+            (4,"sonnet"):1.30,(4,"opus"):6.50,
+        }
+        _min = _min_budgets.get((_mode, _dm), 1.0)
+
+        if cost_limit >= _min * 1.5:
+            _bcolor, _btext = "#2DB87A", "✅ Rahat bütçe"
+        elif cost_limit >= _min:
+            _bcolor, _btext = "#E8A838", "⚠️ Kısıtlı bütçe"
+        else:
+            _bcolor, _btext = "#E05A2B", f"❌ Yetersiz (min ~${_min:.1f})"
+
+        st.markdown(
+            f'<div style="font-size:0.68rem;color:{_bcolor};margin:2px 0 6px">'
+            f'{_btext}</div>',
+            unsafe_allow_html=True
+        )
+    else:
+        st.session_state.cost_limit = 0.0
+        st.markdown(
+            '<div style="font-size:0.68rem;color:#5A5A65;margin:2px 0 6px">'
+            'Sınırsız — config değerleri kullanılır</div>',
+            unsafe_allow_html=True
+        )
+    
     st.markdown('<div class="section-label">Domain Ajan Modeli</div>', unsafe_allow_html=True)
     model_choice = st.radio(
         label="domain_model_radio",
@@ -1320,6 +1529,20 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
 
+    _total_in = st.session_state.get("total_input", 0)
+    _total_out = st.session_state.get("total_output", 0)
+    _cache_w = st.session_state.get("cache_write_tokens", 0)
+    _cache_r = st.session_state.get("cache_read_tokens", 0)
+    _saved = st.session_state.get("cache_saved_usd", 0.0)
+    if _total_in > 0:
+        st.markdown(f"""
+        <div style="margin-top:0.6rem;font-size:0.65rem;color:#5A5A65">
+          <div>↑ {_total_in:,} in · ↓ {_total_out:,} out</div>
+          <div style="margin-top:2px">📦 write {_cache_w:,} · read {_cache_r:,}</div>
+          <div style="margin-top:2px;color:#2DB87A">💰 tasarruf ${_saved:.4f}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
     if st.session_state.step == "done":
         st.markdown("---")
         if st.button("🔄 Yeni Analiz", use_container_width=True):
@@ -1342,8 +1565,19 @@ with st.sidebar:
         </div>
         """, unsafe_allow_html=True)
         if toplam > 0 and kb_stats["analizler"]:
-            son = kb_stats["analizler"][0]
-            st.markdown(f'<div style="font-size:0.7rem;color:#5A5A65;margin-top:0.4rem">Son: {son["date"][:10]}</div>', unsafe_allow_html=True)
+            st.markdown('<div style="margin-top:0.6rem"></div>', unsafe_allow_html=True)
+            for analiz in kb_stats["analizler"][:5]:  # en yeni 5
+                tarih = analiz["date"][:10]
+                brief_kisa = analiz["brief"][:50].rstrip(".")
+                maliyet = f"${analiz['cost']:.3f}"
+                mod_etiket = {1:"M1",2:"M2",3:"M3",4:"M4"}.get(analiz.get("mode",4),"M?")
+                st.markdown(f"""
+                <div style="background:#131316;border:1px solid #2A2A32;border-radius:6px;
+                            padding:6px 10px;margin-bottom:4px;cursor:default">
+                  <div style="font-size:0.68rem;color:#E05A2B">{tarih} · {mod_etiket} · {maliyet}</div>
+                  <div style="font-size:0.7rem;color:#9998A3;margin-top:2px">{brief_kisa}...</div>
+                </div>
+                """, unsafe_allow_html=True)
     except Exception:
         pass
 
@@ -1377,6 +1611,35 @@ if st.session_state.step == "input":
         height=160,
         key="brief_input_widget"
     )
+
+    # Maliyet tahmini
+    _mode = st.session_state.mode
+    _dm   = st.session_state.get("domain_model", "sonnet")
+    _est  = {
+        (1,"sonnet"): (0.15, 0.40), (1,"opus"): (0.80, 2.00),
+        (2,"sonnet"): (0.30, 0.80), (2,"opus"): (1.50, 4.00),
+        (3,"sonnet"): (0.60, 1.50), (3,"opus"): (3.00, 8.00),
+        (4,"sonnet"): (0.80, 2.00), (4,"opus"): (4.00,12.00),
+    }
+    lo, hi = _est.get((_mode, _dm), (0.5, 2.0))
+    _color = "#2DB87A" if hi < 1 else "#E8A838" if hi < 4 else "#E05A2B"
+    st.markdown(f"""
+    <div style="background:#131316;border:1px solid {_color}40;border-radius:8px;
+                padding:8px 14px;margin-bottom:1rem;font-family:var(--mono)">
+      <span style="font-size:0.65rem;color:#5A5A65;text-transform:uppercase;letter-spacing:0.1em">
+        Tahmini Maliyet
+      </span>
+      <span style="font-size:0.85rem;color:{_color};margin-left:10px;font-weight:700">
+        ${lo:.2f} – ${hi:.2f}
+      </span>
+      <span style="font-size:0.65rem;color:#5A5A65;margin-left:6px">
+        (~{lo*KUR:.0f}–{hi*KUR:.0f} TL)
+      </span>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Maliyet limiti
+    _limit = st.session_state.get("cost_limit", 0.0)
 
     col1, col2 = st.columns([3, 1])
     with col1:
@@ -1589,6 +1852,9 @@ elif st.session_state.step == "running":
     with col_log:
         st.markdown('<div class="section-label">Ajan Aktivitesi</div>', unsafe_allow_html=True)
         log_placeholder = st.empty()
+        stop_placeholder = st.empty()
+    if stop_placeholder.button("⛔ Analizi Durdur", key="stop_btn"):
+        st.session_state.stop_requested = True
 
     def render_log():
         html = '<div class="agent-log">'
@@ -1649,6 +1915,21 @@ elif st.session_state.step == "running":
         brief = st.session_state.enhanced_brief
         aktif = st.session_state.active_domains
         max_t = st.session_state.max_rounds
+        if st.session_state.get("budget_mode") and st.session_state.get("cost_limit", 0) > 0:
+            budget_result = calculate_token_budgets(
+                active_domains=aktif,
+                mode=mod,
+                domain_model=st.session_state.get("domain_model", "sonnet"),
+                total_budget=st.session_state.cost_limit,
+                max_rounds=max_t,
+            )
+            st.session_state.agent_token_budget = budget_result["budgets"]
+            if budget_result["effective_rounds"] < max_t:
+                max_t = budget_result["effective_rounds"]
+            for w in budget_result["warnings"]:
+                st.warning(w)
+        else:
+            st.session_state.agent_token_budget = {}
 
         if mod == 1:
             final, tur_ozeti = run_tekli(brief, aktif)
@@ -1712,9 +1993,43 @@ elif st.session_state.step == "done":
 
         st.markdown("---")
 
-        # Final Rapor
-        st.markdown('<div class="section-label">Final Rapor</div>', unsafe_allow_html=True)
-        st.markdown(f'<div class="output-box">{st.session_state.final_report}</div>', unsafe_allow_html=True)
+        tab_rapor, tab_ajanlar, tab_log = st.tabs(["📋 Final Rapor", "🔬 Ajan Çıktıları", "📊 Aktivite Logu"])
+
+        with tab_rapor:
+            st.markdown(f'<div class="output-box">{st.session_state.final_report}</div>', unsafe_allow_html=True)
+
+        with tab_ajanlar:
+            domain_entries = [e for e in st.session_state.agent_log if e["key"] in AGENTS]
+            support_entries = [e for e in st.session_state.agent_log if e["key"] not in AGENTS]
+
+            if domain_entries:
+                st.markdown('<div class="section-label">Domain Ajanları</div>', unsafe_allow_html=True)
+                for entry in domain_entries:
+                    model_tag = f" · {entry.get('model','').split('-')[1].capitalize() if '-' in entry.get('model','') else ''}"
+                    with st.expander(f"{entry['name']}{model_tag}  —  ${entry['cost']:.4f}", expanded=False):
+                        if entry.get("thinking"):
+                            t1, t2 = st.tabs(["Çıktı", "🧠 Thinking"])
+                            with t1:
+                                st.markdown(entry["output"])
+                            with t2:
+                                st.code(entry["thinking"], language=None)
+                        else:
+                            st.markdown(entry["output"])
+
+            if support_entries:
+                st.markdown('<div class="section-label" style="margin-top:1rem">Destek Ajanları</div>', unsafe_allow_html=True)
+                for entry in support_entries:
+                    with st.expander(f"{entry['name']}  —  ${entry['cost']:.4f}", expanded=False):
+                        st.markdown(entry["output"])
+
+        with tab_log:
+            for entry in st.session_state.agent_log:
+                icon = "✓" if entry.get("status") == "done" else "✗"
+                model_str = entry.get("model", "")
+                if "opus" in model_str: model_str = "Opus"
+                elif "sonnet" in model_str: model_str = "Sonnet"
+                elif "haiku" in model_str: model_str = "Haiku"
+                st.markdown(f"`{icon}` **{entry['name']}** · {model_str} · `${entry['cost']:.5f}`")
 
         # Download
         st.markdown("---")
@@ -1781,16 +2096,3 @@ elif st.session_state.step == "done":
             else:
                 st.button("📄 DOCX İndir (report_generator.py eksik)", disabled=True,
                           use_container_width=True, key="docx_btn")
-
-        # Ajan log detayı
-        with st.expander("🔍 Ajan Aktivite Logu"):
-            for entry in st.session_state.agent_log:
-                with st.expander(f"{entry['name']}  —  ${entry['cost']:.4f}", expanded=False):
-                    if entry.get("thinking"):
-                        tab1, tab2 = st.tabs(["📄 Çıktı", "🧠 Thinking"])
-                        with tab1:
-                            st.code(entry["output"][:3000] + ("..." if len(entry["output"]) > 3000 else ""), language=None)
-                        with tab2:
-                            st.code(entry["thinking"][:3000] + ("..." if len(entry["thinking"]) > 3000 else ""), language=None)
-                    else:
-                        st.code(entry["output"][:3000] + ("..." if len(entry["output"]) > 3000 else ""), language=None)
