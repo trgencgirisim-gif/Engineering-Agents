@@ -1,0 +1,14 @@
+# tools.yaml -- robotik_a
+domain: robotik
+agent: robotik_a
+solver_tier: 1
+active_tools: []
+
+planned_tools:
+  - name: pybullet
+    type: open_source
+    tier: 1
+    install: "pip install pybullet"
+    capability: "Rigid body dynamics and robotics simulation"
+    status: planned
+    wrapper: null

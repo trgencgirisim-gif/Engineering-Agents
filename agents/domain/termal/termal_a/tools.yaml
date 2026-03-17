@@ -1,0 +1,22 @@
+# tools.yaml -- termal_a
+domain: termal
+agent: termal_a
+solver_tier: 1
+active_tools: []
+
+planned_tools:
+  - name: fenics
+    type: open_source
+    tier: 1
+    install: "conda install -c conda-forge fenics-dolfinx"
+    capability: "Finite element analysis: structural, thermal, fluid"
+    status: planned
+    wrapper: null
+
+  - name: coolprop
+    type: open_source
+    tier: 1
+    install: "pip install coolprop"
+    capability: "Fluid thermophysical properties for 100+ fluids"
+    status: planned
+    wrapper: null

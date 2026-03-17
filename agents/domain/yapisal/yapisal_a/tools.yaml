@@ -1,0 +1,22 @@
+# tools.yaml -- yapisal_a
+domain: yapisal
+agent: yapisal_a
+solver_tier: 1
+active_tools: []
+
+planned_tools:
+  - name: fenics
+    type: open_source
+    tier: 1
+    install: "conda install -c conda-forge fenics-dolfinx"
+    capability: "Finite element analysis: structural, thermal, fluid"
+    status: planned
+    wrapper: null
+
+  - name: opensees
+    type: open_source
+    tier: 1
+    install: "pip install openseespy"
+    capability: "Structural and earthquake engineering FEM"
+    status: planned
+    wrapper: null

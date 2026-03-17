@@ -3,12 +3,17 @@ import os
 import re
 import time
 import datetime
+import hashlib
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional, List, Tuple, Any
 from dotenv import load_dotenv
 from config.agents_config import AGENTS, DESTEK_AJANLARI
+from config.domains import DOMAINS
+from config.pricing import get_rates, compute_cost
 from rag.store import RAGStore
+from blackboard import Blackboard
+from parser import parse_agent_output
 
 rag = RAGStore()
 
@@ -21,37 +26,16 @@ MALIYET = {"input_token": 0, "output_token": 0, "usd": 0.0, "cache_create": 0, "
 MALIYET_DETAY = {}  # per-agent: {key: {calls, input, output, usd}}
 _MALIYET_LOCK  = threading.Lock()  # thread-safe maliyet güncellemesi için
 
-# ── Domain registry ───────────────────────────────────────────
-DOMAINS = {
-    "1":  ("yanma",           "Combustion"),
-    "2":  ("malzeme",         "Materials"),
-    "3":  ("termal",          "Thermal & Heat Transfer"),
-    "4":  ("yapisal",         "Structural & Static"),
-    "5":  ("dinamik",         "Dynamics & Vibration"),
-    "6":  ("aerodinamik",     "Aerodynamics"),
-    "7":  ("akiskan",         "Fluid Mechanics"),
-    "8":  ("termodinamik",    "Thermodynamics"),
-    "9":  ("mekanik_tasarim", "Mechanical Design"),
-    "10": ("kontrol",         "Control Systems"),
-    "11": ("elektrik",        "Electrical & Electronics"),
-    "12": ("hidrolik",        "Hydraulics & Pneumatics"),
-    "13": ("uretim",          "Manufacturing & Production"),
-    "14": ("robotik",         "Robotics & Automation"),
-    "15": ("sistem",          "Systems Engineering"),
-    "16": ("guvenilirlik",    "Reliability & Test"),
-    "17": ("enerji",          "Energy Systems"),
-    "18": ("otomotiv",        "Automotive"),
-    "19": ("uzay",            "Aerospace"),
-    "20": ("savunma",         "Defense & Weapon Systems"),
-    "21": ("yazilim",         "Software & Embedded Systems"),
-    "22": ("cevre",           "Environment & Sustainability"),
-    "23": ("denizcilik",      "Naval & Marine"),
-    "24": ("kimya",           "Chemical & Process"),
-    "25": ("insaat",          "Civil & Structural"),
-    "26": ("optik",           "Optics & Sensors"),
-    "27": ("nukleer",         "Nuclear"),
-    "28": ("biyomedikal",     "Biomedical"),
-}
+# DOMAINS imported from config.domains
+
+# ── Local Result Cache (A6) ──────────────────────────────────
+_result_cache: dict = {}
+_RESULT_CACHE_MAX = 200
+_result_cache_lock = threading.Lock()
+
+def _make_cache_key(ajan_key: str, mesaj: str, gecmis_len: int) -> str:
+    raw = f"{ajan_key}:{gecmis_len}:{mesaj}"
+    return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 
 # ═════════════════════════════════════════════════════════════
@@ -345,6 +329,24 @@ SI units are preferred; imperial units acceptable when citing US standards (AISC
 ═══════════════════════════════════════════════════════════════
 END OF STANDARDS REFERENCE LIBRARY
 ═══════════════════════════════════════════════════════════════
+
+BLACKBOARD SYSTEM — STRUCTURED FEEDBACK
+═══════════════════════════════════════════════════════════════
+The orchestration system maintains a Blackboard — a structured state that tracks:
+- Extracted numerical parameters with source agent and confidence level
+- Open and resolved conflicts between agents
+- Cross-domain flags (issues flagged for other engineering domains)
+- Observer directives per agent (FIX/ADD/CORRECT actions)
+- Assumption registry across all agents
+- Risk register (FMEA items with RPN values)
+- Quality score progression across rounds
+
+When BLACKBOARD STATE is provided in your input:
+1. CROSS-DOMAIN FLAGS: If flags target your domain, you MUST address each one explicitly
+2. OBSERVER DIRECTIVES: If a directive specifies a correction for you, address it and confirm the fix
+3. PARAMETER TABLE: Use listed parameters as shared ground truth — flag any disagreement
+4. CONVERGENCE DATA: If parameters are oscillating, propose a resolution rather than continuing the cycle
+═══════════════════════════════════════════════════════════════
 """
 
 
@@ -353,7 +355,7 @@ END OF STANDARDS REFERENCE LIBRARY
 # cache_context: varsa cache'lenecek büyük bağlam bloğu (tum_ciktilar gibi)
 # mesaj:         kısa talep (her çağrıda değişir)
 # ═════════════════════════════════════════════════════════════
-def _api_call(ajan, sistem_promptu_extended, mesajlar):
+def _api_call(ajan, system_blocks, mesajlar):
     """API çağrısı + retry. Thinking modu varsa otomatik aktif edilir."""
     thinking_budget = ajan.get("thinking_budget", 0)
     max_tokens      = ajan.get("max_tokens", 2000)
@@ -368,11 +370,7 @@ def _api_call(ajan, sistem_promptu_extended, mesajlar):
             yanit = client.messages.create(
                 model=ajan["model"],
                 max_tokens=max_tokens,
-                system=[{
-                    "type": "text",
-                    "text": sistem_promptu_extended,
-                    "cache_control": {"type": "ephemeral"}
-                }],
+                system=system_blocks,
                 messages=mesajlar,
                 **extra_kwargs,
             )
@@ -404,24 +402,7 @@ def _maliyet_kaydet(ajan_key, ajan, yanit):
     c_cre = getattr(usage, "cache_creation_input_tokens", 0) or 0
     c_rd  = getattr(usage, "cache_read_input_tokens",     0) or 0
 
-    if "opus" in model:
-        r_in, r_out = 15/1_000_000, 75/1_000_000      # normal input/output
-        r_cre       = 18.75/1_000_000                  # cache write +25%
-        r_rd        = 1.5/1_000_000                    # cache read  -90%
-    elif "sonnet" in model:
-        r_in, r_out = 3/1_000_000,  15/1_000_000
-        r_cre       = 3.75/1_000_000
-        r_rd        = 0.3/1_000_000
-    else:
-        r_in, r_out = 0.8/1_000_000, 4/1_000_000
-        r_cre       = 1.0/1_000_000
-        r_rd        = 0.08/1_000_000
-
-    # Gerçek maliyet (cache dahil)
-    actual_cost = (inp * r_in) + (out * r_out) + (c_cre * r_cre) + (c_rd * r_rd)
-    # Cache olmasaydı ödenecek maliyet (tüm tokenlar normal fiyattan)
-    full_cost   = ((inp + c_cre + c_rd) * r_in) + (out * r_out)
-    saved       = max(0.0, full_cost - actual_cost)
+    actual_cost, saved = compute_cost(model, inp, out, c_cre, c_rd)
 
     with _MALIYET_LOCK:
         MALIYET["input_token"]    += inp
@@ -463,8 +444,16 @@ def ajan_calistir(ajan_key, mesaj, gecmis=None, cache_context: Optional[str] = N
     if not ajan:
         return f"ERROR: Agent '{ajan_key}' not found."
 
-    # Sistem promptunu preamble ile genişlet → cache eşiğini geç
-    sistem_promptu_extended = CACHE_PREAMBLE + "\n" + ajan["sistem_promptu"]
+    # 2-block system prompt: CACHE_PREAMBLE cached once across all agents
+    if CACHE_PREAMBLE:
+        system_blocks = [
+            {"type": "text", "text": CACHE_PREAMBLE, "cache_control": {"type": "ephemeral"}},
+            {"type": "text", "text": ajan["sistem_promptu"], "cache_control": {"type": "ephemeral"}},
+        ]
+    else:
+        system_blocks = [
+            {"type": "text", "text": ajan["sistem_promptu"], "cache_control": {"type": "ephemeral"}},
+        ]
 
     # Mesaj yapısı: cache_context varsa ayrı block olarak ekle
     if cache_context and len(cache_context) > 800:
@@ -484,16 +473,24 @@ def ajan_calistir(ajan_key, mesaj, gecmis=None, cache_context: Optional[str] = N
 
     mesajlar = gecmis + [{"role": "user", "content": user_content}]
 
+    # ── A6: Local result cache check ──────────────────────
+    thinking_budget = ajan.get("thinking_budget", 0)
+    cache_key = None
+    if not thinking_budget:
+        cache_key = _make_cache_key(ajan_key, mesaj, len(gecmis))
+        with _result_cache_lock:
+            if cache_key in _result_cache:
+                print(f"\n[CACHE HIT] {ajan['isim']}")
+                return _result_cache[cache_key]
+
     print(f"\n{'='*50}")
     print(f"AGENT: {ajan['isim']}")
     print(f"{'='*50}")
 
-    yanit = _api_call(ajan, sistem_promptu_extended, mesajlar)
+    yanit = _api_call(ajan, system_blocks, mesajlar)
     if yanit is None:
         return "ERROR: Rate limit aşıldı, maksimum deneme sayısına ulaşıldı."
 
-    # Thinking modu varsa content karışık bloklar içerir (thinking + text)
-    # Sadece text bloklarını birleştir; thinking bloğunu logla
     text_blocks     = [b.text     for b in yanit.content if b.type == "text"]
     thinking_blocks = [b.thinking for b in yanit.content if b.type == "thinking"]
 
@@ -504,6 +501,14 @@ def ajan_calistir(ajan_key, mesaj, gecmis=None, cache_context: Optional[str] = N
         print(f"[THINKING — {len(dusunce.split())} kelime]")
     print(cevap)
     _maliyet_kaydet(ajan_key, ajan, yanit)
+
+    # ── A6: Store in local result cache ───────────────────
+    if cache_key:
+        with _result_cache_lock:
+            if len(_result_cache) >= _RESULT_CACHE_MAX:
+                oldest = next(iter(_result_cache))
+                del _result_cache[oldest]
+            _result_cache[cache_key] = cevap
 
     return cevap
 
@@ -796,11 +801,64 @@ def _ajan_paralel(gorevler: List[Tuple], max_workers: int = 6) -> List[str]:
     return sonuclar
 
 
+# ── Blackboard helper (module-level) ──────────────────────────
+def _update_blackboard(bb, agent_key, output, round_num):
+    """Parse agent output and write structured data to blackboard."""
+    if not output or output.startswith("ERROR"):
+        return
+    try:
+        parsed = parse_agent_output(output, agent_key, client=None)
+    except Exception:
+        return
+    if not parsed:
+        return
+
+    if agent_key.endswith("_a") or agent_key.endswith("_b"):
+        if agent_key not in DESTEK_AJANLARI:
+            for p in parsed.get("parameters", []):
+                bb.write("parameters", p, agent_key, round_num)
+            for f in parsed.get("cross_domain_flags", []):
+                bb.write("cross_domain_flags", f, agent_key, round_num)
+            for a in parsed.get("assumptions", []):
+                bb.write("assumptions", a, agent_key, round_num)
+    elif agent_key == "capraz_dogrulama":
+        for e in parsed.get("errors", []):
+            bb.write("conflicts", e, agent_key, round_num)
+    elif agent_key == "varsayim_belirsizlik":
+        for a in parsed.get("assumptions", []):
+            bb.write("assumptions", a, agent_key, round_num)
+    elif agent_key == "gozlemci":
+        for d in parsed.get("directives", []):
+            bb.write("observer_directives", d, agent_key, round_num)
+        score = parsed.get("score", 0)
+        bb.write("round_history", {"round": round_num, "score": score}, agent_key, round_num)
+    elif agent_key == "risk_guvenilirlik":
+        for r in parsed.get("risks", []):
+            bb.write("risk_register", r, agent_key, round_num)
+    elif agent_key == "celisiki_cozum":
+        resolutions = parsed.get("resolutions", [])
+        if resolutions:
+            bb.resolve_conflicts([
+                {"conflict_id": i + 1, "resolution": r.get("resolution", "")}
+                for i, r in enumerate(resolutions)
+            ])
+
+
+def _build_ctx_history(brief_msg, tum_ciktilar):
+    """Convert accumulated outputs to conversation history format."""
+    return [
+        {"role": "user", "content": f"Domain analysis request:\n{brief_msg}"},
+        {"role": "assistant", "content": tum_ciktilar},
+    ]
+
+
 # ── Paylaşılan: Tam döngü çekirdeği (Mod 3 ve Mod 4) ─────────
 def _feedback_loop_core(brief, guclendirilmis_brief, aktif_alanlar, max_tur, mod):
     """
     Mühendislik ajanları + validasyon katmanı + kalite döngüsü.
     Mod 3 ve Mod 4 bu fonksiyonu paylaşır.
+    Blackboard-based selective context injection, incremental execution,
+    context compression, smart skip, and assumption consistency.
     """
     alan_isimleri  = [name for _, name in aktif_alanlar]
     alan_keyleri   = [key  for key, _ in aktif_alanlar]
@@ -811,45 +869,87 @@ def _feedback_loop_core(brief, guclendirilmis_brief, aktif_alanlar, max_tur, mod
         gecmis[f"{key}_b"] = []
 
     tur_ozeti       = []
-    tur             = 1
     gozlemci_notu   = ""
     tum_ciktilar    = ""
     gozlemci_cevabi = ""
+    shared_ctx      = []
+    bb              = Blackboard()
+
+    # C2: Incremental execution — skip agents without directives
+    _skip_agents = set()
+    _CTX_WORD_LIMIT = 8000  # A3: Context compression threshold
+
+    _HASH = '#'
+    _EQ = '='
+    _STAR = '*'
 
     # ═══════════════════════════════════════════════════════════
     # ROUND LOOP
     # ═══════════════════════════════════════════════════════════
-    while tur <= max_tur:
-        print(f"\n{'#'*60}")
+    for tur in range(1, max_tur + 1):
+        print(f"\n{_HASH*60}")
         print(f"ROUND {tur}/{max_tur}")
-        print(f"{'#'*60}")
+        print(f"{_HASH*60}")
 
-        if tur == 1:
-            mesaj = guclendirilmis_brief
-        else:
-            mesaj = f"{guclendirilmis_brief}\n\nOBSERVER NOTES (Önceki Tur):\n{gozlemci_notu}"
+        mesaj = guclendirilmis_brief if tur == 1 else f"{guclendirilmis_brief}\n\nOBSERVER NOTES (Önceki Tur):\n{gozlemci_notu}"
 
         son_tur_cikti = {}
+
+        # C2: Build skip list for tur 2+
+        if tur > 1:
+            _skip_agents.clear()
+            _agents_with_directives = set()
+            for agent_key, directive in bb.observer_directives.items():
+                if isinstance(directive, dict) and directive.get("status") != "addressed":
+                    _agents_with_directives.add(agent_key)
+            for key in alan_keyleri:
+                for ab in ("a", "b"):
+                    ak = f"{key}_{ab}"
+                    if ak not in _agents_with_directives:
+                        _skip_agents.add(ak)
 
         # ── GRUP A: Domain ajanları PARALEL ────────────────────────
         print(f"\n--- GRUP A: {len(aktif_alanlar)} domain × 2 ajan paralel çalışıyor ---")
         gorev_a = []
+        _gorev_keys = []
+        _skipped = set()
         for key, name in aktif_alanlar:
-            gorev_a.append((f"{key}_a", mesaj, gecmis[f"{key}_a"], None))
-            gorev_a.append((f"{key}_b", mesaj, gecmis[f"{key}_b"], None))
+            for ab in ("a", "b"):
+                ak = f"{key}_{ab}"
+                if ak in _skip_agents:
+                    _skipped.add(ak)
+                    print(f"  ⏭ {ak} — no directives, reusing previous output")
+                    continue
+                if tur > 1:
+                    bb_ctx = bb.get_context_for(ak, tur)
+                    _msg = f"{mesaj}\n\n{bb_ctx}" if bb_ctx else mesaj
+                else:
+                    _msg = mesaj
+                gorev_a.append((ak, _msg, gecmis[ak], None))
+                _gorev_keys.append(ak)
 
-        sonuc_a = _ajan_paralel(gorev_a, max_workers=6)
+        sonuc_a = _ajan_paralel(gorev_a, max_workers=6) if gorev_a else []
+        _sonuc_map = {k: sonuc_a[i] for i, k in enumerate(_gorev_keys) if i < len(sonuc_a)}
 
-        # Sonuçları gecmis'e yaz
-        for i, (key, name) in enumerate(aktif_alanlar):
-            cevap_a = sonuc_a[i * 2]
-            cevap_b = sonuc_a[i * 2 + 1]
-            son_tur_cikti[f"{key}_a"] = cevap_a
-            son_tur_cikti[f"{key}_b"] = cevap_b
-            gecmis[f"{key}_a"].append({"role": "user",      "content": mesaj})
-            gecmis[f"{key}_a"].append({"role": "assistant",  "content": cevap_a})
-            gecmis[f"{key}_b"].append({"role": "user",      "content": mesaj})
-            gecmis[f"{key}_b"].append({"role": "assistant",  "content": cevap_b})
+        for key, name in aktif_alanlar:
+            for ab in ("a", "b"):
+                ak = f"{key}_{ab}"
+                if ak in _skipped:
+                    # C2: Keep previous output
+                    son_tur_cikti[ak] = gecmis[ak][-1]["content"] if gecmis[ak] else ""
+                else:
+                    son_tur_cikti[ak] = _sonuc_map.get(ak, "")
+                    gecmis[ak].append({"role": "user", "content": mesaj})
+                    gecmis[ak].append({"role": "assistant", "content": son_tur_cikti[ak]})
+
+        # Blackboard: parse domain outputs (only non-skipped)
+        for key, name in aktif_alanlar:
+            for ab in ("a", "b"):
+                ak = f"{key}_{ab}"
+                if ak not in _skipped:
+                    _update_blackboard(bb, ak, son_tur_cikti[ak], tur)
+                    if tur > 1:
+                        bb.mark_directive_addressed(ak)
 
         tum_ciktilar = "\n\n".join(
             f"{name.upper()} EXPERT A:\n{son_tur_cikti[f'{key}_a']}\n\n"
@@ -857,54 +957,88 @@ def _feedback_loop_core(brief, guclendirilmis_brief, aktif_alanlar, max_tur, mod
             for key, name in aktif_alanlar
         )
 
+        # A3: Context compression
+        if tur == 1:
+            shared_ctx = _build_ctx_history(guclendirilmis_brief, tum_ciktilar)
+        else:
+            _ctx_words = sum(len(m.get("content", "").split()) for m in shared_ctx)
+            if _ctx_words > _CTX_WORD_LIMIT:
+                _bb_summary = bb.to_summary()
+                shared_ctx = [
+                    {"role": "user", "content": f"Domain analysis request:\n{guclendirilmis_brief}\n\n[Context compressed]\n\n{_bb_summary}"},
+                    {"role": "assistant", "content": tum_ciktilar},
+                ]
+            else:
+                shared_ctx = shared_ctx + [
+                    {"role": "user", "content": f"Round {tur} domain analysis:"},
+                    {"role": "assistant", "content": tum_ciktilar},
+                ]
+
         # ── GRUP B: Validasyon katmanı PARALEL ──────────────────────
         print(f"\n--- GRUP B: Validasyon ajanları paralel çalışıyor ---")
+        _bb_cv = bb.get_context_for("capraz_dogrulama", tur)
+        _bb_as = bb.get_context_for("varsayim_belirsizlik", tur)
         val_sonuc = _ajan_paralel([
-            ("capraz_dogrulama",    f"ROUND {tur}: Check all numerical values for physical and mathematical consistency.",    None, tum_ciktilar),
-            ("varsayim_belirsizlik",f"ROUND {tur}: Identify hidden and unstated assumptions in all agent outputs.",            None, tum_ciktilar),
-            ("varsayim_belirsizlik",f"ROUND {tur}: List all missing, ambiguous, or conflicting points.",                       None, tum_ciktilar),
-            ("literatur_patent",    f"ROUND {tur}: Check cited standards and references. Flag unverifiable citations and IP risks.", None, tum_ciktilar),
+            ("capraz_dogrulama",    f"ROUND {tur}: Check numerical consistency.\n\n{_bb_cv}",    shared_ctx, None),
+            ("varsayim_belirsizlik",f"ROUND {tur}: Identify hidden assumptions.\n\n{_bb_as}",    shared_ctx, None),
+            ("varsayim_belirsizlik",f"ROUND {tur}: List missing/ambiguous/conflicting points.\n\n{_bb_as}", shared_ctx, None),
+            ("literatur_patent",    f"ROUND {tur}: Check standards and references.",              shared_ctx, None),
         ], max_workers=4)
         capraz_cevap, varsayim_cevap, belirsizlik_cevap, literatur_cevap = val_sonuc
+        _update_blackboard(bb, "capraz_dogrulama", capraz_cevap, tur)
+        _update_blackboard(bb, "varsayim_belirsizlik", varsayim_cevap, tur)
+
+        # A5: Assumption consistency check
+        _conflicting = bb.find_conflicting_assumptions()
+        _conflict_note = ""
+        if _conflicting:
+            _lines = ["CONFLICTING ASSUMPTIONS:"]
+            for ca in _conflicting[:5]:
+                _a_agent = ca['agent_a']
+                _a_assum = ca['assumption_a']
+                _b_agent = ca['agent_b']
+                _b_assum = ca['assumption_b']
+                _lines.append(f'  {_a_agent}: "{_a_assum}" vs {_b_agent}: "{_b_assum}"')
+            _conflict_note = "\n".join(_lines)
 
         # Observer — B grubunu bekler
         print(f"\n--- OBSERVER ---")
-        gozlemci_cevabi = ajan_calistir("gozlemci", f"""
-Problem: {guclendirilmis_brief}
-Active domains: {', '.join(alan_isimleri)}
-
-ROUND {tur} RESULTS:
-{tum_ciktilar}
-
-CROSS-VALIDATION: {capraz_cevap}
-ASSUMPTION INSPECTOR: {varsayim_cevap}
-UNCERTAINTY TRACKER: {belirsizlik_cevap}
-LITERATURE & PATENT: {literatur_cevap}
-
-Evaluate all outputs. Assign quality score (format: KALİTE PUANI: XX/100).
-Specify what each agent must correct in the next round.
-""")
+        _bb_obs = bb.get_context_for("gozlemci", tur)
+        _domains_str = ", ".join(alan_isimleri)
+        gozlemci_cevabi = ajan_calistir("gozlemci",
+            f"Problem: {guclendirilmis_brief}\nDomains: {_domains_str}\nROUND {tur}\n"
+            f"CROSS-VAL: {capraz_cevap}\nASSUMPTIONS: {varsayim_cevap}\n"
+            f"UNCERTAINTY: {belirsizlik_cevap}\nLITERATURE: {literatur_cevap}\n"
+            f"{_conflict_note}\n{_bb_obs}\n"
+            f"Evaluate. KALİTE PUANI: XX/100. Specify corrections for next round.",
+            gecmis=shared_ctx)
+        _update_blackboard(bb, "gozlemci", gozlemci_cevabi, tur)
 
         puan = kalite_puani_oku(gozlemci_cevabi)
         gozlemci_notu = gozlemci_cevabi
-
-        # ── GRUP C: Risk + Celiski PARALEL ──────────────────────────
-        print(f"\n--- GRUP C: Risk + Çelişki çözümü paralel çalışıyor ---")
-        _ajan_paralel([
-            ("risk_guvenilirlik",
-             f"ROUND {tur}: Conduct FMEA on all proposed designs. Identify critical failure scenarios and RPN values.",
-             None, tum_ciktilar),
-            ("celisiki_cozum",
-             f"ROUND {tur} OBSERVER REPORT:\n{gozlemci_cevabi}\n\n"
-             f"Resolve all conflicts identified by the Observer. Determine which agent position is better supported.",
-             None, tum_ciktilar),
-        ], max_workers=2)
-
         tur_ozeti.append({"tur": tur, "puan": puan})
 
-        print(f"\n{'='*40}")
+        print(f"\n{_EQ*40}")
         print(f"ROUND {tur} QUALITY SCORE: {puan}/100")
-        print(f"{'='*40}")
+        print(f"{_EQ*40}")
+
+        # A4: Smart Group C skip — score >= 90
+        if puan < 90:
+            print(f"\n--- GRUP C: Risk + Çelişki çözümü paralel çalışıyor ---")
+            _bb_risk = bb.get_context_for("risk_guvenilirlik", tur)
+            _bb_conf = bb.get_context_for("celisiki_cozum", tur)
+            c_sonuc = _ajan_paralel([
+                ("risk_guvenilirlik",
+                 f"ROUND {tur}: FMEA on all designs.\n\n{_bb_risk}",
+                 shared_ctx, None),
+                ("celisiki_cozum",
+                 f"OBSERVER:\n{gozlemci_cevabi}\n\n{_bb_conf}\nResolve conflicts.",
+                 shared_ctx, None),
+            ], max_workers=2)
+            _update_blackboard(bb, "risk_guvenilirlik", c_sonuc[0], tur)
+            _update_blackboard(bb, "celisiki_cozum", c_sonuc[1], tur)
+        else:
+            print(f"\n  ⏭ GRUP C skipped — score {puan}/100 >= 90")
 
         if puan >= 85:
             print(f"\n✅ Kalite eşiği aşıldı ({puan}/100). Analiz tamamlandı.")
@@ -914,82 +1048,69 @@ Specify what each agent must correct in the next round.
         else:
             print(f"\n🔄 Skor {puan}/100 — Sonraki tura geçiliyor...")
 
-        tur += 1
-
     # ═══════════════════════════════════════════════════════════
     # POST-LOOP: Kalan destek ajanları
     # ═══════════════════════════════════════════════════════════
-    print(f"\n{'='*60}")
+    print(f"\n{_EQ*60}")
     print("POST-LOOP: Kalan destek ajanları çalışıyor...")
-    print(f"{'='*60}")
+    print(f"{_EQ*60}")
 
     # ── GRUP D: 8 destek ajanı PARALEL ─────────────────────────
+    _bb_summary_post = bb.to_summary()
     print(f"\n--- GRUP D: 8 destek ajanı paralel çalışıyor ---")
     d_sonuc = _ajan_paralel([
-        ("soru_uretici",         f"Problem: {guclendirilmis_brief}\n\nList unanswered critical questions requiring further analysis or testing.",             None, tum_ciktilar),
-        ("alternatif_senaryo",   f"Problem: {guclendirilmis_brief}\n\nEvaluate at least 3 alternative design/solution approaches.",                           None, tum_ciktilar),
-        ("kalibrasyon",          f"Problem: {guclendirilmis_brief}\n\nCompare proposed parameters against known benchmarks. Flag anomalies.",                  None, tum_ciktilar),
-        ("dogrulama_standartlar",f"Problem: {guclendirilmis_brief}\n\nAssess compliance with relevant industry standards. Identify certification roadblocks.", None, tum_ciktilar),
-        ("entegrasyon_arayuz",   f"Problem: {guclendirilmis_brief}\n\nIdentify interface risks between subsystems and adjacent systems.",                       None, tum_ciktilar),
-        ("simulasyon_koordinator",f"Problem: {guclendirilmis_brief}\n\nRecommend simulation strategy. Which analyses require CFD, FEA, or high-fidelity sim?", None, tum_ciktilar),
-        ("maliyet_pazar",        f"Problem: {guclendirilmis_brief}\n\nProvide cost estimation, market context, and supply chain assessment.",                  None, tum_ciktilar),
-        ("capraz_dogrulama",     f"Problem: {guclendirilmis_brief}\n\nAnalyze numerical data quality, identify statistical patterns, and flag data gaps.",      None, tum_ciktilar),
+        ("soru_uretici",          f"Problem: {guclendirilmis_brief}\nList critical unanswered questions.\n\n{_bb_summary_post}", shared_ctx, None),
+        ("alternatif_senaryo",    f"Problem: {guclendirilmis_brief}\nEvaluate 3 alternatives.\n\n{_bb_summary_post}",           shared_ctx, None),
+        ("kalibrasyon",           f"Problem: {guclendirilmis_brief}\nBenchmark comparison.\n\n{_bb_summary_post}",              shared_ctx, None),
+        ("dogrulama_standartlar", f"Problem: {guclendirilmis_brief}\nStandards compliance.",                                     shared_ctx, None),
+        ("entegrasyon_arayuz",    f"Problem: {guclendirilmis_brief}\nInterface risks.",                                          shared_ctx, None),
+        ("simulasyon_koordinator",f"Problem: {guclendirilmis_brief}\nSimulation strategy.",                                      shared_ctx, None),
+        ("maliyet_pazar",         f"Problem: {guclendirilmis_brief}\nCost estimation.",                                          shared_ctx, None),
+        ("capraz_dogrulama",      f"Problem: {guclendirilmis_brief}\nData quality.\n\n{_bb_summary_post}",                      shared_ctx, None),
     ], max_workers=6)
-    soru_cevap, alt_cevap, kalibrasyon_cevap, standart_cevap,     entegrasyon_cevap, simulasyon_cevap, maliyet_cevap, veri_cevap = d_sonuc
+    soru_cevap, alt_cevap, kalibrasyon_cevap, standart_cevap, \
+    entegrasyon_cevap, simulasyon_cevap, maliyet_cevap, veri_cevap = d_sonuc
 
     print(f"\n--- CONTEXT SUMMARY (ön sentez) ---")
+    _bb_final = bb.to_summary()
     baglam_cevap = ajan_calistir(
         "sentez",
-        f"Problem: {guclendirilmis_brief}\n\nSummarize key context, confirmed parameters, and decisions for future reference.",
-        cache_context=tum_ciktilar,
+        f"Problem: {guclendirilmis_brief}\nSummarize confirmed parameters.\n\n{_bb_final}",
+        gecmis=shared_ctx,
     )
 
     print(f"\n--- SYNTHESIS AGENT ---")
-    sentez_cevap = ajan_calistir("sentez", f"""
-Problem: {guclendirilmis_brief}
-Active domains: {', '.join(alan_isimleri)}
-
-All findings:
-{tum_ciktilar}
-
-OBSERVER: {gozlemci_cevabi}
-QUESTIONS: {soru_cevap}
-ALTERNATIVES: {alt_cevap}
-CALIBRATION: {kalibrasyon_cevap}
-STANDARDS COMPLIANCE: {standart_cevap}
-INTEGRATION & INTERFACES: {entegrasyon_cevap}
-SIMULATION STRATEGY: {simulasyon_cevap}
-COST & MARKET: {maliyet_cevap}
-DATA ANALYSIS: {veri_cevap}
-CONTEXT SUMMARY: {baglam_cevap}
-
-Synthesize all findings. Resolve remaining conflicts, highlight consensus.
-Provide a clean, structured summary for the Final Report Writer.
-""")
+    _domains_str = ", ".join(alan_isimleri)
+    sentez_cevap = ajan_calistir("sentez",
+        f"Problem: {guclendirilmis_brief}\nDomains: {_domains_str}\n"
+        f"OBSERVER: {gozlemci_cevabi}\nQUESTIONS: {soru_cevap}\nALTERNATIVES: {alt_cevap}\n"
+        f"CALIBRATION: {kalibrasyon_cevap}\nSTANDARDS: {standart_cevap}\n"
+        f"INTEGRATION: {entegrasyon_cevap}\nSIMULATION: {simulasyon_cevap}\n"
+        f"COST: {maliyet_cevap}\nDATA: {veri_cevap}\nCONTEXT: {baglam_cevap}\n\n"
+        f"STRUCTURED ANALYSIS SUMMARY:\n{_bb_final}\n\n"
+        f"Synthesize all. Summary for Final Report Writer.",
+        gecmis=shared_ctx)
 
     # Final Rapor
-    print(f"\n{'*'*60}")
+    print(f"\n{_STAR*60}")
     print("FINAL RAPOR OLUŞTURULUYOR...")
-    print(f"{'*'*60}")
+    print(f"{_STAR*60}")
 
-    final = ajan_calistir("final_rapor", f"""
-Engineering analysis completed in {tur} round(s).
-Active domains: {', '.join(alan_isimleri)}
+    _convergence = bb.check_convergence()
+    _conv_note = ""
+    if _convergence.get("oscillating"):
+        _osc_params = ", ".join(_convergence["oscillating"][:5])
+        _conv_note = f"\nWARNING: Oscillating parameters: {_osc_params}"
 
-PROBLEM: {guclendirilmis_brief}
+    _domains_str = ", ".join(alan_isimleri)
+    final = ajan_calistir("final_rapor",
+        f"Analysis in {len(tur_ozeti)} round(s). Domains: {_domains_str}\n"
+        f"PROBLEM: {guclendirilmis_brief}\nOBSERVER: {gozlemci_cevabi}\n"
+        f"QUESTIONS: {soru_cevap}\nALTERNATIVES: {alt_cevap}\nSYNTHESIS: {sentez_cevap}\n\n"
+        f"STRUCTURED ANALYSIS SUMMARY:\n{_bb_final}{_conv_note}\n\n"
+        f"Report: full technical findings per domain, conflicts, observer, recommendations. English only.",
+        gecmis=shared_ctx)
 
-LAST ROUND OUTPUTS:
-{tum_ciktilar}
-
-OBSERVER EVALUATION: {gozlemci_cevabi}
-UNANSWERED CRITICAL QUESTIONS: {soru_cevap}
-ALTERNATIVE SCENARIOS: {alt_cevap}
-SYNTHESIZED FINDINGS: {sentez_cevap}
-
-Produce a comprehensive, professional final engineering report.
-""")
-
-    # Dokümantasyon ve öğrenme — final rapordan sonra
     # ── GRUP E: Dokümantasyon + Özet PARALEL ────────────────────
     print(f"\n--- GRUP E: Dokümantasyon + Özet paralel çalışıyor ---")
     _ajan_paralel([
@@ -1007,13 +1128,12 @@ Produce a comprehensive, professional final engineering report.
     kaydet(brief, mod, final, alan_isimleri, tur_ozeti)
     return final
 
-
-# ═════════════════════════════════════════════════════════════
+# =============================================================
 # MOD 1 — TEKLİ AJAN ANALİZİ
 #   Prompt Engineer (otomatik) → Domain Selector →
 #   Her alan için 1 ajan (A) → Hafif destek → Final Rapor
 #   Kullanım: Hızlı ilk bakış, tek perspektif
-# ═════════════════════════════════════════════════════════════
+# =============================================================
 def tekli_analiz(brief):
     print(f"\n{'*'*60}")
     print("MOD 1 — TEKLİ AJAN ANALİZİ")
@@ -1023,6 +1143,8 @@ def tekli_analiz(brief):
     aktif_alanlar = domain_sec(guclendirilmis_brief)
     alan_isimleri = [name for _, name in aktif_alanlar]
     print(f"\n✅ Aktif alanlar: {', '.join(alan_isimleri)}")
+
+    bb = Blackboard()
 
     # ── GRUP A: Tüm domain ajanları paralel ────────────────────
     print(f"\n--- GRUP A: {len(aktif_alanlar)} domain ajanı paralel çalışıyor ---")
@@ -1035,59 +1157,60 @@ def tekli_analiz(brief):
     ]
     tum_ciktilar = "\n\n".join(tum_ciktilar_parts)
 
+    # Blackboard: parse domain outputs
+    for i, (key, name) in enumerate(aktif_alanlar):
+        _update_blackboard(bb, f"{key}_a", sonuc_a[i], 1)
+
+    shared_ctx = _build_ctx_history(guclendirilmis_brief, tum_ciktilar)
+
     # ── GRUP B: Capraz + Soru paralel ───────────────────────────
     print(f"\n--- GRUP B: Validasyon + Soru paralel çalışıyor ---")
+    _bb_cv = bb.get_context_for("capraz_dogrulama", 1)
     b_sonuc = _ajan_paralel([
         ("capraz_dogrulama",
-         "Check all numerical values for physical and mathematical consistency.",
-         None, tum_ciktilar),
+         f"Check all numerical values for physical and mathematical consistency.\n\n{_bb_cv}",
+         shared_ctx, None),
         ("soru_uretici",
          f"Problem: {guclendirilmis_brief}\nList unanswered critical questions.",
-         None, tum_ciktilar),
+         shared_ctx, None),
     ], max_workers=2)
     capraz_cevap, soru_cevap = b_sonuc
+    _update_blackboard(bb, "capraz_dogrulama", capraz_cevap, 1)
 
     print(f"\n--- OBSERVER ---")
-    gozlemci_cevabi = ajan_calistir("gozlemci", f"""
-Problem: {guclendirilmis_brief}
-Active domains: {', '.join(alan_isimleri)}
-
-CROSS-VALIDATION: {capraz_cevap}
-
-Evaluate outputs. Assign quality score (format: KALİTE PUANI: XX/100).
-Highlight key findings and flag critical issues.
-""", cache_context=tum_ciktilar)
+    _bb_obs = bb.get_context_for("gozlemci", 1)
+    _domains_str = ", ".join(alan_isimleri)
+    gozlemci_cevabi = ajan_calistir("gozlemci",
+        f"Problem: {guclendirilmis_brief}\nDomains: {_domains_str}\n"
+        f"CROSS-VAL: {capraz_cevap}\n{_bb_obs}\n"
+        f"Evaluate. KALİTE PUANI: XX/100.",
+        gecmis=shared_ctx)
+    _update_blackboard(bb, "gozlemci", gozlemci_cevabi, 1)
 
     print(f"\n{'*'*60}")
     print("FINAL RAPOR OLUŞTURULUYOR...")
     print(f"{'*'*60}")
 
-    final = ajan_calistir("final_rapor", f"""
-Single-agent engineering analysis.
-Active domains: {', '.join(alan_isimleri)}
-
-PROBLEM: {guclendirilmis_brief}
-
-AGENT OUTPUTS:
-{tum_ciktilar}
-
-OBSERVER EVALUATION: {gozlemci_cevabi}
-UNANSWERED QUESTIONS: {soru_cevap}
-
-Produce a concise professional engineering report.
-Note: Single-perspective analysis. Recommend dual or full analysis for critical decisions.
-""")
+    _bb_summary = bb.to_summary()
+    _domains_str = ", ".join(alan_isimleri)
+    final = ajan_calistir("final_rapor",
+        f"Single-agent analysis. Domains: {_domains_str}\n"
+        f"PROBLEM: {guclendirilmis_brief}\nOBSERVER: {gozlemci_cevabi}\nQUESTIONS: {soru_cevap}\n\n"
+        f"STRUCTURED ANALYSIS SUMMARY:\n{_bb_summary}\n\n"
+        f"Report: technical findings, cross-domain links, recommendations. English only.\n"
+        f"Note: Single-perspective analysis. Recommend dual or full analysis for critical decisions.",
+        gecmis=shared_ctx)
 
     kaydet(brief, 1, final, alan_isimleri)
     return final
 
 
-# ═════════════════════════════════════════════════════════════
+# =============================================================
 # MOD 2 — ÇİFT AJAN ANALİZİ
 #   Prompt Engineer (otomatik) → Domain Selector →
 #   Her alan için A + B → Orta destek → Final Rapor
 #   Kullanım: Teori vs pratik tartışması, döngü yok
-# ═════════════════════════════════════════════════════════════
+# =============================================================
 def cift_ajan_analiz(brief):
     print(f"\n{'*'*60}")
     print("MOD 2 — ÇİFT AJAN ANALİZİ")
@@ -1098,6 +1221,8 @@ def cift_ajan_analiz(brief):
     alan_isimleri = [name for _, name in aktif_alanlar]
     print(f"\n✅ Aktif alanlar: {', '.join(alan_isimleri)}")
 
+    bb = Blackboard()
+
     # ── GRUP A: Tüm domain A+B ajanları paralel ─────────────────
     print(f"\n--- GRUP A: {len(aktif_alanlar)} domain × 2 ajan paralel çalışıyor ---")
     gorev_a = []
@@ -1107,89 +1232,76 @@ def cift_ajan_analiz(brief):
     sonuc_a = _ajan_paralel(gorev_a, max_workers=6)
 
     tum_ciktilar_parts = []
-    for i, (_, name) in enumerate(aktif_alanlar):
+    for i, (key, name) in enumerate(aktif_alanlar):
         cevap_a = sonuc_a[i * 2]
         cevap_b = sonuc_a[i * 2 + 1]
         tum_ciktilar_parts.append(
             f"{name.upper()} EXPERT A:\n{cevap_a}\n\n"
             f"{name.upper()} EXPERT B:\n{cevap_b}"
         )
+        _update_blackboard(bb, f"{key}_a", cevap_a, 1)
+        _update_blackboard(bb, f"{key}_b", cevap_b, 1)
     tum_ciktilar = "\n\n".join(tum_ciktilar_parts)
+
+    shared_ctx = _build_ctx_history(guclendirilmis_brief, tum_ciktilar)
 
     # ── GRUP B: Validasyon katmanı paralel ───────────────────────
     print(f"\n--- GRUP B: Validasyon ajanları paralel çalışıyor ---")
+    _bb_cv = bb.get_context_for("capraz_dogrulama", 1)
+    _bb_as = bb.get_context_for("varsayim_belirsizlik", 1)
     b_sonuc = _ajan_paralel([
         ("capraz_dogrulama",
-         "Check all numerical values for physical and mathematical consistency.",
-         None, tum_ciktilar),
+         f"Check numerical consistency.\n\n{_bb_cv}",
+         shared_ctx, None),
         ("varsayim_belirsizlik",
-         "Identify hidden and unstated assumptions across all expert outputs.",
-         None, tum_ciktilar),
+         f"Identify hidden assumptions.\n\n{_bb_as}",
+         shared_ctx, None),
     ], max_workers=2)
     capraz_cevap, varsayim_cevap = b_sonuc
+    _update_blackboard(bb, "capraz_dogrulama", capraz_cevap, 1)
+    _update_blackboard(bb, "varsayim_belirsizlik", varsayim_cevap, 1)
 
     print(f"\n--- OBSERVER ---")
-    gozlemci_cevabi = ajan_calistir("gozlemci", f"""
-Problem: {guclendirilmis_brief}
-Active domains: {', '.join(alan_isimleri)}
+    _bb_obs = bb.get_context_for("gozlemci", 1)
+    _domains_str = ", ".join(alan_isimleri)
+    gozlemci_cevabi = ajan_calistir("gozlemci",
+        f"Problem: {guclendirilmis_brief}\nDomains: {_domains_str}\n"
+        f"CROSS-VAL: {capraz_cevap}\nASSUMPTIONS: {varsayim_cevap}\n{_bb_obs}\n"
+        f"Evaluate. KALİTE PUANI: XX/100. Identify key A vs B conflicts.",
+        gecmis=shared_ctx)
+    _update_blackboard(bb, "gozlemci", gozlemci_cevabi, 1)
 
-AGENT OUTPUTS:
-{tum_ciktilar}
-
-CROSS-VALIDATION: {capraz_cevap}
-ASSUMPTION INSPECTOR: {varsayim_cevap}
-
-Evaluate all outputs. Assign quality score (format: KALİTE PUANI: XX/100).
-Identify key conflicts between A and B experts.
-""")
-
-    print(f"\n--- CONFLICT RESOLUTION ---")
-    celiski_cevap = ajan_calistir("celisiki_cozum", f"""
-OBSERVER REPORT:
-{gozlemci_cevabi}
-
-AGENT OUTPUTS:
-{tum_ciktilar}
-
-Resolve conflicts between A and B experts. Determine which position is better supported.
-""")
-
-    print(f"\n--- QUESTION GENERATOR ---")
-    soru_cevap = ajan_calistir("soru_uretici", f"""
-Problem: {guclendirilmis_brief}
-Agent outputs:
-{tum_ciktilar}
-List unanswered critical questions.
-""")
-
-    print(f"\n--- ALTERNATIVE SCENARIOS ---")
-    alt_cevap = ajan_calistir("alternatif_senaryo", f"""
-Problem: {guclendirilmis_brief}
-Main approaches identified:
-{tum_ciktilar}
-Evaluate at least 3 alternative design/solution approaches.
-""")
+    # ── GRUP C: Çelişki + Soru + Alternatif paralel ─────────────
+    print(f"\n--- GRUP C: Çelişki + Soru + Alternatif paralel çalışıyor ---")
+    _bb_conf = bb.get_context_for("celisiki_cozum", 1)
+    c_sonuc = _ajan_paralel([
+        ("celisiki_cozum",
+         f"OBSERVER:\n{gozlemci_cevabi}\n\n{_bb_conf}\nResolve A vs B conflicts.",
+         shared_ctx, None),
+        ("soru_uretici",
+         f"Problem: {guclendirilmis_brief}\nList critical questions.",
+         shared_ctx, None),
+        ("alternatif_senaryo",
+         f"Problem: {guclendirilmis_brief}\nEvaluate 3 alternatives.",
+         shared_ctx, None),
+    ], max_workers=3)
+    celiski_cevap, soru_cevap, alt_cevap = c_sonuc
+    _update_blackboard(bb, "celisiki_cozum", celiski_cevap, 1)
 
     print(f"\n{'*'*60}")
     print("FINAL RAPOR OLUŞTURULUYOR...")
     print(f"{'*'*60}")
 
-    final = ajan_calistir("final_rapor", f"""
-Dual-agent engineering analysis (A=theoretical, B=practical perspective).
-Active domains: {', '.join(alan_isimleri)}
-
-PROBLEM: {guclendirilmis_brief}
-
-AGENT OUTPUTS:
-{tum_ciktilar}
-
-OBSERVER EVALUATION: {gozlemci_cevabi}
-CONFLICT RESOLUTION: {celiski_cevap}
-UNANSWERED QUESTIONS: {soru_cevap}
-ALTERNATIVE SCENARIOS: {alt_cevap}
-
-Produce a professional engineering report distinguishing theoretical vs practical perspectives.
-""")
+    _bb_summary = bb.to_summary()
+    _domains_str = ", ".join(alan_isimleri)
+    final = ajan_calistir("final_rapor",
+        f"Dual-agent analysis (A=theoretical, B=practical). Domains: {_domains_str}\n"
+        f"PROBLEM: {guclendirilmis_brief}\nOBSERVER: {gozlemci_cevabi}\n"
+        f"CONFLICT RESOLUTION: {celiski_cevap}\nQUESTIONS: {soru_cevap}\n"
+        f"ALTERNATIVES: {alt_cevap}\n\n"
+        f"STRUCTURED ANALYSIS SUMMARY:\n{_bb_summary}\n\n"
+        f"Report: distinguish theoretical vs practical perspectives. English only.",
+        gecmis=shared_ctx)
 
     kaydet(brief, 2, final, alan_isimleri)
     return final

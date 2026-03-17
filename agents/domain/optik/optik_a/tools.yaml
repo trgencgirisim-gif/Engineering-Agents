@@ -1,0 +1,22 @@
+# tools.yaml -- optik_a
+domain: optik
+agent: optik_a
+solver_tier: 1
+active_tools: []
+
+planned_tools:
+  - name: rayoptics
+    type: open_source
+    tier: 1
+    install: "pip install rayoptics"
+    capability: "Optical system design and ray tracing"
+    status: planned
+    wrapper: null
+
+  - name: meep
+    type: open_source
+    tier: 1
+    install: "conda install -c conda-forge pymeep"
+    capability: "FDTD electromagnetic simulation"
+    status: planned
+    wrapper: null
