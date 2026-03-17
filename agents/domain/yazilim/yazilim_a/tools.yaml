@@ -1,0 +1,8 @@
+# tools.yaml -- yazilim_a
+domain: yazilim
+agent: yazilim_a
+solver_tier: 1
+active_tools: []
+
+planned_tools:
+  []

@@ -1,0 +1,22 @@
+# tools.yaml -- uzay_a
+domain: uzay
+agent: uzay_a
+solver_tier: 1
+active_tools: []
+
+planned_tools:
+  - name: openrocket
+    type: open_source
+    tier: 1
+    install: "pip install openrocketpy"
+    capability: "Rocket flight simulation"
+    status: planned
+    wrapper: null
+
+  - name: su2
+    type: open_source
+    tier: 1
+    install: "pip install SU2"
+    capability: "Aerodynamic CFD and shape optimization"
+    status: planned
+    wrapper: null

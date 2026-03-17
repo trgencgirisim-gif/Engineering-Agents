@@ -1,0 +1,14 @@
+# tools.yaml -- elektrik_a
+domain: elektrik
+agent: elektrik_a
+solver_tier: 1
+active_tools: []
+
+planned_tools:
+  - name: pyspice
+    type: open_source
+    tier: 1
+    install: "pip install PySpice"
+    capability: "SPICE circuit simulation"
+    status: planned
+    wrapper: null

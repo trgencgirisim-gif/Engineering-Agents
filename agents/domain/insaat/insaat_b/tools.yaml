@@ -1,0 +1,22 @@
+# tools.yaml -- insaat_b
+domain: insaat
+agent: insaat_b
+solver_tier: 1
+active_tools: []
+
+planned_tools:
+  - name: opensees
+    type: open_source
+    tier: 1
+    install: "pip install openseespy"
+    capability: "Structural and earthquake engineering FEM"
+    status: planned
+    wrapper: null
+
+  - name: fenics
+    type: open_source
+    tier: 1
+    install: "conda install -c conda-forge fenics-dolfinx"
+    capability: "Finite element analysis: structural, thermal, fluid"
+    status: planned
+    wrapper: null

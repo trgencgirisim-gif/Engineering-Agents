@@ -1,0 +1,22 @@
+# tools.yaml -- biyomedikal_a
+domain: biyomedikal
+agent: biyomedikal_a
+solver_tier: 1
+active_tools: []
+
+planned_tools:
+  - name: opensim
+    type: open_source
+    tier: 1
+    install: "conda install -c opensim-org opensim"
+    capability: "Musculoskeletal biomechanics simulation"
+    status: planned
+    wrapper: null
+
+  - name: febio
+    type: open_source
+    tier: 1
+    install: "pip install febio-python"
+    capability: "Biomedical finite element analysis"
+    status: planned
+    wrapper: null

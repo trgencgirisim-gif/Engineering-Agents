@@ -1,0 +1,22 @@
+# tools.yaml -- aerodinamik_a
+domain: aerodinamik
+agent: aerodinamik_a
+solver_tier: 1
+active_tools: []
+
+planned_tools:
+  - name: su2
+    type: open_source
+    tier: 1
+    install: "pip install SU2"
+    capability: "Aerodynamic CFD and shape optimization"
+    status: planned
+    wrapper: null
+
+  - name: openfoam
+    type: open_source
+    tier: 1
+    install: "apt-get install openfoam  # or Docker"
+    capability: "General-purpose CFD: turbulence, combustion, multiphase"
+    status: planned
+    wrapper: null
