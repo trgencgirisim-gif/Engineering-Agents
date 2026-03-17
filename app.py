@@ -611,38 +611,9 @@ button[kind="header"] {
 
 
 # ═════════════════════════════════════════════════════════════
-# DOMAIN REGISTRY
+# DOMAIN REGISTRY (shared module)
 # ═════════════════════════════════════════════════════════════
-DOMAINS = {
-    "1":  ("yanma",           "Combustion"),
-    "2":  ("malzeme",         "Materials"),
-    "3":  ("termal",          "Thermal & Heat Transfer"),
-    "4":  ("yapisal",         "Structural & Static"),
-    "5":  ("dinamik",         "Dynamics & Vibration"),
-    "6":  ("aerodinamik",     "Aerodynamics"),
-    "7":  ("akiskan",         "Fluid Mechanics"),
-    "8":  ("termodinamik",    "Thermodynamics"),
-    "9":  ("mekanik_tasarim", "Mechanical Design"),
-    "10": ("kontrol",         "Control Systems"),
-    "11": ("elektrik",        "Electrical & Electronics"),
-    "12": ("hidrolik",        "Hydraulics & Pneumatics"),
-    "13": ("uretim",          "Manufacturing & Production"),
-    "14": ("robotik",         "Robotics & Automation"),
-    "15": ("sistem",          "Systems Engineering"),
-    "16": ("guvenilirlik",    "Reliability & Test"),
-    "17": ("enerji",          "Energy Systems"),
-    "18": ("otomotiv",        "Automotive"),
-    "19": ("uzay",            "Aerospace"),
-    "20": ("savunma",         "Defense & Weapon Systems"),
-    "21": ("yazilim",         "Software & Embedded Systems"),
-    "22": ("cevre",           "Environment & Sustainability"),
-    "23": ("denizcilik",      "Naval & Marine"),
-    "24": ("kimya",           "Chemical & Process"),
-    "25": ("insaat",          "Civil & Structural"),
-    "26": ("optik",           "Optics & Sensors"),
-    "27": ("nukleer",         "Nuclear"),
-    "28": ("biyomedikal",     "Biomedical"),
-}
+from config.domains import DOMAINS
 
 DOMAIN_NAMES = {v[0]: v[1] for v in DOMAINS.values()}
 
@@ -1074,24 +1045,8 @@ def _ajan_api(ajan_key: str, mesaj: str,
     c_cre   = getattr(usage, "cache_creation_input_tokens", 0) or 0
     c_rd    = getattr(usage, "cache_read_input_tokens",     0) or 0
 
-    model = ajan["model"]
-    if "opus" in model:
-        r_in, r_out = 15/1_000_000, 75/1_000_000
-        # cache_creation: 5dk TTL=18.75, 1hr TTL=30.0 (2× base)
-        # Anthropic API usage.cache_creation_input_tokens birleşik döndürür
-        # Gerçekte 1hr write = 30/M ama API'de ayrı alan yok — 18.75 kullanıyoruz
-        # (konservatif maliyet tahmini; gerçek maliyet biraz daha yüksek olabilir)
-        r_cre, r_rd = 18.75/1_000_000, 1.5/1_000_000
-    elif "sonnet" in model:
-        r_in, r_out = 3/1_000_000, 15/1_000_000
-        r_cre, r_rd = 3.75/1_000_000, 0.3/1_000_000
-    else:
-        r_in, r_out = 0.8/1_000_000, 4/1_000_000
-        r_cre, r_rd = 1.0/1_000_000, 0.08/1_000_000
-
-    actual_cost = (inp * r_in) + (out * r_out) + (c_cre * r_cre) + (c_rd * r_rd)
-    full_cost   = ((inp + c_cre + c_rd) * r_in) + (out * r_out)
-    saved       = max(0.0, full_cost - actual_cost)
+    from config.pricing import compute_cost
+    actual_cost, saved = compute_cost(ajan["model"], inp, out, c_cre, c_rd)
 
     return {
         "key": ajan_key, "name": ajan["isim"], "model": ajan["model"],

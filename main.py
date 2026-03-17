@@ -15,6 +15,7 @@ import uuid
 import queue
 from pathlib import Path
 
+import hashlib
 import anthropic
 import requests as req_lib
 from dotenv import load_dotenv
@@ -48,37 +49,8 @@ app = FastAPI(title="Engineering AI")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
-# ─── Domain Listesi ───────────────────────────────────────────
-DOMAINS = {
-    "1":  ("yanma",           "Combustion"),
-    "2":  ("malzeme",         "Materials"),
-    "3":  ("termal",          "Thermal & Heat Transfer"),
-    "4":  ("yapisal",         "Structural & Static"),
-    "5":  ("dinamik",         "Dynamics & Vibration"),
-    "6":  ("aerodinamik",     "Aerodynamics"),
-    "7":  ("akiskan",         "Fluid Mechanics"),
-    "8":  ("termodinamik",    "Thermodynamics"),
-    "9":  ("mekanik_tasarim", "Mechanical Design"),
-    "10": ("kontrol",         "Control Systems"),
-    "11": ("elektrik",        "Electrical & Electronics"),
-    "12": ("hidrolik",        "Hydraulics & Pneumatics"),
-    "13": ("uretim",          "Manufacturing & Production"),
-    "14": ("robotik",         "Robotics & Automation"),
-    "15": ("sistem",          "Systems Engineering"),
-    "16": ("guvenilirlik",    "Reliability & Test"),
-    "17": ("enerji",          "Energy Systems"),
-    "18": ("otomotiv",        "Automotive"),
-    "19": ("uzay",            "Aerospace"),
-    "20": ("savunma",         "Defense & Weapon Systems"),
-    "21": ("yazilim",         "Software & Embedded Systems"),
-    "22": ("cevre",           "Environment & Sustainability"),
-    "23": ("denizcilik",      "Naval & Marine"),
-    "24": ("kimya",           "Chemical & Process"),
-    "25": ("insaat",          "Civil & Structural"),
-    "26": ("optik",           "Optics & Sensors"),
-    "27": ("nukleer",         "Nuclear"),
-    "28": ("biyomedikal",     "Biomedical"),
-}
+# ─── Domain Listesi (shared module) ──────────────────────────
+from config.domains import DOMAINS
 
 # ─── Kur Cache ────────────────────────────────────────────────
 _kur_cache = {"value": 44.0, "ts": 0}
@@ -93,6 +65,19 @@ def get_kur():
         except Exception:
             pass
     return _kur_cache["value"]
+
+# ─── Pricing (shared module) ─────────────────────────────────
+from config.pricing import compute_cost
+
+# ─── Local Result Cache ──────────────────────────────────────
+_result_cache: dict = {}       # hash → response_text
+_RESULT_CACHE_MAX   = 200
+_result_cache_lock  = threading.Lock()
+
+def _make_cache_key(ajan_key: str, mesaj: str, gecmis_len: int) -> str:
+    """Deterministic hash for agent call deduplication."""
+    raw = f"{ajan_key}:{gecmis_len}:{mesaj}"
+    return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 # ─── Session Yönetimi ─────────────────────────────────────────
 sessions: dict = {}   # sid → Session
@@ -181,11 +166,16 @@ class Session:
             else:
                 ajan["model"] = "claude-opus-4-6"
 
-        # CACHE_PREAMBLE sistem promptunu genişletir — cache eşiğini aşmak için
-        sistem_promptu_extended = (
-            (CACHE_PREAMBLE + "\n" + ajan["sistem_promptu"]) if CACHE_PREAMBLE
-            else ajan["sistem_promptu"]
-        )
+        # 2-block system prompt: CACHE_PREAMBLE cached once across all agents
+        if CACHE_PREAMBLE:
+            system_blocks = [
+                {"type": "text", "text": CACHE_PREAMBLE, "cache_control": {"type": "ephemeral"}},
+                {"type": "text", "text": ajan["sistem_promptu"], "cache_control": {"type": "ephemeral"}},
+            ]
+        else:
+            system_blocks = [
+                {"type": "text", "text": ajan["sistem_promptu"], "cache_control": {"type": "ephemeral"}},
+            ]
 
         # cache_context büyük bağlamı cache_control block olarak gönder
         if cache_context and len(cache_context) > 800:
@@ -201,6 +191,24 @@ class Session:
 
         # Thinking modu — sadece ilgili ajanlarda
         thinking_budget = ajan.get("thinking_budget", 0)
+
+        # ── Local result cache check (skip for thinking-mode agents) ──
+        cache_key = None
+        if not thinking_budget:
+            cache_key = _make_cache_key(ajan_key, mesaj, len(gecmis))
+            with _result_cache_lock:
+                if cache_key in _result_cache:
+                    cached = _result_cache[cache_key]
+                    self.emit("agent_done", {
+                        "key": ajan_key, "name": ajan["isim"],
+                        "model": ajan["model"], "cost": 0.0,
+                        "total_cost": round(self.total_cost, 4),
+                        "cache_saved": round(self.cache_saved_usd, 4),
+                        "agent_count": len(self.agent_log),
+                        "local_cache": True,
+                    })
+                    return cached
+
         extra_kwargs = {}
         if thinking_budget:
             extra_kwargs["thinking"] = {"type": "enabled", "budget_tokens": thinking_budget}
@@ -210,11 +218,7 @@ class Session:
                 yanit = self.client.messages.create(
                     model=ajan["model"],
                     max_tokens=ajan.get("max_tokens", 2000),
-                    system=[{
-                        "type": "text",
-                        "text": sistem_promptu_extended,
-                        "cache_control": {"type": "ephemeral"},
-                    }],
+                    system=system_blocks,
                     messages=mesajlar,
                     **extra_kwargs,
                 )
@@ -246,20 +250,7 @@ class Session:
         c_cre = getattr(usage, "cache_creation_input_tokens", 0) or 0
         c_rd  = getattr(usage, "cache_read_input_tokens",     0) or 0
 
-        model = ajan["model"]
-        if "opus" in model:
-            r_in, r_out = 15/1_000_000, 75/1_000_000
-            r_cre, r_rd_ = 18.75/1_000_000, 1.5/1_000_000
-        elif "sonnet" in model:
-            r_in, r_out = 3/1_000_000, 15/1_000_000
-            r_cre, r_rd_ = 3.75/1_000_000, 0.3/1_000_000
-        else:
-            r_in, r_out = 0.8/1_000_000, 4/1_000_000
-            r_cre, r_rd_ = 1.0/1_000_000, 0.08/1_000_000
-
-        actual_cost = (inp * r_in) + (out * r_out) + (c_cre * r_cre) + (c_rd * r_rd_)
-        full_cost   = ((inp + c_cre + c_rd) * r_in) + (out * r_out)
-        saved       = max(0.0, full_cost - actual_cost)
+        actual_cost, saved = compute_cost(ajan["model"], inp, out, c_cre, c_rd)
 
         with self._cost_lock:
             self.total_cost         += actual_cost
@@ -276,6 +267,15 @@ class Session:
                 "output":  cevap[:3000],
                 "thinking": dusunce[:2000] if dusunce else "",
             })
+
+        # Store in local result cache (non-thinking agents only)
+        if cache_key:
+            with _result_cache_lock:
+                if len(_result_cache) >= _RESULT_CACHE_MAX:
+                    # Evict oldest entry
+                    oldest = next(iter(_result_cache))
+                    del _result_cache[oldest]
+                _result_cache[cache_key] = cevap
 
         self.emit("agent_done", {
             "key":        ajan_key,

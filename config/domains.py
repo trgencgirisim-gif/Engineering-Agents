@@ -1,0 +1,33 @@
+# Shared DOMAINS registry — single source of truth
+# Maps numeric string keys to (turkish_key, english_name) tuples
+
+DOMAINS = {
+    "1":  ("yanma",           "Combustion"),
+    "2":  ("malzeme",         "Materials"),
+    "3":  ("termal",          "Thermal & Heat Transfer"),
+    "4":  ("yapisal",         "Structural & Static"),
+    "5":  ("dinamik",         "Dynamics & Vibration"),
+    "6":  ("aerodinamik",     "Aerodynamics"),
+    "7":  ("akiskan",         "Fluid Mechanics"),
+    "8":  ("termodinamik",    "Thermodynamics"),
+    "9":  ("mekanik_tasarim", "Mechanical Design"),
+    "10": ("kontrol",         "Control Systems"),
+    "11": ("elektrik",        "Electrical & Electronics"),
+    "12": ("hidrolik",        "Hydraulics & Pneumatics"),
+    "13": ("uretim",          "Manufacturing & Production"),
+    "14": ("robotik",         "Robotics & Automation"),
+    "15": ("sistem",          "Systems Engineering"),
+    "16": ("guvenilirlik",    "Reliability & Test"),
+    "17": ("enerji",          "Energy Systems"),
+    "18": ("otomotiv",        "Automotive"),
+    "19": ("uzay",            "Aerospace"),
+    "20": ("savunma",         "Defense & Weapon Systems"),
+    "21": ("yazilim",         "Software & Embedded Systems"),
+    "22": ("cevre",           "Environment & Sustainability"),
+    "23": ("denizcilik",      "Naval & Marine"),
+    "24": ("kimya",           "Chemical & Process"),
+    "25": ("insaat",          "Civil & Structural"),
+    "26": ("optik",           "Optics & Sensors"),
+    "27": ("nukleer",         "Nuclear"),
+    "28": ("biyomedikal",     "Biomedical"),
+}

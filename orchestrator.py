@@ -8,6 +8,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional, List, Tuple, Any
 from dotenv import load_dotenv
 from config.agents_config import AGENTS, DESTEK_AJANLARI
+from config.domains import DOMAINS
+from config.pricing import get_rates, compute_cost
 from rag.store import RAGStore
 
 rag = RAGStore()
@@ -21,37 +23,7 @@ MALIYET = {"input_token": 0, "output_token": 0, "usd": 0.0, "cache_create": 0, "
 MALIYET_DETAY = {}  # per-agent: {key: {calls, input, output, usd}}
 _MALIYET_LOCK  = threading.Lock()  # thread-safe maliyet güncellemesi için
 
-# ── Domain registry ───────────────────────────────────────────
-DOMAINS = {
-    "1":  ("yanma",           "Combustion"),
-    "2":  ("malzeme",         "Materials"),
-    "3":  ("termal",          "Thermal & Heat Transfer"),
-    "4":  ("yapisal",         "Structural & Static"),
-    "5":  ("dinamik",         "Dynamics & Vibration"),
-    "6":  ("aerodinamik",     "Aerodynamics"),
-    "7":  ("akiskan",         "Fluid Mechanics"),
-    "8":  ("termodinamik",    "Thermodynamics"),
-    "9":  ("mekanik_tasarim", "Mechanical Design"),
-    "10": ("kontrol",         "Control Systems"),
-    "11": ("elektrik",        "Electrical & Electronics"),
-    "12": ("hidrolik",        "Hydraulics & Pneumatics"),
-    "13": ("uretim",          "Manufacturing & Production"),
-    "14": ("robotik",         "Robotics & Automation"),
-    "15": ("sistem",          "Systems Engineering"),
-    "16": ("guvenilirlik",    "Reliability & Test"),
-    "17": ("enerji",          "Energy Systems"),
-    "18": ("otomotiv",        "Automotive"),
-    "19": ("uzay",            "Aerospace"),
-    "20": ("savunma",         "Defense & Weapon Systems"),
-    "21": ("yazilim",         "Software & Embedded Systems"),
-    "22": ("cevre",           "Environment & Sustainability"),
-    "23": ("denizcilik",      "Naval & Marine"),
-    "24": ("kimya",           "Chemical & Process"),
-    "25": ("insaat",          "Civil & Structural"),
-    "26": ("optik",           "Optics & Sensors"),
-    "27": ("nukleer",         "Nuclear"),
-    "28": ("biyomedikal",     "Biomedical"),
-}
+# DOMAINS imported from config.domains
 
 
 # ═════════════════════════════════════════════════════════════
@@ -353,7 +325,7 @@ END OF STANDARDS REFERENCE LIBRARY
 # cache_context: varsa cache'lenecek büyük bağlam bloğu (tum_ciktilar gibi)
 # mesaj:         kısa talep (her çağrıda değişir)
 # ═════════════════════════════════════════════════════════════
-def _api_call(ajan, sistem_promptu_extended, mesajlar):
+def _api_call(ajan, system_blocks, mesajlar):
     """API çağrısı + retry. Thinking modu varsa otomatik aktif edilir."""
     thinking_budget = ajan.get("thinking_budget", 0)
     max_tokens      = ajan.get("max_tokens", 2000)
@@ -368,11 +340,7 @@ def _api_call(ajan, sistem_promptu_extended, mesajlar):
             yanit = client.messages.create(
                 model=ajan["model"],
                 max_tokens=max_tokens,
-                system=[{
-                    "type": "text",
-                    "text": sistem_promptu_extended,
-                    "cache_control": {"type": "ephemeral"}
-                }],
+                system=system_blocks,
                 messages=mesajlar,
                 **extra_kwargs,
             )
@@ -404,24 +372,7 @@ def _maliyet_kaydet(ajan_key, ajan, yanit):
     c_cre = getattr(usage, "cache_creation_input_tokens", 0) or 0
     c_rd  = getattr(usage, "cache_read_input_tokens",     0) or 0
 
-    if "opus" in model:
-        r_in, r_out = 15/1_000_000, 75/1_000_000      # normal input/output
-        r_cre       = 18.75/1_000_000                  # cache write +25%
-        r_rd        = 1.5/1_000_000                    # cache read  -90%
-    elif "sonnet" in model:
-        r_in, r_out = 3/1_000_000,  15/1_000_000
-        r_cre       = 3.75/1_000_000
-        r_rd        = 0.3/1_000_000
-    else:
-        r_in, r_out = 0.8/1_000_000, 4/1_000_000
-        r_cre       = 1.0/1_000_000
-        r_rd        = 0.08/1_000_000
-
-    # Gerçek maliyet (cache dahil)
-    actual_cost = (inp * r_in) + (out * r_out) + (c_cre * r_cre) + (c_rd * r_rd)
-    # Cache olmasaydı ödenecek maliyet (tüm tokenlar normal fiyattan)
-    full_cost   = ((inp + c_cre + c_rd) * r_in) + (out * r_out)
-    saved       = max(0.0, full_cost - actual_cost)
+    actual_cost, saved = compute_cost(model, inp, out, c_cre, c_rd)
 
     with _MALIYET_LOCK:
         MALIYET["input_token"]    += inp
@@ -463,8 +414,16 @@ def ajan_calistir(ajan_key, mesaj, gecmis=None, cache_context: Optional[str] = N
     if not ajan:
         return f"ERROR: Agent '{ajan_key}' not found."
 
-    # Sistem promptunu preamble ile genişlet → cache eşiğini geç
-    sistem_promptu_extended = CACHE_PREAMBLE + "\n" + ajan["sistem_promptu"]
+    # 2-block system prompt: CACHE_PREAMBLE cached once across all agents
+    if CACHE_PREAMBLE:
+        system_blocks = [
+            {"type": "text", "text": CACHE_PREAMBLE, "cache_control": {"type": "ephemeral"}},
+            {"type": "text", "text": ajan["sistem_promptu"], "cache_control": {"type": "ephemeral"}},
+        ]
+    else:
+        system_blocks = [
+            {"type": "text", "text": ajan["sistem_promptu"], "cache_control": {"type": "ephemeral"}},
+        ]
 
     # Mesaj yapısı: cache_context varsa ayrı block olarak ekle
     if cache_context and len(cache_context) > 800:
@@ -488,7 +447,7 @@ def ajan_calistir(ajan_key, mesaj, gecmis=None, cache_context: Optional[str] = N
     print(f"AGENT: {ajan['isim']}")
     print(f"{'='*50}")
 
-    yanit = _api_call(ajan, sistem_promptu_extended, mesajlar)
+    yanit = _api_call(ajan, system_blocks, mesajlar)
     if yanit is None:
         return "ERROR: Rate limit aşıldı, maksimum deneme sayısına ulaşıldı."
 
