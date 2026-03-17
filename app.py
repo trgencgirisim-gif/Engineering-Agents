@@ -1059,6 +1059,150 @@ def _ajan_api(ajan_key: str, mesaj: str,
     }
 
 
+# ═════════════════════════════════════════════════════════════
+# C3: STREAMING API — sequential ajanlar için gerçek zamanlı output
+# ═════════════════════════════════════════════════════════════
+def _ajan_api_stream(ajan_key: str, mesaj: str,
+                     gecmis: list = None, cache_context: str = None,
+                     domain_model: str = "sonnet",
+                     stream_placeholder=None) -> dict:
+    """
+    Streaming versiyonu — observer, sentez, final_rapor gibi tekil ajanlar için.
+    stream_placeholder: st.empty() objesi — varsa token-by-token güncellenir.
+    Streaming yoksa normal _ajan_api'ye fallback eder.
+    """
+    if stream_placeholder is None:
+        return _ajan_api(ajan_key, mesaj, gecmis, cache_context, domain_model)
+
+    if gecmis is None:
+        gecmis = []
+
+    if st.session_state.get("stop_requested", False):
+        return {"key": ajan_key, "name": ajan_key, "model": "?",
+                "cevap": "STOPPED", "dusunce": "",
+                "cost": 0, "inp": 0, "out": 0, "c_cre": 0, "c_rd": 0, "saved": 0}
+
+    ajan = AGENTS.get(ajan_key) or DESTEK_AJANLARI.get(ajan_key)
+    if not ajan:
+        return {"key": ajan_key, "name": ajan_key, "model": "?",
+                "cevap": f"ERROR: Agent '{ajan_key}' not found.",
+                "dusunce": "", "cost": 0, "inp": 0, "out": 0,
+                "c_cre": 0, "c_rd": 0, "saved": 0}
+
+    ajan = dict(ajan)
+    _is_domain = ajan_key in AGENTS
+    _protected = ajan_key in ("final_rapor", "sentez")
+    if _is_domain and not _protected:
+        ajan["model"] = "claude-sonnet-4-6" if domain_model == "sonnet" else "claude-opus-4-6"
+
+    # System blocks (same as _ajan_api)
+    if CACHE_PREAMBLE:
+        system_blocks = [
+            {"type": "text", "text": CACHE_PREAMBLE, "cache_control": {"type": "ephemeral", "ttl": "1h"}},
+            {"type": "text", "text": ajan["sistem_promptu"], "cache_control": {"type": "ephemeral"}},
+        ]
+    else:
+        system_blocks = [
+            {"type": "text", "text": ajan["sistem_promptu"], "cache_control": {"type": "ephemeral"}},
+        ]
+
+    if cache_context and len(cache_context) > 800:
+        user_content = [
+            {"type": "text", "text": cache_context, "cache_control": {"type": "ephemeral"}},
+            {"type": "text", "text": mesaj}
+        ]
+    else:
+        user_content = mesaj
+
+    mesajlar = gecmis + [{"role": "user", "content": user_content}]
+
+    thinking_budget = ajan.get("thinking_budget", 0)
+    extra_kwargs = {}
+    if thinking_budget:
+        extra_kwargs["thinking"] = {"type": "enabled", "budget_tokens": thinking_budget}
+
+    # ── Streaming call ──
+    collected_text = []
+    collected_thinking = []
+    usage_data = None
+
+    for deneme in range(5):
+        try:
+            with client.messages.stream(
+                model=ajan["model"],
+                max_tokens=ajan.get("max_tokens", 2000),
+                system=system_blocks,
+                messages=mesajlar,
+                **extra_kwargs,
+            ) as stream:
+                for event in stream:
+                    if hasattr(event, 'type'):
+                        if event.type == 'content_block_delta':
+                            delta = event.delta
+                            if hasattr(delta, 'text'):
+                                collected_text.append(delta.text)
+                                # Real-time UI update
+                                stream_placeholder.markdown("".join(collected_text) + "▌")
+                            elif hasattr(delta, 'thinking'):
+                                collected_thinking.append(delta.thinking)
+
+                # Final render without cursor
+                final_text = "".join(collected_text)
+                stream_placeholder.markdown(final_text)
+
+                # Get usage from final message
+                response = stream.get_final_message()
+                usage_data = response.usage
+            break
+        except Exception as e:
+            err = str(e)
+            if "thinking" in err.lower() and thinking_budget:
+                extra_kwargs = {}
+                continue
+            elif "rate_limit" in err.lower() or "429" in err:
+                time.sleep(60 * (deneme + 1))
+            elif "stream" in err.lower():
+                # Streaming not supported — fallback to non-streaming
+                return _ajan_api(ajan_key, mesaj, gecmis, cache_context, domain_model)
+            else:
+                return {"key": ajan_key, "name": ajan["isim"], "model": ajan["model"],
+                        "cevap": f"ERROR: {e}", "dusunce": "",
+                        "cost": 0, "inp": 0, "out": 0, "c_cre": 0, "c_rd": 0, "saved": 0}
+    else:
+        return {"key": ajan_key, "name": ajan["isim"], "model": ajan["model"],
+                "cevap": "ERROR: Rate limit aşıldı.", "dusunce": "",
+                "cost": 0, "inp": 0, "out": 0, "c_cre": 0, "c_rd": 0, "saved": 0}
+
+    cevap = "".join(collected_text).strip()
+    dusunce = "".join(collected_thinking).strip()
+
+    if usage_data:
+        inp = usage_data.input_tokens
+        out = usage_data.output_tokens
+        c_cre = getattr(usage_data, "cache_creation_input_tokens", 0) or 0
+        c_rd = getattr(usage_data, "cache_read_input_tokens", 0) or 0
+    else:
+        inp = out = c_cre = c_rd = 0
+
+    from config.pricing import compute_cost
+    actual_cost, saved = compute_cost(ajan["model"], inp, out, c_cre, c_rd)
+
+    return {
+        "key": ajan_key, "name": ajan["isim"], "model": ajan["model"],
+        "cevap": cevap, "dusunce": dusunce,
+        "cost": actual_cost, "inp": inp, "out": out,
+        "c_cre": c_cre, "c_rd": c_rd, "saved": saved
+    }
+
+
+def ajan_calistir_stream(ajan_key, mesaj, gecmis=None, cache_context=None, stream_placeholder=None):
+    """Streaming wrapper — session_state güncellemesi dahil."""
+    domain_model = st.session_state.get("domain_model", "sonnet")
+    r = _ajan_api_stream(ajan_key, mesaj, gecmis, cache_context, domain_model, stream_placeholder)
+    _session_update(r)
+    return r["cevap"]
+
+
 def _session_update(r: dict):
     """_ajan_api sonucunu session_state'e yaz — SADECE ana thread'den çağır."""
     st.session_state.agent_log.append({
@@ -1222,6 +1366,51 @@ def _update_blackboard_batch(bb: Blackboard, agent_keys: list, outputs: list, ro
     """Batch update blackboard from parallel agent results."""
     for key, output in zip(agent_keys, outputs):
         _update_blackboard(bb, key, output, round_num)
+
+
+# ═════════════════════════════════════════════════════════════
+# C5: QUALITY GATE — Haiku ile hızlı çıktı kalite kontrolü
+# ═════════════════════════════════════════════════════════════
+def _quality_gate(agent_key: str, output: str) -> dict:
+    """
+    Haiku ile domain ajan çıktısının kalitesini hızlıca değerlendir.
+    Döner: {"pass": bool, "reason": str, "score": int}
+    Çıktıda parameter/recommendation yoksa veya çok kısa ise fail.
+    """
+    if not output or output.startswith("ERROR") or output.startswith("STOPPED"):
+        return {"pass": False, "reason": "empty_or_error", "score": 0}
+
+    # Heuristic pre-check (API çağrısı olmadan)
+    word_count = len(output.split())
+    if word_count < 50:
+        return {"pass": False, "reason": "too_short", "score": 10}
+
+    # Basit keyword kontrolü — en azından teknik içerik var mı?
+    _technical_markers = [
+        r'\d+\s*(?:mm|cm|m|kg|MPa|kPa|°C|K|N|W|kW|MW|Hz|rpm|psi|bar|GPa)',
+        r'(?:safety factor|coefficient|efficiency|tolerance|stress|strain|load|pressure)',
+        r'(?:recommend|suggest|parameter|calculation|analysis|design)',
+    ]
+    _marker_hits = sum(1 for p in _technical_markers if re.search(p, output, re.IGNORECASE))
+    if _marker_hits == 0 and word_count < 200:
+        return {"pass": False, "reason": "no_technical_content", "score": 20}
+
+    return {"pass": True, "reason": "ok", "score": 80}
+
+
+def _quality_gate_retry(agent_key: str, mesaj: str, gecmis: list, output: str) -> str:
+    """
+    Kalite gate fail → ajanı 1 kez tekrar çalıştır, daha spesifik talimatla.
+    """
+    retry_msg = (
+        f"{mesaj}\n\n"
+        f"IMPORTANT: Your previous response was insufficient. You MUST include:\n"
+        f"1. Specific numerical parameters with units\n"
+        f"2. Technical calculations or references\n"
+        f"3. Clear recommendations with justification\n"
+        f"Provide a complete, detailed engineering analysis."
+    )
+    return ajan_calistir(agent_key, retry_msg, gecmis)
 
 
 # ═════════════════════════════════════════════════════════════
@@ -1536,6 +1725,16 @@ def run_full_loop(brief, aktif_alanlar, max_tur):
     gozlemci_cevabi = ""
     shared_ctx      = []   # validasyon ajanları için conversation history
 
+    # ── C1: Adaptive Model Selection ─────────────────────────
+    # Tur 1 → Sonnet (hızlı/ucuz), Tur 2+ → düşük skorlu ajanlar Opus'a terfi
+    # Observer directives: hangi ajanların iyileştirmeye ihtiyacı olduğunu takip eder
+    _adaptive_model_enabled = st.session_state.get("domain_model", "sonnet") == "sonnet"
+    _promoted_agents = set()  # Opus'a terfi eden ajan keyleri
+
+    # ── C2: Incremental Execution ────────────────────────────
+    # Tur 2+: Observer directive'i olmayan ajanlar skip edilir
+    _skip_agents = set()  # Bu turda skip edilecek ajan keyleri
+
     # ── Blackboard: yapısal analiz durumu ─────────────────────
     bb = _get_or_create_blackboard()
 
@@ -1549,13 +1748,42 @@ def run_full_loop(brief, aktif_alanlar, max_tur):
         else:
             mesaj = f"{brief}\n\nOBSERVER NOTES FROM ROUND {tur-1}:\n{gozlemci_notu}"
 
+            # ── C2: Incremental — directive olmayan ajanları skip listesine al
+            _skip_agents.clear()
+            _directives = bb.observer_directives if hasattr(bb, 'observer_directives') else {}
+            _agents_with_directives = set()
+            for agent_key, directive in _directives.items():
+                if isinstance(directive, dict) and directive.get("status") != "addressed":
+                    _agents_with_directives.add(agent_key)
+                elif isinstance(directive, list):
+                    for d in directive:
+                        if isinstance(d, dict) and d.get("status") != "addressed":
+                            _agents_with_directives.add(agent_key)
+            for key in alan_keyleri:
+                for ab in ("a", "b"):
+                    agent_key = f"{key}_{ab}"
+                    if agent_key not in _agents_with_directives:
+                        _skip_agents.add(agent_key)
+
+            # ── C1: Adaptive — düşük skor → directive alan ajanları Opus'a terfi
+            if _adaptive_model_enabled and tur_ozeti:
+                last_score = tur_ozeti[-1]["puan"]
+                if last_score and last_score < 70:
+                    # Skor çok düşük: directive alan tüm ajanları Opus'a terfi ettir
+                    _promoted_agents.update(_agents_with_directives)
+
         son_tur_cikti = {}
 
         # ── GRUP A: Domain ajanları paralel ────────────────────
         # Tur 1: domain ajanları RAG context alır (geçmiş benzer analizler).
         # Tur 2+: blackboard context (cross-domain flags, observer directives, param diff)
+        #   C2: Skip edilenler önceki çıktıyı korur
+        #   C1: Promoted ajanlar Opus model override alır
         rag_inst = get_rag()
         gorev_a = []
+        _gorev_idx_to_agent = []  # gorev_a index → agent_key mapping (for skip handling)
+        _skipped_in_round = set()
+
         for key, domain_name in aktif_alanlar:
             if tur == 1:
                 domain_ctx = rag_inst.get_similar_for_domain(brief, domain_name, max_tokens=200)
@@ -1566,47 +1794,100 @@ def run_full_loop(brief, aktif_alanlar, max_tur):
                     )
                 else:
                     domain_mesaj = mesaj
+                gorev_a.append((f"{key}_a", domain_mesaj, gecmis[f"{key}_a"], None))
+                _gorev_idx_to_agent.append(f"{key}_a")
+                gorev_a.append((f"{key}_b", domain_mesaj, gecmis[f"{key}_b"], None))
+                _gorev_idx_to_agent.append(f"{key}_b")
             else:
                 # Tur 2+: Blackboard context — targeted per agent
-                bb_ctx_a = bb.get_context_for(f"{key}_a", tur)
-                bb_ctx_b = bb.get_context_for(f"{key}_b", tur)
-                domain_mesaj_a = f"{mesaj}\n\n{bb_ctx_a}" if bb_ctx_a else mesaj
-                domain_mesaj_b = f"{mesaj}\n\n{bb_ctx_b}" if bb_ctx_b else mesaj
-                gorev_a.append((f"{key}_a", domain_mesaj_a, gecmis[f"{key}_a"], None))
-                gorev_a.append((f"{key}_b", domain_mesaj_b, gecmis[f"{key}_b"], None))
-                continue  # Skip the default append below
+                for ab in ("a", "b"):
+                    agent_key = f"{key}_{ab}"
+                    # ── C2: Incremental — skip if no directive
+                    if agent_key in _skip_agents:
+                        _skipped_in_round.add(agent_key)
+                        continue
+                    bb_ctx = bb.get_context_for(agent_key, tur)
+                    domain_mesaj_ab = f"{mesaj}\n\n{bb_ctx}" if bb_ctx else mesaj
+                    gorev_a.append((agent_key, domain_mesaj_ab, gecmis[agent_key], None))
+                    _gorev_idx_to_agent.append(agent_key)
 
-            gorev_a.append((f"{key}_a", domain_mesaj, gecmis[f"{key}_a"], None))
-            gorev_a.append((f"{key}_b", domain_mesaj, gecmis[f"{key}_b"], None))
-        sonuc_a = ajan_calistir_paralel(gorev_a, max_workers=6)
+        # ── C1: Adaptive model override — promoted ajanlar Opus ile çalışır
+        if _promoted_agents and _adaptive_model_enabled:
+            _orig_dm = st.session_state.get("domain_model", "sonnet")
+            st.session_state["domain_model"] = "opus"
+            _promoted_gorevler = [(k, m, g, c) for k, m, g, c in gorev_a
+                                  if k in _promoted_agents]
+            _normal_gorevler = [(k, m, g, c) for k, m, g, c in gorev_a
+                                if k not in _promoted_agents]
+            # Opus promoted ajanlar
+            sonuc_promoted = ajan_calistir_paralel(_promoted_gorevler, max_workers=6) if _promoted_gorevler else []
+            # Sonnet normal ajanlar
+            st.session_state["domain_model"] = _orig_dm
+            sonuc_normal = ajan_calistir_paralel(_normal_gorevler, max_workers=6) if _normal_gorevler else []
+            # Merge sonuçları orijinal sıraya göre
+            _promoted_keys = [g[0] for g in _promoted_gorevler]
+            _normal_keys = [g[0] for g in _normal_gorevler]
+            _pi, _ni = 0, 0
+            sonuc_a = []
+            for agent_key in _gorev_idx_to_agent:
+                if agent_key in _promoted_agents and _pi < len(sonuc_promoted):
+                    sonuc_a.append(sonuc_promoted[_pi])
+                    _pi += 1
+                elif _ni < len(sonuc_normal):
+                    sonuc_a.append(sonuc_normal[_ni])
+                    _ni += 1
+        else:
+            sonuc_a = ajan_calistir_paralel(gorev_a, max_workers=6) if gorev_a else []
 
-        for i, (key, name) in enumerate(aktif_alanlar):
-            cevap_a = sonuc_a[i * 2]
-            cevap_b = sonuc_a[i * 2 + 1]
-            son_tur_cikti[f"{key}_a"] = cevap_a
-            son_tur_cikti[f"{key}_b"] = cevap_b
+        # Sonuçları agent_key bazında map'e al
+        _sonuc_map = {}
+        for idx, agent_key in enumerate(_gorev_idx_to_agent):
+            if idx < len(sonuc_a):
+                _sonuc_map[agent_key] = sonuc_a[idx]
 
-            # Mesaj for history: use the actual message sent (may differ per agent in tur 2+)
-            _hist_msg = gorev_a[i * 2][1]  # message sent to _a
-            gecmis[f"{key}_a"] += [
-                {"role": "user",      "content": _hist_msg},
-                {"role": "assistant", "content": cevap_a},
-            ]
-            _hist_msg_b = gorev_a[i * 2 + 1][1]
-            gecmis[f"{key}_b"] += [
-                {"role": "user",      "content": _hist_msg_b},
-                {"role": "assistant", "content": cevap_b},
-            ]
+        for key, name in aktif_alanlar:
+            for ab in ("a", "b"):
+                agent_key = f"{key}_{ab}"
+                if agent_key in _skipped_in_round:
+                    # C2: Skipped — önceki turun çıktısını koru
+                    son_tur_cikti[agent_key] = son_tur_cikti.get(agent_key, gecmis[agent_key][-1]["content"] if gecmis[agent_key] else "")
+                else:
+                    _output = _sonuc_map.get(agent_key, "")
+                    # ── C5: Quality Gate — tur 1'de düşük kaliteli çıktıları tekrar dene
+                    if tur == 1 and _output:
+                        _qg = _quality_gate(agent_key, _output)
+                        if not _qg["pass"]:
+                            _retry = _quality_gate_retry(
+                                agent_key, mesaj,
+                                gecmis[agent_key],
+                                _output
+                            )
+                            if _retry and not _retry.startswith("ERROR"):
+                                _output = _retry
+                    son_tur_cikti[agent_key] = _output
+
+        # Geçmiş güncelle (sadece çalışan ajanlar için)
+        _gorev_msg_map = {g[0]: g[1] for g in gorev_a}
+        for key, name in aktif_alanlar:
+            for ab in ("a", "b"):
+                agent_key = f"{key}_{ab}"
+                if agent_key in _skipped_in_round:
+                    continue
+                _hist_msg = _gorev_msg_map.get(agent_key, mesaj)
+                gecmis[agent_key] += [
+                    {"role": "user",      "content": _hist_msg},
+                    {"role": "assistant", "content": son_tur_cikti[agent_key]},
+                ]
 
         # ── Blackboard: domain çıktılarını parse et ───────────
+        # C2: Sadece çalışan ajanların çıktılarını parse et (skip edilenler zaten eski veriyi korur)
         for key, name in aktif_alanlar:
-            _update_blackboard(bb, f"{key}_a", son_tur_cikti[f"{key}_a"], tur)
-            _update_blackboard(bb, f"{key}_b", son_tur_cikti[f"{key}_b"], tur)
-
-            # Tur 2+: mark observer directives as addressed
-            if tur > 1:
-                bb.mark_directive_addressed(f"{key}_a")
-                bb.mark_directive_addressed(f"{key}_b")
+            for ab in ("a", "b"):
+                agent_key = f"{key}_{ab}"
+                if agent_key not in _skipped_in_round:
+                    _update_blackboard(bb, agent_key, son_tur_cikti[agent_key], tur)
+                    if tur > 1:
+                        bb.mark_directive_addressed(agent_key)
 
         # tum_ciktilar: bu turun domain çıktıları
         tum_ciktilar = "\n\n".join(
@@ -2154,17 +2435,19 @@ if st.session_state.step == "input":
         key="brief_input_widget"
     )
 
-    # Maliyet tahmini
+    # ── C6: Cost Prediction — dinamik maliyet tahmini ─────────
+    from config.pricing import estimate_analysis_cost
     _mode = st.session_state.mode
     _dm   = st.session_state.get("domain_model", "sonnet")
-    _est  = {
-        (1,"sonnet"): (0.15, 0.40), (1,"opus"): (0.80, 2.00),
-        (2,"sonnet"): (0.30, 0.80), (2,"opus"): (1.50, 4.00),
-        (3,"sonnet"): (0.60, 1.50), (3,"opus"): (3.00, 8.00),
-        (4,"sonnet"): (0.80, 2.00), (4,"opus"): (4.00,12.00),
-    }
-    lo, hi = _est.get((_mode, _dm), (0.5, 2.0))
-    _color = "#2DB87A" if hi < 1 else "#E8A838" if hi < 4 else "#E05A2B"
+    _max_r = st.session_state.get("max_rounds", 3) if _mode >= 3 else 1
+    # Ortalama 3 domain varsayımı (domain henüz seçilmedi)
+    _est = estimate_analysis_cost(n_domains=3, mode=_mode, domain_model=_dm, max_rounds=_max_r)
+    _est_usd = _est["estimated_usd"]
+    _agent_cnt = _est["agent_count"]
+    # Min/max aralığı: 2 domain (min) ve 5 domain (max) ile hesapla
+    _est_lo = estimate_analysis_cost(n_domains=2, mode=_mode, domain_model=_dm, max_rounds=_max_r)["estimated_usd"]
+    _est_hi = estimate_analysis_cost(n_domains=5, mode=_mode, domain_model=_dm, max_rounds=_max_r)["estimated_usd"]
+    _color = "#2DB87A" if _est_hi < 1 else "#E8A838" if _est_hi < 4 else "#E05A2B"
     st.markdown(f"""
     <div style="background:#131316;border:1px solid {_color}40;border-radius:8px;
                 padding:8px 14px;margin-bottom:1rem;font-family:var(--mono)">
@@ -2172,10 +2455,10 @@ if st.session_state.step == "input":
         Tahmini Maliyet
       </span>
       <span style="font-size:0.85rem;color:{_color};margin-left:10px;font-weight:700">
-        ${lo:.2f} – ${hi:.2f}
+        ${_est_lo:.2f} – ${_est_hi:.2f}
       </span>
       <span style="font-size:0.65rem;color:#5A5A65;margin-left:6px">
-        (~{lo*KUR:.0f}–{hi*KUR:.0f} TL)
+        (~{_est_lo*KUR:.0f}–{_est_hi*KUR:.0f} TL) · ~{_agent_cnt} ajan
       </span>
     </div>
     """, unsafe_allow_html=True)
@@ -2403,15 +2686,19 @@ elif st.session_state.step == "running":
         for entry in reversed(st.session_state.agent_log[-40:]):
             if entry["status"] == "running":
                 icon, cls = "⟳", "running"
+            elif entry["status"] == "skipped":
+                icon, cls = "⏭", "done"
             elif entry["status"] == "done":
                 icon, cls = "✓", "done"
             else:
                 icon, cls = "✗", "done"
             cost_str  = f"${entry['cost']:.4f}" if entry["cost"] > 0 else ""
             model_str = model_etiketi(entry.get("model", ""))
+            # C1: Promoted ajanları vurgula
+            promoted = " [OPUS↑]" if entry.get("promoted") else ""
             html += (f'<div class="agent-row {cls}">'
                      f'<span class="agent-status">{icon}</span>'
-                     f'<span class="agent-name">{entry["name"]}</span>'
+                     f'<span class="agent-name">{entry["name"]}{promoted}</span>'
                      f'<span class="agent-cost">{model_str}</span>'
                      f'<span class="agent-cost">{cost_str}</span>'
                      f'</div>')
