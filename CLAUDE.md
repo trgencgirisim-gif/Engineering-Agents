@@ -71,6 +71,59 @@ pip install -r requirements.txt
 - Semantic similarity retrieval via HNSW index (cosine distance < 0.65).
 - Used to provide historical context to agents in subsequent analyses.
 
+## Blackboard Architecture
+
+### Overview
+The Blackboard is a structured analysis state (`blackboard.py`) that sits between agents, enabling:
+- **Selective context injection:** Each agent receives only relevant data (not the full `tum_ciktilar` blob)
+- **Cross-domain flag routing:** Domain agents emit flags → parser extracts → blackboard stores → target domain receives in next round
+- **Observer directive tracking:** Tracks which corrections were addressed vs ignored
+- **Parameter convergence monitoring:** Detects oscillating values across rounds
+- **Assumption consistency checking:** Cross-references assumptions between agents before observer evaluation
+
+### Sections
+| Section | Type | Description |
+|---------|------|-------------|
+| `parameters` | `Dict[str, List[Entry]]` | Numerical values with source agent, confidence, unit |
+| `conflicts` | `List[dict]` | Agent disagreements, status: open/resolved |
+| `assumptions` | `List[dict]` | Labeled assumptions from all agents |
+| `cross_domain_flags` | `Dict[str, List[dict]]` | Issues indexed by target domain |
+| `risk_register` | `List[dict]` | FMEA items with S/O/D/RPN |
+| `open_questions` | `List[dict]` | Unanswered critical questions |
+| `observer_directives` | `Dict[str, dict]` | Per-agent directives (FIX/ADD/CORRECT) |
+| `round_history` | `List[dict]` | Per-round score and change summary |
+
+### Key Methods
+- `write(section, data, source_agent, round_num)` — thread-safe mutation
+- `get_context_for(agent_key, round_num)` — returns ONLY relevant sections for that agent type
+- `diff(round_a, round_b)` — parameter changes, resolved conflicts, score delta
+- `to_summary()` — compact text for synthesis/final report
+- `check_convergence()` — detects converging/oscillating/stable parameters
+- `to_rag_metadata()` — structured data for RAG storage
+
+### Parser (`parser.py`)
+Hybrid regex + LLM (Haiku) fallback. Extracts structured data from agent outputs:
+- Domain agents: parameters, cross-domain flags, assumptions
+- Cross-validator: ERROR_[N], DATA_GAP_[N], BLOCKING_ISSUES
+- Assumption inspector: ASSUMPTION_[N], UNCERTAINTY_[N], CONFLICT_ASSUMPTION_[N]
+- Observer: KALİTE PUANI, per-agent directives, conflicts, early termination
+- Risk agent: FMEA items with RPN values
+- LLM fallback triggers when regex extracts < 30% of expected fields
+
+### Data Flow with Blackboard
+```
+Round 1:
+  Domain agents → parser → blackboard.parameters, .cross_domain_flags, .assumptions
+  Validation agents ← blackboard.get_context_for("capraz_dogrulama") = parameter table + conflicts
+  Observer ← blackboard.get_context_for("gozlemci") = full summary + directive status
+
+Round 2+:
+  Domain agents ← blackboard.get_context_for("yanma_a") = flags for yanma + observer directives + param diff
+  After output → parser → blackboard updates + mark_directive_addressed()
+  Validation ← updated blackboard context (selective)
+  Observer ← full summary including directive tracking + assumption conflicts
+```
+
 ## File Map
 
 | File | Purpose |
@@ -81,6 +134,8 @@ pip install -r requirements.txt
 | `orchestrator.py` | CLI mode, CACHE_PREAMBLE definition, standalone `ajan_calistir()` |
 | `main.py` | FastAPI backend, Session class, SSE streaming, local result cache |
 | `app.py` | Streamlit frontend with dark theme, real-time agent streaming |
+| `blackboard.py` | Blackboard class — structured analysis state with selective context injection |
+| `parser.py` | Hybrid regex + LLM fallback parser for agent output extraction |
 | `rag/store.py` | RAGStore class — save/query/delete analyses with ChromaDB |
 | `report_generator.py` | Academic DOCX report generation (cover, abstract, findings, appendices) |
 | `static/index.html` | Web UI for FastAPI backend (vanilla JS, SSE client) |
@@ -89,8 +144,11 @@ pip install -r requirements.txt
 
 - **Parallel execution:** `ThreadPoolExecutor(max_workers=6)` for concurrent domain agent runs
 - **Thread-safe cost tracking:** `threading.Lock` guards all cost/log mutations
+- **Blackboard state:** Thread-safe structured state with per-agent selective context injection
 - **Retry with backoff:** 5 attempts, 60s × attempt on rate limits (429)
 - **Thinking mode:** Auto-fallback to non-thinking if API rejects the parameter
 - **SSE streaming:** Real-time agent progress via Server-Sent Events (FastAPI mode)
 - **Observer quality loop:** Scores 0-100; >= 85 triggers early termination in Mode 4
-- **Cross-domain flags:** Agents emit structured flags for issues outside their discipline
+- **Smart agent skipping:** Score >= 90 skips GRUP C (risk + conflict); reduces cost
+- **Cross-domain flag routing:** Parsed from domain outputs → stored on blackboard → injected into target domain agents in next round
+- **Model optimization:** Haiku for low-stakes agents (domain_selector, ozet_ve_sunum, soru_uretici_pm)

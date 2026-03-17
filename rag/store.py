@@ -52,7 +52,9 @@ class RAGStore:
              agent_log: list = None,
              observer_full: str = "",
              crossval_full: str = "",
-             round_scores: list = None) -> str:
+             round_scores: list = None,
+             blackboard_summary: str = "",
+             parameter_table: str = "") -> str:
         """
         Analizi kaydet — geliştirme odaklı tam kayıt.
         quality_score: Observer son turu puanı (0-100)
@@ -73,7 +75,8 @@ class RAGStore:
             f"{brief}\n\n"
             f"Domains: {', '.join(domains)}\n\n"
             f"Key findings: {final_report[:400]}\n\n"
-            f"Open questions: {open_questions[:200]}"
+            f"Open questions: {open_questions[:200]}\n\n"
+            f"Parameters: {parameter_table[:200]}"
         )
 
         # Ajan çıktılarını kategorize et
@@ -163,6 +166,15 @@ class RAGStore:
             if crossval_full:
                 f.write(f"\n{SEP}\nCROSS-VALIDATION FINDINGS (FULL)\n{SEP}\n")
                 f.write(crossval_full + "\n")
+
+            # ── Blackboard özeti ─────────────────────────────────
+            if blackboard_summary:
+                f.write(f"\n{SEP}\nBLACKBOARD SUMMARY\n{SEP}\n")
+                f.write(blackboard_summary + "\n")
+
+            if parameter_table:
+                f.write(f"\n{SEP}\nPARAMETER TABLE\n{SEP}\n")
+                f.write(parameter_table + "\n")
 
             # ── Final rapor ───────────────────────────────────────
             f.write(f"\n{SEP}\nFINAL REPORT\n{SEP}\n")

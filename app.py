@@ -11,6 +11,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Tuple, Optional
 from config.agents_config import AGENTS, DESTEK_AJANLARI
 from rag.store import RAGStore
+from blackboard import Blackboard
+from parser import parse_agent_output
 try:
     from report_generator import generate_docx_report as generate_pdf_report
     PDF_OK = True
@@ -721,6 +723,7 @@ def init_state():
         "docx_bytes":         None,
         "running":            False,
         "domain_model":       "sonnet",  # "sonnet" | "opus"
+        "blackboard":         None,      # Blackboard instance
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -1145,6 +1148,83 @@ def ajan_calistir_paralel(gorevler: List[Tuple], max_workers: int = 6) -> List[s
 
 
 # ═════════════════════════════════════════════════════════════
+# BLACKBOARD HELPERS
+# ═════════════════════════════════════════════════════════════
+
+def _get_or_create_blackboard() -> Blackboard:
+    """Session-scoped blackboard — one per analysis."""
+    if st.session_state.blackboard is None:
+        st.session_state.blackboard = Blackboard()
+    return st.session_state.blackboard
+
+
+def _update_blackboard(bb: Blackboard, agent_key: str, output: str, round_num: int):
+    """Parse agent output and write structured data to blackboard."""
+    if not output or output.startswith("ERROR") or output.startswith("STOPPED"):
+        return
+
+    try:
+        parsed = parse_agent_output(output, agent_key, client=None)
+    except Exception:
+        return
+
+    if not parsed:
+        return
+
+    # Domain agents → parameters, flags, assumptions
+    if agent_key.endswith("_a") or agent_key.endswith("_b"):
+        if agent_key not in DESTEK_AJANLARI:
+            for param in parsed.get("parameters", []):
+                bb.write("parameters", param, agent_key, round_num)
+            for flag in parsed.get("cross_domain_flags", []):
+                bb.write("cross_domain_flags", flag, agent_key, round_num)
+            for assumption in parsed.get("assumptions", []):
+                bb.write("assumptions", assumption, agent_key, round_num)
+            return
+
+    # Cross-validator → conflicts
+    if agent_key == "capraz_dogrulama":
+        for error in parsed.get("errors", []):
+            bb.write("conflicts", error, agent_key, round_num)
+        return
+
+    # Assumption inspector → assumptions, uncertainties
+    if agent_key == "varsayim_belirsizlik":
+        for a in parsed.get("assumptions", []):
+            bb.write("assumptions", a, agent_key, round_num)
+        return
+
+    # Observer → directives, round history, score
+    if agent_key == "gozlemci":
+        for directive in parsed.get("directives", []):
+            bb.write("observer_directives", directive, agent_key, round_num)
+        score = parsed.get("score", 0)
+        bb.write("round_history", {"round": round_num, "score": score}, agent_key, round_num)
+        return
+
+    # Risk agent → risk register
+    if agent_key == "risk_guvenilirlik":
+        for risk in parsed.get("risks", []):
+            bb.write("risk_register", risk, agent_key, round_num)
+        return
+
+    # Conflict resolution → resolve open conflicts
+    if agent_key == "celisiki_cozum":
+        resolutions = parsed.get("resolutions", [])
+        if resolutions:
+            bb.resolve_conflicts([
+                {"conflict_id": i + 1, "resolution": r.get("resolution", "")}
+                for i, r in enumerate(resolutions)
+            ])
+
+
+def _update_blackboard_batch(bb: Blackboard, agent_keys: list, outputs: list, round_num: int):
+    """Batch update blackboard from parallel agent results."""
+    for key, output in zip(agent_keys, outputs):
+        _update_blackboard(bb, key, output, round_num)
+
+
+# ═════════════════════════════════════════════════════════════
 # HELPERS
 # ═════════════════════════════════════════════════════════════
 def model_etiketi(model: str) -> str:
@@ -1261,11 +1341,9 @@ def _build_ctx_history(brief_msg: str, tum_ciktilar: str) -> list:
 
 def run_tekli(brief, aktif_alanlar):
     alan_isimleri = [name for _, name in aktif_alanlar]
+    bb = _get_or_create_blackboard()
 
     # ── GRUP A: Domain ajanları paralel ────────────────────────
-    # Her domain ajanı kendi alanına özel geçmiş context alıyor.
-    # max_tokens=250: domain ajanı başına küçük tutuyoruz, paralel çalıştıklarında
-    # toplam context büyümesin. Asıl bilgi ajan sisteminde zaten var.
     rag_inst = get_rag()
     gorev_a = []
     for key, domain_name in aktif_alanlar:
@@ -1287,44 +1365,48 @@ def run_tekli(brief, aktif_alanlar):
     ]
     tum_ciktilar = "\n\n".join(tum_ciktilar_parts)
 
-    # ── Shared context history ───────────────────────────────────
-    # tum_ciktilar artık cache_context değil, conversation history olarak geçiyor.
-    # İlk validasyon ajanı: WRITE (history Anthropic tarafından cache'lenir).
-    # Sonraki ajanlar: READ (aynı prefix → cache HIT).
+    # ── Blackboard: domain çıktılarını parse et ───────────────
+    for i, (key, name) in enumerate(aktif_alanlar):
+        _update_blackboard(bb, f"{key}_a", sonuc_a[i], 1)
+
     shared_ctx = _build_ctx_history(brief, tum_ciktilar)
 
     # ── GRUP B: Capraz + Soru paralel ───────────────────────────
-    # Her ikisi de shared_ctx'i gecmis olarak alıyor.
-    # İlk tamamlanan cache'i yazar; 2. okur.
+    _bb_crossval_ctx = bb.get_context_for("capraz_dogrulama", 1)
     b_sonuc = ajan_calistir_paralel([
         ("capraz_dogrulama",
-         "Check all numerical values, units, and physical consistency across all domain outputs.",
+         f"Check all numerical values, units, and physical consistency across all domain outputs.\n\n{_bb_crossval_ctx}",
          shared_ctx, None),
         ("soru_uretici",
          f"Problem: {brief}\nList unanswered critical questions needing further analysis.",
          shared_ctx, None),
     ], max_workers=2)
     capraz, sorular = b_sonuc
+    _update_blackboard(bb, "capraz_dogrulama", capraz, 1)
 
     # ── Gözlemci ────────────────────────────────────────────────
+    _bb_observer_ctx = bb.get_context_for("gozlemci", 1)
     gozlemci = ajan_calistir("gozlemci",
         f"Problem: {brief}\nActive domains: {', '.join(alan_isimleri)}\n"
         f"CROSS-VALIDATION:\n{capraz}\n\n"
+        f"{_bb_observer_ctx}\n"
         f"Evaluate all domain outputs. Assign KALİTE PUANI: XX/100.",
         gecmis=shared_ctx)
+    _update_blackboard(bb, "gozlemci", gozlemci, 1)
 
     # ── Final rapor ──────────────────────────────────────────────
-    # Final rapor: genel RAG context — geçmiş analizlerden öğrenilenler
     rag_final_ctx = get_rag().get_similar(brief, n=2, max_tokens=400)
     final_rag_note = (
         f"\n\nKNOWLEDGE BASE CONTEXT:\n{rag_final_ctx}"
         if rag_final_ctx else ""
     )
+    _bb_summary = bb.to_summary()
     final = ajan_calistir("final_rapor",
         f"Single-agent analysis. Domains: {', '.join(alan_isimleri)}\n"
         f"PROBLEM: {brief}\n"
         f"OBSERVER: {gozlemci}\n"
-        f"QUESTIONS: {sorular}"
+        f"QUESTIONS: {sorular}\n\n"
+        f"STRUCTURED ANALYSIS SUMMARY:\n{_bb_summary}"
         f"{final_rag_note}\n\n"
         f"Domain agent technical findings are in the conversation history above.\n"
         f"Write a professional engineering report: lead with each domain's technical "
@@ -1341,6 +1423,7 @@ def run_tekli(brief, aktif_alanlar):
 
 def run_cift(brief, aktif_alanlar):
     alan_isimleri = [name for _, name in aktif_alanlar]
+    bb = _get_or_create_blackboard()
 
     # ── GRUP A: Domain A+B ajanları paralel ──────────────────────
     rag_inst = get_rag()
@@ -1361,37 +1444,49 @@ def run_cift(brief, aktif_alanlar):
     sonuc_a = ajan_calistir_paralel(gorev_a, max_workers=6)
 
     tum_ciktilar_parts = []
-    for i, (_, name) in enumerate(aktif_alanlar):
+    for i, (key, name) in enumerate(aktif_alanlar):
         cevap_a = sonuc_a[i * 2]
         cevap_b = sonuc_a[i * 2 + 1]
         tum_ciktilar_parts.append(
             f"{name.upper()} EXPERT A:\n{cevap_a}\n\n"
             f"{name.upper()} EXPERT B:\n{cevap_b}"
         )
+        # ── Blackboard: domain çıktılarını parse et
+        _update_blackboard(bb, f"{key}_a", cevap_a, 1)
+        _update_blackboard(bb, f"{key}_b", cevap_b, 1)
+
     tum_ciktilar = "\n\n".join(tum_ciktilar_parts)
     shared_ctx = _build_ctx_history(brief, tum_ciktilar)
 
     # ── GRUP B: Validasyon paralel ───────────────────────────────
+    _bb_crossval_ctx = bb.get_context_for("capraz_dogrulama", 1)
+    _bb_assumption_ctx = bb.get_context_for("varsayim_belirsizlik", 1)
     b_sonuc = ajan_calistir_paralel([
         ("capraz_dogrulama",
-         "Check all numerical values for physical and mathematical consistency.",
+         f"Check all numerical values for physical and mathematical consistency.\n\n{_bb_crossval_ctx}",
          shared_ctx, None),
         ("varsayim_belirsizlik",
-         "Identify all hidden and unstated assumptions across expert outputs.",
+         f"Identify all hidden and unstated assumptions across expert outputs.\n\n{_bb_assumption_ctx}",
          shared_ctx, None),
     ], max_workers=2)
     capraz, varsayim = b_sonuc
+    _update_blackboard(bb, "capraz_dogrulama", capraz, 1)
+    _update_blackboard(bb, "varsayim_belirsizlik", varsayim, 1)
 
+    _bb_observer_ctx = bb.get_context_for("gozlemci", 1)
     gozlemci = ajan_calistir("gozlemci",
         f"Problem: {brief}\nDomains: {', '.join(alan_isimleri)}\n"
         f"CROSS-VAL: {capraz}\nASSUMPTIONS: {varsayim}\n\n"
+        f"{_bb_observer_ctx}\n"
         f"Evaluate all outputs. KALİTE PUANI: XX/100. Identify key A vs B conflicts.",
         gecmis=shared_ctx)
+    _update_blackboard(bb, "gozlemci", gozlemci, 1)
 
     # ── GRUP C: Çelişki + Soru + Alternatif paralel ─────────────
+    _bb_conflict_ctx = bb.get_context_for("celisiki_cozum", 1)
     c_sonuc = ajan_calistir_paralel([
         ("celisiki_cozum",
-         f"OBSERVER:\n{gozlemci}\n\nResolve A vs B expert conflicts.",
+         f"OBSERVER:\n{gozlemci}\n\n{_bb_conflict_ctx}\n\nResolve A vs B expert conflicts.",
          shared_ctx, None),
         ("soru_uretici",
          f"Problem: {brief}\nList unanswered critical questions.",
@@ -1401,19 +1496,22 @@ def run_cift(brief, aktif_alanlar):
          shared_ctx, None),
     ], max_workers=3)
     celiski, sorular, alternatif = c_sonuc
+    _update_blackboard(bb, "celisiki_cozum", celiski, 1)
 
     rag_final_ctx_cift = get_rag().get_similar(brief, n=2, max_tokens=400)
     final_rag_note_cift = (
         f"\n\nKNOWLEDGE BASE CONTEXT:\n{rag_final_ctx_cift}"
         if rag_final_ctx_cift else ""
     )
+    _bb_summary = bb.to_summary()
     final = ajan_calistir("final_rapor",
         f"Dual-agent analysis. Domains: {', '.join(alan_isimleri)}\n"
         f"PROBLEM: {brief}\n"
         f"OBSERVER: {gozlemci}\n"
         f"CONFLICTS RESOLVED: {celiski}\n"
         f"QUESTIONS: {sorular}\n"
-        f"ALTERNATIVES: {alternatif}"
+        f"ALTERNATIVES: {alternatif}\n\n"
+        f"STRUCTURED ANALYSIS SUMMARY:\n{_bb_summary}"
         f"{final_rag_note_cift}\n\n"
         f"Domain agent technical findings are in the conversation history above.\n"
         f"Write a professional engineering report: lead with each domain's technical "
@@ -1438,19 +1536,24 @@ def run_full_loop(brief, aktif_alanlar, max_tur):
     gozlemci_cevabi = ""
     shared_ctx      = []   # validasyon ajanları için conversation history
 
+    # ── Blackboard: yapısal analiz durumu ─────────────────────
+    bb = _get_or_create_blackboard()
+
     for tur in range(1, max_tur + 1):
         st.session_state.current_round = tur
         st.session_state.round_scores.append({"tur": tur, "puan": None})
 
-        mesaj = brief if tur == 1 else (
-            f"{brief}\n\nOBSERVER NOTES FROM ROUND {tur-1}:\n{gozlemci_notu}"
-        )
+        # ── Mesaj oluştur: Tur 1 brief, Tur 2+ observer notu + blackboard context
+        if tur == 1:
+            mesaj = brief
+        else:
+            mesaj = f"{brief}\n\nOBSERVER NOTES FROM ROUND {tur-1}:\n{gozlemci_notu}"
 
         son_tur_cikti = {}
 
         # ── GRUP A: Domain ajanları paralel ────────────────────
         # Tur 1: domain ajanları RAG context alır (geçmiş benzer analizler).
-        # Tur 2+: observer notları mesaja eklenmiş, RAG'a gerek yok (context büyümesini önlemek için).
+        # Tur 2+: blackboard context (cross-domain flags, observer directives, param diff)
         rag_inst = get_rag()
         gorev_a = []
         for key, domain_name in aktif_alanlar:
@@ -1464,7 +1567,15 @@ def run_full_loop(brief, aktif_alanlar, max_tur):
                 else:
                     domain_mesaj = mesaj
             else:
-                domain_mesaj = mesaj  # Tur 2+: observer notları yeterli
+                # Tur 2+: Blackboard context — targeted per agent
+                bb_ctx_a = bb.get_context_for(f"{key}_a", tur)
+                bb_ctx_b = bb.get_context_for(f"{key}_b", tur)
+                domain_mesaj_a = f"{mesaj}\n\n{bb_ctx_a}" if bb_ctx_a else mesaj
+                domain_mesaj_b = f"{mesaj}\n\n{bb_ctx_b}" if bb_ctx_b else mesaj
+                gorev_a.append((f"{key}_a", domain_mesaj_a, gecmis[f"{key}_a"], None))
+                gorev_a.append((f"{key}_b", domain_mesaj_b, gecmis[f"{key}_b"], None))
+                continue  # Skip the default append below
+
             gorev_a.append((f"{key}_a", domain_mesaj, gecmis[f"{key}_a"], None))
             gorev_a.append((f"{key}_b", domain_mesaj, gecmis[f"{key}_b"], None))
         sonuc_a = ajan_calistir_paralel(gorev_a, max_workers=6)
@@ -1474,14 +1585,28 @@ def run_full_loop(brief, aktif_alanlar, max_tur):
             cevap_b = sonuc_a[i * 2 + 1]
             son_tur_cikti[f"{key}_a"] = cevap_a
             son_tur_cikti[f"{key}_b"] = cevap_b
+
+            # Mesaj for history: use the actual message sent (may differ per agent in tur 2+)
+            _hist_msg = gorev_a[i * 2][1]  # message sent to _a
             gecmis[f"{key}_a"] += [
-                {"role": "user",      "content": mesaj},
+                {"role": "user",      "content": _hist_msg},
                 {"role": "assistant", "content": cevap_a},
             ]
+            _hist_msg_b = gorev_a[i * 2 + 1][1]
             gecmis[f"{key}_b"] += [
-                {"role": "user",      "content": mesaj},
+                {"role": "user",      "content": _hist_msg_b},
                 {"role": "assistant", "content": cevap_b},
             ]
+
+        # ── Blackboard: domain çıktılarını parse et ───────────
+        for key, name in aktif_alanlar:
+            _update_blackboard(bb, f"{key}_a", son_tur_cikti[f"{key}_a"], tur)
+            _update_blackboard(bb, f"{key}_b", son_tur_cikti[f"{key}_b"], tur)
+
+            # Tur 2+: mark observer directives as addressed
+            if tur > 1:
+                bb.mark_directive_addressed(f"{key}_a")
+                bb.mark_directive_addressed(f"{key}_b")
 
         # tum_ciktilar: bu turun domain çıktıları
         tum_ciktilar = "\n\n".join(
@@ -1493,8 +1618,7 @@ def run_full_loop(brief, aktif_alanlar, max_tur):
         # ── Shared context güncelle ─────────────────────────────
         # Tur 1: tam domain çıktıları → conversation history
         # Tur 2: tur 1 + tur 2 çıktıları (cache prefix devam eder)
-        # Tur 3+: context şişmesini önlemek için önceki turları özetle
-        #   (~18K token birikmesini engellemek için)
+        # Tur 3+: context şişmesini önlemek için blackboard summary + son tur
         _CTX_WORD_LIMIT = 8000  # yaklaşık 10K token sınırı
 
         if tur == 1:
@@ -1506,10 +1630,11 @@ def run_full_loop(brief, aktif_alanlar, max_tur):
                 for m in shared_ctx
             )
             if _ctx_words > _CTX_WORD_LIMIT:
-                # Sadece son turun çıktısını tut, öncekini özetlenmiş header ile
+                # Blackboard summary replaces compressed context — much richer than before
+                _bb_summary = bb.to_summary()
                 _summary_note = (
-                    f"[Context compressed: rounds 1-{tur-1} available in full analysis. "
-                    f"Key validated parameters and conflicts passed forward via Observer notes.]"
+                    f"[Context compressed: rounds 1-{tur-1} summarized below.]\n\n"
+                    f"{_bb_summary}"
                 )
                 shared_ctx = [
                     {"role": "user",      "content": f"Domain analysis request:\n{brief}\n\n{_summary_note}"},
@@ -1522,17 +1647,20 @@ def run_full_loop(brief, aktif_alanlar, max_tur):
                 ]
 
         # ── GRUP B: Validasyon paralel ──────────────────────────
-        # shared_ctx'i gecmis olarak kullanıyor → PREAMBLE cache HIT alır,
-        # ctx prefix aynı kalan kısımlar için de HIT alır.
+        # shared_ctx'i gecmis olarak kullanıyor → PREAMBLE cache HIT alır.
+        # Blackboard context ile hedefli bilgi enjeksiyonu yapılır.
+        _bb_crossval_ctx = bb.get_context_for("capraz_dogrulama", tur)
+        _bb_assumption_ctx = bb.get_context_for("varsayim_belirsizlik", tur)
+
         b_sonuc = ajan_calistir_paralel([
             ("capraz_dogrulama",
-             f"ROUND {tur}: Check all numerical values, units, and physical consistency.",
+             f"ROUND {tur}: Check all numerical values, units, and physical consistency.\n\n{_bb_crossval_ctx}",
              shared_ctx, None),
             ("varsayim_belirsizlik",
-             f"ROUND {tur}: Identify all hidden and unstated assumptions.",
+             f"ROUND {tur}: Identify all hidden and unstated assumptions.\n\n{_bb_assumption_ctx}",
              shared_ctx, None),
             ("varsayim_belirsizlik",
-             f"ROUND {tur}: List all missing, ambiguous, or conflicting points.",
+             f"ROUND {tur}: List all missing, ambiguous, or conflicting points.\n\n{_bb_assumption_ctx}",
              shared_ctx, None),
             ("literatur_patent",
              f"ROUND {tur}: Check cited standards and references. Flag IP risks.",
@@ -1540,27 +1668,57 @@ def run_full_loop(brief, aktif_alanlar, max_tur):
         ], max_workers=4)
         capraz, varsayim, belirsiz, literatur = b_sonuc
 
+        # ── Blackboard: validasyon çıktılarını parse et ───────
+        _update_blackboard(bb, "capraz_dogrulama", capraz, tur)
+        _update_blackboard(bb, "varsayim_belirsizlik", varsayim, tur)
+
+        # ── Assumption consistency check (blackboard-based) ────
+        _conflicting_assumptions = bb.find_conflicting_assumptions()
+        _assumption_conflict_note = ""
+        if _conflicting_assumptions:
+            _lines = ["BLACKBOARD: CONFLICTING ASSUMPTIONS DETECTED:"]
+            for ca in _conflicting_assumptions[:5]:
+                _lines.append(
+                    f"  - {ca['agent_a']}: \"{ca['assumption_a']}\" vs "
+                    f"{ca['agent_b']}: \"{ca['assumption_b']}\" (topic: {ca['shared_topic']})"
+                )
+            _assumption_conflict_note = "\n".join(_lines)
+
+        # ── Observer: blackboard summary included ──────────────
+        _bb_observer_ctx = bb.get_context_for("gozlemci", tur)
         gozlemci_cevabi = ajan_calistir("gozlemci",
             f"Problem: {brief}\nDomains: {', '.join(alan_isimleri)} — ROUND {tur}\n"
             f"CROSS-VAL: {capraz}\nASSUMPTIONS: {varsayim}\n"
             f"UNCERTAINTY: {belirsiz}\nLITERATURE: {literatur}\n"
+            f"{_assumption_conflict_note}\n"
+            f"{_bb_observer_ctx}\n"
             f"Evaluate all outputs. KALİTE PUANI: XX/100. Specify corrections for next round.",
             gecmis=shared_ctx)
+
+        # ── Blackboard: observer çıktısını parse et ───────────
+        _update_blackboard(bb, "gozlemci", gozlemci_cevabi, tur)
 
         puan = kalite_puani_oku(gozlemci_cevabi)
         gozlemci_notu = gozlemci_cevabi
         st.session_state.round_scores[-1]["puan"] = puan
 
         # ── GRUP C: Risk + Çelişki paralel ─────────────────────
-        ajan_calistir_paralel([
-            ("risk_guvenilirlik",
-             f"ROUND {tur}: FMEA on all proposed designs. Identify critical failure scenarios and RPN values.",
-             shared_ctx, None),
-            ("celisiki_cozum",
-             f"OBSERVER REPORT:\n{gozlemci_cevabi}\n\n"
-             f"Resolve all A vs B conflicts. Which position is better supported?",
-             shared_ctx, None),
-        ], max_workers=2)
+        # Smart skip: observer puanı 90+ ise GRUP C'yi atla (yeterli kalite)
+        if puan < 90:
+            _bb_risk_ctx = bb.get_context_for("risk_guvenilirlik", tur)
+            _bb_conflict_ctx = bb.get_context_for("celisiki_cozum", tur)
+            c_sonuc = ajan_calistir_paralel([
+                ("risk_guvenilirlik",
+                 f"ROUND {tur}: FMEA on all proposed designs. Identify critical failure scenarios and RPN values.\n\n{_bb_risk_ctx}",
+                 shared_ctx, None),
+                ("celisiki_cozum",
+                 f"OBSERVER REPORT:\n{gozlemci_cevabi}\n\n{_bb_conflict_ctx}\n\n"
+                 f"Resolve all A vs B conflicts. Which position is better supported?",
+                 shared_ctx, None),
+            ], max_workers=2)
+            # ── Blackboard: risk + çelişki çıktılarını parse et
+            _update_blackboard(bb, "risk_guvenilirlik", c_sonuc[0], tur)
+            _update_blackboard(bb, "celisiki_cozum", c_sonuc[1], tur)
 
         tur_ozeti.append({"tur": tur, "puan": puan})
 
@@ -1570,16 +1728,20 @@ def run_full_loop(brief, aktif_alanlar, max_tur):
     # ── Post-loop: shared_ctx artık tüm turları içeriyor ────────
     # GRUP D ajanları shared_ctx ile çalışır → cache HIT maksimum
 
+    # ── Convergence analizi ───────────────────────────────────
+    _convergence = bb.check_convergence()
+
     # ── GRUP D: 8 destek ajanı paralel ─────────────────────────
+    _bb_summary_post = bb.to_summary()
     d_sonuc = ajan_calistir_paralel([
         ("soru_uretici",
-         f"Problem: {brief}\nList unanswered critical questions requiring further analysis.",
+         f"Problem: {brief}\nList unanswered critical questions requiring further analysis.\n\n{_bb_summary_post}",
          shared_ctx, None),
         ("alternatif_senaryo",
-         f"Problem: {brief}\nEvaluate at least 3 alternative design/solution approaches.",
+         f"Problem: {brief}\nEvaluate at least 3 alternative design/solution approaches.\n\n{_bb_summary_post}",
          shared_ctx, None),
         ("kalibrasyon",
-         f"Problem: {brief}\nCompare proposed parameters against benchmarks. Flag anomalies.",
+         f"Problem: {brief}\nCompare proposed parameters against benchmarks. Flag anomalies.\n\n{_bb_summary_post}",
          shared_ctx, None),
         ("dogrulama_standartlar",
          f"Problem: {brief}\nAssess compliance with industry standards. Identify certification roadblocks.",
@@ -1594,15 +1756,17 @@ def run_full_loop(brief, aktif_alanlar, max_tur):
          f"Problem: {brief}\nCost estimation, market context, supply chain assessment.",
          shared_ctx, None),
         ("capraz_dogrulama",
-         f"Problem: {brief}\nAnalyze data quality. Flag gaps and statistical anomalies.",
+         f"Problem: {brief}\nAnalyze data quality. Flag gaps and statistical anomalies.\n\n{_bb_summary_post}",
          shared_ctx, None),
     ], max_workers=6)
     soru_cevap, alt_cevap, kalib_cevap, std_cevap, \
         enteg_cevap, sim_cevap, maliyet_cevap, veri_cevap = d_sonuc
 
     # ── Sentez + Final rapor ─────────────────────────────────────
+    _bb_summary_final = bb.to_summary()
     baglam_cevap = ajan_calistir("sentez",
-        f"Problem: {brief}\nSummarize confirmed parameters and key decisions from all rounds.",
+        f"Problem: {brief}\nSummarize confirmed parameters and key decisions from all rounds.\n\n"
+        f"STRUCTURED ANALYSIS SUMMARY:\n{_bb_summary_final}",
         gecmis=shared_ctx)
 
     sentez_cevap = ajan_calistir("sentez",
@@ -1612,7 +1776,8 @@ def run_full_loop(brief, aktif_alanlar, max_tur):
         f"CALIBRATION: {kalib_cevap}\nSTANDARDS: {std_cevap}\n"
         f"INTEGRATION: {enteg_cevap}\nSIMULATION: {sim_cevap}\n"
         f"COST & MARKET: {maliyet_cevap}\nDATA: {veri_cevap}\n"
-        f"CONTEXT: {baglam_cevap}\n"
+        f"CONTEXT: {baglam_cevap}\n\n"
+        f"STRUCTURED ANALYSIS SUMMARY:\n{_bb_summary_final}\n\n"
         f"Synthesize all findings. Resolve conflicts. Produce clean summary for Final Report Writer.",
         gecmis=shared_ctx)
 
@@ -1621,6 +1786,12 @@ def run_full_loop(brief, aktif_alanlar, max_tur):
         f"\n\nKNOWLEDGE BASE CONTEXT:\n{rag_final_ctx_loop}"
         if rag_final_ctx_loop else ""
     )
+
+    # Convergence note for final report
+    _convergence_note = ""
+    if _convergence["oscillating"]:
+        _convergence_note = f"\nWARNING: Oscillating parameters detected: {', '.join(_convergence['oscillating'][:5])}"
+
     final = ajan_calistir("final_rapor",
         f"Analysis completed in {len(tur_ozeti)} round(s). Domains: {', '.join(alan_isimleri)}\n"
         f"PROBLEM: {brief}\n"
@@ -1630,7 +1801,9 @@ def run_full_loop(brief, aktif_alanlar, max_tur):
         f"CALIBRATION & BENCHMARKS: {kalib_cevap}\n"
         f"STANDARDS COMPLIANCE: {std_cevap}\n"
         f"COST & MARKET ANALYSIS: {maliyet_cevap}\n"
-        f"SYNTHESIZED FINDINGS: {sentez_cevap}"
+        f"SYNTHESIZED FINDINGS: {sentez_cevap}\n\n"
+        f"STRUCTURED ANALYSIS SUMMARY:\n{_bb_summary_final}"
+        f"{_convergence_note}"
         f"{final_rag_note_loop}\n\n"
         f"All domain agent technical findings are in the conversation history above.\n"
         f"REPORT STRUCTURE REQUIRED:\n"
@@ -2437,6 +2610,11 @@ elif st.session_state.step == "done":
             _scores = st.session_state.get("round_scores", [])
             _quality = _scores[-1].get("puan") if _scores else None
 
+            # Blackboard özeti ve parametre tablosu RAG'a kaydet
+            _bb = st.session_state.get("blackboard")
+            _bb_summary = _bb.to_summary() if _bb else ""
+            _bb_params = _bb.get_parameter_table() if _bb else ""
+
             get_rag().save(
                 brief=st.session_state.brief,
                 domains=alan_isimleri,
@@ -2449,6 +2627,8 @@ elif st.session_state.step == "done":
                 observer_full=_observer_full,
                 crossval_full=_crossval_full,
                 round_scores=_scores,
+                blackboard_summary=_bb_summary,
+                parameter_table=_bb_params,
             )
             st.session_state.rag_saved = True
 

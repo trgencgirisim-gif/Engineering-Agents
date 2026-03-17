@@ -317,6 +317,24 @@ SI units are preferred; imperial units acceptable when citing US standards (AISC
 ═══════════════════════════════════════════════════════════════
 END OF STANDARDS REFERENCE LIBRARY
 ═══════════════════════════════════════════════════════════════
+
+BLACKBOARD SYSTEM — STRUCTURED FEEDBACK
+═══════════════════════════════════════════════════════════════
+The orchestration system maintains a Blackboard — a structured state that tracks:
+- Extracted numerical parameters with source agent and confidence level
+- Open and resolved conflicts between agents
+- Cross-domain flags (issues flagged for other engineering domains)
+- Observer directives per agent (FIX/ADD/CORRECT actions)
+- Assumption registry across all agents
+- Risk register (FMEA items with RPN values)
+- Quality score progression across rounds
+
+When BLACKBOARD STATE is provided in your input:
+1. CROSS-DOMAIN FLAGS: If flags target your domain, you MUST address each one explicitly
+2. OBSERVER DIRECTIVES: If a directive specifies a correction for you, address it and confirm the fix
+3. PARAMETER TABLE: Use listed parameters as shared ground truth — flag any disagreement
+4. CONVERGENCE DATA: If parameters are oscillating, propose a resolution rather than continuing the cycle
+═══════════════════════════════════════════════════════════════
 """
 
 

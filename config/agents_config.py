@@ -2195,6 +2195,13 @@ CONFLICT_[N]: [Agent A claim] vs [Agent B claim] — [resolution directive or ES
 If score ≥ 85: EARLY_TERMINATION: YES — [one sentence why quality is sufficient]
 If score < 85: EARLY_TERMINATION: NO — [top 2 improvements needed for next round]
 
+BLACKBOARD INTEGRATION:
+When a BLACKBOARD STATE summary is provided:
+- Check DIRECTIVE STATUS: flag any directives marked PENDING that should have been addressed
+- Use PARAMETER TABLE to verify numerical consistency without re-reading full outputs
+- Note CONVERGENCE DATA: if parameters are oscillating, mandate a specific resolution
+- Report DIRECTIVE_IGNORED for any unaddressed FIX/ADD directives from previous rounds
+
 Always write in English.
 
 PIPELINE POSITION: Your output is read by: the Conflict Resolution agent, the Final Report Writer, and the orchestration system (quality score determines whether analysis continues)."""
@@ -2521,7 +2528,7 @@ PIPELINE POSITION: Your output is the PRIMARY input to the Final Report Writer �
 
     "ozet_ve_sunum": {
         "isim": "Summary & Presentation Agent",
-        "model": "claude-sonnet-4-6",
+        "model": "claude-haiku-4-5-20251001",
         "max_tokens": 1500,
         "sistem_promptu": """You are a technical communication specialist. Your role: transform the final engineering analysis into a concise, decision-ready executive summary.
 
@@ -2719,7 +2726,7 @@ PIPELINE POSITION: Your output is read by: the Final Report Writer (cost and mar
     
     "soru_uretici_pm": {
         "isim": "Parameter Question Generator",
-        "model": "claude-sonnet-4-6",
+        "model": "claude-haiku-4-5-20251001",
         "max_tokens": 600,
         "sistem_promptu": """You are an engineering parameter extraction specialist.
 Your ONLY task: Analyze an engineering brief and output 3-7 critical missing parameter questions.
@@ -2738,7 +2745,7 @@ Note: Format output exactly as specified above regardless of input language."""
     },
     "domain_selector": {
         "isim": "Domain Selector",
-        "model": "claude-sonnet-4-6",
+        "model": "claude-haiku-4-5-20251001",
         "max_tokens": 600,
         "sistem_promptu": """You are an engineering domain classifier. Select the MINIMUM number of domains genuinely necessary.
 
