@@ -49,6 +49,13 @@ for _k, (_slug, _name) in DOMAINS.items():
     _DOMAIN_NAME_TO_KEY[_slug] = _slug
 
 
+def _extract_param_value(val) -> str:
+    """Extract raw string value from a parameter entry value (dict or primitive)."""
+    if isinstance(val, dict):
+        return val.get("raw", val.get("value", str(val)))
+    return str(val)
+
+
 def _normalize_domain(raw: str) -> str:
     """Normalize a domain reference to its key (slug)."""
     raw_lower = raw.strip().lower()
@@ -107,13 +114,22 @@ class Blackboard:
         # round_history: [{"round", "score", "key_changes", "fixed_items", "new_issues"}]
         self.round_history: list[dict] = []
 
+        # ── Summary cache (invalidated on write) ───────────────
+        self._summary_cache: Optional[str] = None
+        self._summary_cache_round: int = -1
+        self._context_cache: dict[str, str] = {}  # "agent_key:round" → context text
+
     # ─────────────────────────────────────────────────────────
     # WRITE — thread-safe mutation
     # ─────────────────────────────────────────────────────────
 
     def write(self, section: str, data: Any, source_agent: str, round_num: int):
-        """Write data to a blackboard section. Thread-safe."""
+        """Write data to a blackboard section. Thread-safe. Invalidates caches."""
         with self._lock:
+            # Invalidate caches on any write
+            self._summary_cache = None
+            self._context_cache.clear()
+
             if section == "parameters":
                 self._write_parameter(data, source_agent, round_num)
             elif section == "conflicts":
@@ -287,6 +303,7 @@ class Blackboard:
     def get_context_for(self, agent_key: str, round_num: int) -> str:
         """
         Return ONLY relevant blackboard sections as formatted text.
+        Results are cached per (agent_key, round_num) until next write().
 
         Agent type → relevant sections:
         - Domain agents (_a/_b): cross_domain_flags for their domain +
@@ -298,6 +315,10 @@ class Blackboard:
         - risk_guvenilirlik: parameters + existing risks
         - celisiki_cozum: open conflicts + observer conflicts
         """
+        cache_key = f"{agent_key}:{round_num}"
+        if cache_key in self._context_cache:
+            return self._context_cache[cache_key]
+
         parts = []
 
         if agent_key.endswith("_a") or agent_key.endswith("_b"):
@@ -319,7 +340,9 @@ class Blackboard:
             parts.append(self._format_round_history())
 
         text = "\n".join(p for p in parts if p)
-        return f"BLACKBOARD STATE (Round {round_num}):\n{text}" if text else ""
+        result = f"BLACKBOARD STATE (Round {round_num}):\n{text}" if text else ""
+        self._context_cache[cache_key] = result
+        return result
 
     def _context_for_domain(self, agent_key: str, round_num: int) -> str:
         """Domain agents get: flags targeting them + observer directives + diff."""
@@ -370,7 +393,7 @@ class Blackboard:
                     latest[e.source_agent] = e
                 for agent, entry in latest.items():
                     val = entry.value
-                    raw = val["raw"] if isinstance(val, dict) else str(val)
+                    raw = _extract_param_value(val)
                     parts.append(f"  {name}: {raw} (from {agent}, R{entry.round_num})")
         else:
             parts.append("  (no parameters extracted yet)")
@@ -430,7 +453,7 @@ class Blackboard:
             for name, entries in list(self.parameters.items())[:20]:
                 latest = entries[-1]
                 val = latest.value
-                raw = val["raw"] if isinstance(val, dict) else str(val)
+                raw = _extract_param_value(val)
                 parts.append(f"  {name}: {raw}")
 
         # Existing risk items (to avoid duplication)
@@ -623,7 +646,9 @@ class Blackboard:
     # ─────────────────────────────────────────────────────────
 
     def to_summary(self) -> str:
-        """Compact text summary for synthesis and final report."""
+        """Compact text summary for synthesis and final report. Cached per round."""
+        if self._summary_cache is not None:
+            return self._summary_cache
         parts = []
 
         # ── Parameters ──────────────────────────────────────
@@ -632,7 +657,7 @@ class Blackboard:
             for name, entries in sorted(self.parameters.items()):
                 latest = entries[-1]
                 val = latest.value
-                raw = val["raw"] if isinstance(val, dict) else str(val)
+                raw = _extract_param_value(val)
                 parts.append(
                     f"  {name}: {raw} "
                     f"[{latest.source_agent}, R{latest.round_num}, {latest.confidence}]"
@@ -692,7 +717,9 @@ class Blackboard:
             for agent, d in unaddressed:
                 parts.append(f"  {agent}: {d['action']} — {d['detail'][:60]}")
 
-        return "\n".join(parts)
+        result = "\n".join(parts)
+        self._summary_cache = result
+        return result
 
     # ─────────────────────────────────────────────────────────
     # RAG METADATA
@@ -721,6 +748,6 @@ class Blackboard:
         for name, entries in sorted(self.parameters.items()):
             latest = entries[-1]
             val = latest.value
-            raw = val["raw"] if isinstance(val, dict) else str(val)
+            raw = _extract_param_value(val)
             lines.append(f"  {name}: {raw} [{latest.source_agent}]")
         return "\n".join(lines)

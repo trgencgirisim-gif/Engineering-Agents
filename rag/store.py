@@ -16,6 +16,10 @@ from typing import List, Optional
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "chroma_db")
 
+# Configurable distance threshold for semantic similarity
+# Lower = stricter matching, Higher = more results but less relevant
+DIST_THRESHOLD = float(os.environ.get("RAG_DIST_THRESHOLD", "0.65"))
+
 _EMBED_FN = None
 
 def _get_embed_fn():
@@ -261,7 +265,7 @@ class RAGStore:
         if not sonuclar["ids"][0]:
             return ""
 
-        _DIST_THRESHOLD = 0.65  # cosine distance eşiği
+        _DIST_THRESHOLD = DIST_THRESHOLD
 
         parts = []
         total_words = 0

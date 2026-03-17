@@ -156,6 +156,23 @@ _RE_KEY_FINDINGS = re.compile(
     re.IGNORECASE | re.DOTALL
 )
 
+# Component name in backward search (precompiled for parse_risk_output)
+_RE_COMPONENT_BACKWARD = re.compile(r'[-•*]\s*(.+?)(?:\n|$)')
+
+# Conflict resolution patterns (precompiled)
+_RE_RESOLUTION_BLOCK = re.compile(
+    r'(?:RESOLUTION|CONFLICT)_?\[?(\d+)\]?\s*[:\n]\s*(.+?)(?=(?:RESOLUTION|CONFLICT)_?\[?\d|\Z)',
+    re.IGNORECASE | re.DOTALL
+)
+_RE_WINNER = re.compile(
+    r'(?:(?:WINNER|BETTER SUPPORTED|RECOMMENDED)\s*[=:]\s*(.+?)(?:\n|$))',
+    re.IGNORECASE
+)
+_RE_CONSENSUS = re.compile(
+    r'(?:CONSENSUS|AGREED|CONFIRMED)\s*[:\n]\s*[-•*]?\s*(.+?)(?:\n|$)',
+    re.IGNORECASE
+)
+
 # Named parameter pattern: "parameter_name = value unit" or "parameter_name: value unit"
 _RE_NAMED_PARAM = re.compile(
     r'([A-Za-z][A-Za-z_ ]{2,30}?)\s*[=:]\s*'
@@ -478,7 +495,7 @@ def parse_risk_output(text: str) -> dict:
 
         # Look backward for component name
         before = text[max(0, m.start() - 200):m.start()]
-        comp_match = re.search(r'[-•*]\s*(.+?)(?:\n|$)', before)
+        comp_match = _RE_COMPONENT_BACKWARD.search(before)
         component = comp_match.group(1).strip()[:80] if comp_match else "Unknown"
 
         risk = {
@@ -498,7 +515,7 @@ def parse_risk_output(text: str) -> dict:
         for m in rpn_positions:
             rpn = int(m.group(1))
             before = text[max(0, m.start() - 150):m.start()]
-            comp_match = re.search(r'[-•*]\s*(.+?)(?:\n|$)', before)
+            comp_match = _RE_COMPONENT_BACKWARD.search(before)
             component = comp_match.group(1).strip()[:80] if comp_match else "Unknown"
             result["risks"].append({
                 "component": component,
@@ -534,17 +551,9 @@ def parse_conflict_resolution(text: str) -> dict:
         return result
 
     # Pattern: RESOLUTION_[N] or numbered resolution blocks
-    res_pattern = re.compile(
-        r'(?:RESOLUTION|CONFLICT)_?\[?(\d+)\]?\s*[:\n]\s*(.+?)(?=(?:RESOLUTION|CONFLICT)_?\[?\d|\Z)',
-        re.IGNORECASE | re.DOTALL
-    )
-    for m in res_pattern.finditer(text):
+    for m in _RE_RESOLUTION_BLOCK.finditer(text):
         block = m.group(2).strip()
-        # Try to find winner/recommendation
-        winner_m = re.search(
-            r'(?:(?:WINNER|BETTER SUPPORTED|RECOMMENDED)\s*[=:]\s*(.+?)(?:\n|$))',
-            block, re.IGNORECASE
-        )
+        winner_m = _RE_WINNER.search(block)
         result["resolutions"].append({
             "conflict": f"Conflict {m.group(1)}",
             "resolution": block[:300],
@@ -552,11 +561,7 @@ def parse_conflict_resolution(text: str) -> dict:
         })
 
     # Consensus items
-    cons_pattern = re.compile(
-        r'(?:CONSENSUS|AGREED|CONFIRMED)\s*[:\n]\s*[-•*]?\s*(.+?)(?:\n|$)',
-        re.IGNORECASE
-    )
-    for m in cons_pattern.finditer(text):
+    for m in _RE_CONSENSUS.finditer(text):
         result["consensus_items"].append(m.group(1).strip())
 
     return result
