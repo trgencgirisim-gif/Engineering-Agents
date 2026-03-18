@@ -2,7 +2,7 @@
 domain: guvenilirlik
 agent: guvenilirlik_a
 solver_tier: 1
-active_tools: []
+active_tools: ["reliability"]
 
 planned_tools:
   - name: reliability
@@ -10,5 +10,5 @@ planned_tools:
     tier: 1
     install: "pip install reliability"
     capability: "Weibull analysis, FMEA, MTBF, reliability prediction"
-    status: planned
-    wrapper: null
+    status: active
+    wrapper: tools/tier1/reliability_tool.py

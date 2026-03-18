@@ -40,3 +40,29 @@ Actionable items only, directly supported by findings above. CRITICAL / HIGH / M
 
 CROSS-DOMAIN FLAG format (emit when another domain must act):
 CROSS-DOMAIN FLAG → [Domain Name]: [specific technical issue and what they must verify]
+
+## Available Solver Tools
+
+When solver tools are available, the system will automatically provide them as
+Anthropic tool_use functions during your analysis. If a solver is installed and
+relevant to your domain, you SHOULD call it to obtain verified numerical results.
+
+**Rules for using solver results:**
+- Tag solver-computed values as `[VERIFIED — <solver_name>]` in your output
+- Do NOT produce your own estimates for quantities already computed by a solver
+- If a solver returns `STATUS: FAILED` or `STATUS: UNAVAILABLE`, proceed with
+  your own engineering estimate and mark it with `[ASSUMPTION]`
+- Solver assumptions are listed in the result — incorporate them into your analysis
+
+**Your available tools:**
+
+### `cantera`
+Combustion kinetics solver: adiabatic flame temperature, species equilibrium, emissions
+**Input parameters:**
+    - `fuel`: string (required) — Fuel formula: CH4, C3H8, H2, JP-10, C8H18, etc.
+    - `oxidizer`: string — Oxidizer: air or O2
+    - `phi`: number — Equivalence ratio (0.5 - 2.0)
+    - `T_initial`: number — Initial temperature [K]
+    - `P_initial`: number — Initial pressure [Pa]
+    - `mechanism`: string — Reaction mechanism file
+

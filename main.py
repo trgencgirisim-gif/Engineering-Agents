@@ -41,6 +41,13 @@ import uvicorn
 from blackboard import Blackboard
 from parser import parse_agent_output
 
+# ─── Tool Integration Layer ─────────────────────────────────
+try:
+    from core import has_tools_for_agent, run_tool_loop
+    TOOLS_OK = True
+except ImportError:
+    TOOLS_OK = False
+
 load_dotenv()
 
 # ─── Config ───────────────────────────────────────────────────
@@ -216,27 +223,121 @@ class Session:
                     })
                     return cached
 
+        # ── Tool-aware path for domain agents with available solvers ──
+        _is_domain = ajan_key in AGENTS
+        if TOOLS_OK and _is_domain and has_tools_for_agent(ajan_key):
+            try:
+                result = run_tool_loop(
+                    client_instance=self.client,
+                    agent_key=ajan_key,
+                    system_blocks=system_blocks,
+                    messages=mesajlar,
+                    model=ajan["model"],
+                    max_tokens=ajan.get("max_tokens", 2000),
+                    brief=mesaj,
+                    thinking_budget=thinking_budget,
+                )
+                cevap   = result["cevap"]
+                dusunce = result.get("dusunce", "")
+                actual_cost = result["cost"]
+                saved       = result["saved"]
+                inp   = result["inp"]
+                out   = result["out"]
+                c_cre = result["c_cre"]
+                c_rd  = result["c_rd"]
+            except Exception as e:
+                self.emit("agent_error", {"key": ajan_key, "name": ajan["isim"],
+                                          "error": f"Tool loop failed, falling back: {e}"})
+                # Fall through to standard path below
+                cevap = None
+
+            if cevap is not None:
+                # Skip the standard API call — tool loop already ran
+                with self._cost_lock:
+                    self.total_cost         += actual_cost
+                    self.total_input        += inp
+                    self.total_output       += out
+                    self.cache_write_tokens += c_cre
+                    self.cache_read_tokens  += c_rd
+                    self.cache_saved_usd    += saved
+                    self.agent_log.append({
+                        "key":     ajan_key,
+                        "name":    ajan["isim"],
+                        "model":   ajan["model"],
+                        "cost":    actual_cost,
+                        "output":  cevap[:3000],
+                        "thinking": dusunce[:2000] if dusunce else "",
+                    })
+                if cache_key:
+                    with _result_cache_lock:
+                        if len(_result_cache) >= _RESULT_CACHE_MAX:
+                            oldest = next(iter(_result_cache))
+                            del _result_cache[oldest]
+                        _result_cache[cache_key] = cevap
+                self.emit("agent_done", {
+                    "key":        ajan_key,
+                    "name":       ajan["isim"],
+                    "model":      ajan["model"],
+                    "cost":       round(actual_cost, 6),
+                    "total_cost": round(self.total_cost, 4),
+                    "cache_saved": round(self.cache_saved_usd, 4),
+                    "agent_count": len(self.agent_log),
+                })
+                return cevap
+
+        # ── C3: Streaming for sequential agents (observer, sentez, final_rapor) ──
+        _STREAM_AGENTS = {"gozlemci", "sentez", "final_rapor", "capraz_dogrulama"}
+        _use_stream = ajan_key in _STREAM_AGENTS
+
+        # ── Standard API call (no tool_use) ──────────────────────
         extra_kwargs = {}
         if thinking_budget:
             extra_kwargs["thinking"] = {"type": "enabled", "budget_tokens": thinking_budget}
 
-        for deneme in range(5):
+        if _use_stream:
+            # C3: Streaming path — emit token deltas via SSE
             try:
-                yanit = self.client.messages.create(
+                collected_text = []
+                with self.client.messages.stream(
                     model=ajan["model"],
                     max_tokens=ajan.get("max_tokens", 2000),
                     system=system_blocks,
                     messages=mesajlar,
                     **extra_kwargs,
-                )
-                break
+                ) as stream:
+                    for event in stream:
+                        if hasattr(event, 'type') and event.type == 'content_block_delta':
+                            delta = event.delta
+                            if hasattr(delta, 'text'):
+                                collected_text.append(delta.text)
+                                self.emit("agent_token", {"key": ajan_key, "token": delta.text})
+                    yanit = stream.get_final_message()
             except Exception as e:
                 err_str = str(e)
-                if "thinking" in err_str.lower() and thinking_budget:
-                    extra_kwargs = {}
-                    continue
-                elif "rate_limit" in err_str.lower() or "429" in err_str:
-                    bekleme = 60 * (deneme + 1)
+                if "stream" in err_str.lower() or "thinking" in err_str.lower():
+                    _use_stream = False  # Fall through to non-streaming below
+                else:
+                    self.emit("agent_error", {"key": ajan_key, "name": ajan["isim"], "error": err_str})
+                    raise
+
+        if not _use_stream:
+            for deneme in range(5):
+                try:
+                    yanit = self.client.messages.create(
+                        model=ajan["model"],
+                        max_tokens=ajan.get("max_tokens", 2000),
+                        system=system_blocks,
+                        messages=mesajlar,
+                        **extra_kwargs,
+                    )
+                    break
+                except Exception as e:
+                    err_str = str(e)
+                    if "thinking" in err_str.lower() and thinking_budget:
+                        extra_kwargs = {}
+                        continue
+                    elif "rate_limit" in err_str.lower() or "429" in err_str:
+                        bekleme = 60 * (deneme + 1)
                     self.emit("agent_wait", {"key": ajan_key, "name": ajan["isim"], "seconds": bekleme})
                     time.sleep(bekleme)
                 else:
@@ -534,6 +635,10 @@ class Session:
         shared_ctx = []
         bb = self.blackboard
 
+        # C1: Adaptive model selection — round 1 Sonnet, round 2+ low-scoring agents promoted to Opus
+        _adaptive_model_enabled = (self.domain_model == "sonnet")
+        _promoted_agents = set()
+
         # C2: Incremental execution — skip agents without directives
         _skip_agents = set()
 
@@ -557,6 +662,12 @@ class Session:
                         if ak not in _agents_with_directives:
                             _skip_agents.add(ak)
 
+                # C1: Adaptive — low score → promote directive agents to Opus
+                if _adaptive_model_enabled and tur_ozeti:
+                    last_score = tur_ozeti[-1].get("puan", 70)
+                    if last_score and last_score < 70:
+                        _promoted_agents.update(_agents_with_directives)
+
             # ── GRUP A: Domain ajanları paralel ─────────────
             gorev_a = []
             _gorev_keys = []
@@ -575,8 +686,24 @@ class Session:
                     gorev_a.append((ak, _msg, gecmis[ak], None))
                     _gorev_keys.append(ak)
 
-            sonuc_a = self._ajan_paralel(gorev_a, max_workers=6) if gorev_a else []
-            _sonuc_map = {k: sonuc_a[i] for i, k in enumerate(_gorev_keys) if i < len(sonuc_a)}
+            # C1: Adaptive model — run promoted agents with Opus, rest with default
+            if _promoted_agents and _adaptive_model_enabled and gorev_a:
+                _orig_model = self.domain_model
+                _promoted_gorevler = [(k, m, g, c) for k, m, g, c in gorev_a if k in _promoted_agents]
+                _normal_gorevler = [(k, m, g, c) for k, m, g, c in gorev_a if k not in _promoted_agents]
+                self.domain_model = "opus"
+                sonuc_promoted = self._ajan_paralel(_promoted_gorevler, max_workers=6) if _promoted_gorevler else []
+                self.domain_model = _orig_model
+                sonuc_normal = self._ajan_paralel(_normal_gorevler, max_workers=6) if _normal_gorevler else []
+                # Merge back in original order
+                _prom_keys = [g[0] for g in _promoted_gorevler]
+                _norm_keys = [g[0] for g in _normal_gorevler]
+                _prom_map = {k: sonuc_promoted[i] for i, k in enumerate(_prom_keys) if i < len(sonuc_promoted)}
+                _norm_map = {k: sonuc_normal[i] for i, k in enumerate(_norm_keys) if i < len(sonuc_normal)}
+                _sonuc_map = {**_prom_map, **_norm_map}
+            else:
+                sonuc_a = self._ajan_paralel(gorev_a, max_workers=6) if gorev_a else []
+                _sonuc_map = {k: sonuc_a[i] for i, k in enumerate(_gorev_keys) if i < len(sonuc_a)}
 
             for key, name in self.domains:
                 for ab in ("a", "b"):

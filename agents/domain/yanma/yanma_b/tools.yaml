@@ -2,7 +2,7 @@
 domain: yanma
 agent: yanma_b
 solver_tier: 1
-active_tools: []
+active_tools: ["cantera"]
 
 planned_tools:
   - name: cantera
@@ -10,5 +10,5 @@ planned_tools:
     tier: 1
     install: "pip install cantera"
     capability: "Combustion kinetics, adiabatic flame temperature, emissions"
-    status: planned
-    wrapper: null
+    status: active
+    wrapper: tools/tier1/cantera_tool.py

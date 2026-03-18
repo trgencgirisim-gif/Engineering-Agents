@@ -2,7 +2,7 @@
 domain: otomotiv
 agent: otomotiv_a
 solver_tier: 1
-active_tools: []
+active_tools: ["sumo"]
 
 planned_tools:
   - name: sumo
@@ -10,5 +10,5 @@ planned_tools:
     tier: 1
     install: "pip install eclipse-sumo"
     capability: "Traffic and vehicle dynamics simulation"
-    status: planned
-    wrapper: null
+    status: active
+    wrapper: tools/tier1/sumo_tool.py

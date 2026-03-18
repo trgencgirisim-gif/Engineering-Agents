@@ -2,7 +2,7 @@
 domain: aerodinamik
 agent: aerodinamik_b
 solver_tier: 1
-active_tools: []
+active_tools: ["su2", "openfoam"]
 
 planned_tools:
   - name: su2
@@ -10,13 +10,13 @@ planned_tools:
     tier: 1
     install: "pip install SU2"
     capability: "Aerodynamic CFD and shape optimization"
-    status: planned
-    wrapper: null
+    status: active
+    wrapper: tools/tier1/su2_tool.py
 
   - name: openfoam
     type: open_source
     tier: 1
     install: "apt-get install openfoam  # or Docker"
     capability: "General-purpose CFD: turbulence, combustion, multiphase"
-    status: planned
-    wrapper: null
+    status: active
+    wrapper: tools/tier1/openfoam_tool.py

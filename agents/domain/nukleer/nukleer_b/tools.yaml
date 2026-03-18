@@ -2,7 +2,7 @@
 domain: nukleer
 agent: nukleer_b
 solver_tier: 1
-active_tools: []
+active_tools: ["openmc"]
 
 planned_tools:
   - name: openmc
@@ -10,5 +10,5 @@ planned_tools:
     tier: 1
     install: "pip install openmc"
     capability: "Monte Carlo neutron transport"
-    status: planned
-    wrapper: null
+    status: active
+    wrapper: tools/tier1/openmc_tool.py

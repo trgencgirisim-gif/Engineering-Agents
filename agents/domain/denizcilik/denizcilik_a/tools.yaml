@@ -2,7 +2,7 @@
 domain: denizcilik
 agent: denizcilik_a
 solver_tier: 1
-active_tools: []
+active_tools: ["capytaine"]
 
 planned_tools:
   - name: capytaine
@@ -10,5 +10,5 @@ planned_tools:
     tier: 1
     install: "pip install capytaine"
     capability: "Marine hydrodynamics, wave forces"
-    status: planned
-    wrapper: null
+    status: active
+    wrapper: tools/tier1/capytaine_tool.py

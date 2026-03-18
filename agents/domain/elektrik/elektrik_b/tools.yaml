@@ -2,7 +2,7 @@
 domain: elektrik
 agent: elektrik_b
 solver_tier: 1
-active_tools: []
+active_tools: ["pyspice"]
 
 planned_tools:
   - name: pyspice
@@ -10,5 +10,5 @@ planned_tools:
     tier: 1
     install: "pip install PySpice"
     capability: "SPICE circuit simulation"
-    status: planned
-    wrapper: null
+    status: active
+    wrapper: tools/tier1/pyspice_tool.py

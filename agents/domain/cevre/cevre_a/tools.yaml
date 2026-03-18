@@ -2,7 +2,7 @@
 domain: cevre
 agent: cevre_a
 solver_tier: 1
-active_tools: []
+active_tools: ["brightway2"]
 
 planned_tools:
   - name: brightway2
@@ -10,5 +10,5 @@ planned_tools:
     tier: 1
     install: "pip install brightway2"
     capability: "Life cycle assessment (LCA)"
-    status: planned
-    wrapper: null
+    status: active
+    wrapper: tools/tier1/brightway2_tool.py
