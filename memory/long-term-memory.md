@@ -13,7 +13,7 @@
 - **Project:** Engineering Multi-Agent Analysis System
 - **Stack:** Python, FastAPI, Streamlit, Anthropic Claude API, ChromaDB
 - **Naming convention:** Turkish variable/function names (ajan, mesaj, gecmis, maliyet, yanit, cevap, puan)
-- **Agent count:** 78 total (56 domain + 22 support) across 28 engineering domains
+- **Agent count:** 76 total (56 domain + 20 support) across 28 engineering domains
 - **Analysis modes:** 4 (single, dual, semi-auto, full-auto)
 - **Quality threshold:** Score >= 85/100 for early termination in Mode 4
 

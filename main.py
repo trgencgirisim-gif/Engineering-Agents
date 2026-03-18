@@ -338,17 +338,20 @@ class Session:
                         continue
                     elif "rate_limit" in err_str.lower() or "429" in err_str:
                         bekleme = 60 * (deneme + 1)
-                    self.emit("agent_wait", {"key": ajan_key, "name": ajan["isim"], "seconds": bekleme})
-                    time.sleep(bekleme)
-                else:
-                    self.emit("agent_error", {"key": ajan_key, "name": ajan["isim"], "error": err_str})
-                    raise
-        else:
-            return "ERROR: Rate limit aşıldı."
+                        self.emit("agent_wait", {"key": ajan_key, "name": ajan["isim"], "seconds": bekleme})
+                        time.sleep(bekleme)
+                    else:
+                        self.emit("agent_error", {"key": ajan_key, "name": ajan["isim"], "error": err_str})
+                        raise
+            else:
+                # All 5 retries exhausted
+                self.emit("agent_error", {"key": ajan_key, "name": ajan["isim"], "error": "Rate limit aşıldı"})
+                return "ERROR: Rate limit aşıldı."
 
         # Thinking + text bloklarını ayır
         text_blocks     = [b.text     for b in yanit.content if b.type == "text"]
-        thinking_blocks = [b.thinking for b in yanit.content if b.type == "thinking"]
+        thinking_blocks = [b.thinking for b in yanit.content
+                           if hasattr(b, "thinking") and b.type == "thinking"]
         cevap   = "\n".join(text_blocks).strip()
         dusunce = "\n".join(thinking_blocks).strip() if thinking_blocks else ""
 

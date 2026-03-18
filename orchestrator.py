@@ -599,7 +599,8 @@ def ajan_calistir(ajan_key, mesaj, gecmis=None, cache_context: Optional[str] = N
         return "ERROR: Rate limit aşıldı, maksimum deneme sayısına ulaşıldı."
 
     text_blocks     = [b.text     for b in yanit.content if b.type == "text"]
-    thinking_blocks = [b.thinking for b in yanit.content if b.type == "thinking"]
+    thinking_blocks = [b.thinking for b in yanit.content
+                       if hasattr(b, "thinking") and b.type == "thinking"]
 
     cevap   = "\n".join(text_blocks).strip()
     dusunce = "\n".join(thinking_blocks).strip() if thinking_blocks else ""

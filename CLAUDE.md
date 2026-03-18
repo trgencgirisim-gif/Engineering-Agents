@@ -63,7 +63,7 @@ pip install -r requirements.txt
 ### Anthropic Prompt Caching (2-block)
 - **Block 1:** `CACHE_PREAMBLE` (~4175 tokens) — universal quality standards, shared by all agents. Cached with `{"type": "ephemeral"}`. Defined in `orchestrator.py`.
 - **Block 2:** Agent-specific `sistem_promptu` — varies per agent. Cached separately with `{"type": "ephemeral"}`.
-- This 2-block split ensures the preamble is cached once and reused across all 78 agents.
+- This 2-block split ensures the preamble is cached once and reused across all 76 agents.
 - Minimum cache thresholds: Sonnet 1024 tokens, Opus 4096 tokens.
 
 ### User Context Caching
@@ -137,7 +137,7 @@ Round 2+:
 
 | File | Purpose |
 |------|---------|
-| `config/agents_config.py` | AGENTS + DESTEK_AJANLARI dicts (all 78 agent definitions with prompts) |
+| `config/agents_config.py` | AGENTS + DESTEK_AJANLARI dicts (all 76 agent definitions with prompts) |
 | `config/domains.py` | Shared DOMAINS dict (28 engineering domains) |
 | `config/pricing.py` | Model pricing rates and cost calculation utility |
 | `orchestrator.py` | CLI mode, CACHE_PREAMBLE definition, standalone `ajan_calistir()` |
