@@ -72,11 +72,19 @@ class OpenSeesTool(BaseToolWrapper):
 
     def _description(self) -> str:
         return (
-            "Structural analysis using OpenSeesPy: pushover analysis (base shear vs "
-            "displacement capacity curve), modal/eigenvalue analysis (natural frequencies "
-            "and mode shapes), and gravity load analysis (reactions and member forces). "
-            "Provide node/element geometry, material properties (E, fy, fc), and loading. "
-            "Use for seismic evaluation, dynamic characterization, or static structural checks."
+            "WHEN TO CALL THIS TOOL:\n"
+            "Call for seismic analysis, dynamic structural response, pushover analysis, "
+            "or any structural problem involving nonlinear behavior or earthquake loading.\n\n"
+            "DO NOT CALL if:\n"
+            "- Problem is static linear — use fenics_tool instead\n"
+            "- No dynamic or seismic loading is present\n\n"
+            "REQUIRED inputs:\n"
+            "- structure_type: frame / shear_wall / bridge\n"
+            "- geometry: span lengths and section properties in SI units\n"
+            "- material: E, Fy (yield stress), rho\n"
+            "- loading: seismic_zone or ground_acceleration in g\n\n"
+            "Returns verified OpenSees results including drift ratio, base shear, "
+            "and ductility demand."
         )
 
     def is_available(self) -> bool:

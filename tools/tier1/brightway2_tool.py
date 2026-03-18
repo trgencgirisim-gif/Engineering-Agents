@@ -115,12 +115,18 @@ class Brightway2Tool(BaseToolWrapper):
 
     def _description(self) -> str:
         return (
-            "Performs Life Cycle Assessment (LCA) calculations including carbon footprint "
-            "estimation, multi-category environmental impact assessment (GWP, AP, EP, ODP, "
-            "POCP, HTP), and material comparison for eco-design. Accepts bill of materials "
-            "with masses, energy consumption, and transport data. Uses emission factor "
-            "databases aligned with IPCC AR6 and ecoinvent. Suitable for cradle-to-gate "
-            "and cradle-to-grave environmental analysis of engineering products and systems."
+            "WHEN TO CALL THIS TOOL:\n"
+            "Call whenever the analysis requires: global warming potential (GWP), "
+            "cumulative energy demand, or other life cycle impact categories.\n\n"
+            "DO NOT CALL if:\n"
+            "- No material quantities or process data is available\n"
+            "- Only qualitative sustainability discussion is needed\n\n"
+            "REQUIRED inputs:\n"
+            "- analysis_type: carbon_footprint / environmental_impact / material_comparison\n"
+            "- parameters.materials: list of {name, mass_kg}\n"
+            "- parameters.energy_kwh: energy consumption (optional)\n"
+            "- parameters.transport_tkm: transport in tonne-km (optional)\n\n"
+            "Returns verified Brightway2 LCA results from ecoinvent database."
         )
 
     def is_available(self) -> bool:

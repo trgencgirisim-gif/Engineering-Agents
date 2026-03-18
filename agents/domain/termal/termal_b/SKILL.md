@@ -53,7 +53,7 @@ Do not simply repeat Expert A's conclusions. Your value is the field reality che
 
 When solver tools are available, the system will automatically provide them as
 Anthropic tool_use functions during your analysis. If a solver is installed and
-relevant to your domain, you SHOULD call it to obtain verified numerical results.
+relevant to your domain, you MUST call it to obtain verified numerical results.
 
 **Rules for using solver results:**
 - Tag solver-computed values as `[VERIFIED — <solver_name>]` in your output
@@ -65,21 +65,188 @@ relevant to your domain, you SHOULD call it to obtain verified numerical results
 **Your available tools:**
 
 ### `fenics`
-Finite Element Method (FEM) solver: structural, thermal, fluid problems
-**Input parameters:**
-    - `problem_type`: string (required) — Type of FEM problem
-    - `geometry`: object (required) — Geometry parameters
-    - `material`: object (required) — 
-    - `loads`: object — 
-    - `mesh_resolution`: integer — 
+WHEN TO CALL THIS TOOL:
+Call whenever the analysis requires: maximum stress, deflection, safety factor, natural frequencies, or temperature distribution from a FEM calculation.
+
+DO NOT CALL if:
+- Geometry is too complex to describe with length/width/height (use ANSYS instead)
+- Only a qualitative structural assessment is needed
+
+REQUIRED inputs:
+- problem_type: beam_bending / heat_conduction / modal_analysis
+- geometry.length, geometry.width, geometry.height: meters
+- material.E: Young's modulus in Pa (e.g. steel = 210e9)
+- material.nu: Poisson's ratio (e.g. 0.3)
+- material.sigma_yield: yield strength in Pa (for safety factor)
+- loads.distributed: N/m^2 or loads.temperature: K
+
+Returns verified FEM results. Safety factor below 2.0 must be flagged CRITICAL. Estimating stress when geometry and loads are known is a quality failure.
+
+**Input Schema:**
+```json
+{
+  "type": "object",
+  "properties": {
+    "problem_type": {
+      "type": "string",
+      "enum": [
+        "beam_bending",
+        "plate_stress",
+        "heat_conduction",
+        "modal_analysis"
+      ],
+      "description": "Type of FEM problem"
+    },
+    "geometry": {
+      "type": "object",
+      "description": "Geometry parameters",
+      "properties": {
+        "length": {
+          "type": "number",
+          "description": "Length [m]"
+        },
+        "width": {
+          "type": "number",
+          "description": "Width [m]"
+        },
+        "height": {
+          "type": "number",
+          "description": "Height / thickness [m]"
+        }
+      }
+    },
+    "material": {
+      "type": "object",
+      "properties": {
+        "E": {
+          "type": "number",
+          "description": "Young's modulus [Pa]"
+        },
+        "nu": {
+          "type": "number",
+          "description": "Poisson's ratio"
+        },
+        "rho": {
+          "type": "number",
+          "description": "Density [kg/m3]"
+        },
+        "k": {
+          "type": "number",
+          "description": "Thermal conductivity [W/m-K]"
+        },
+        "sigma_yield": {
+          "type": "number",
+          "description": "Yield strength [Pa]"
+        }
+      }
+    },
+    "loads": {
+      "type": "object",
+      "properties": {
+        "distributed": {
+          "type": "number",
+          "description": "Distributed load [N/m2]"
+        },
+        "point": {
+          "type": "number",
+          "description": "Point load [N]"
+        },
+        "temperature": {
+          "type": "number",
+          "description": "Boundary temperature [K]"
+        }
+      }
+    },
+    "mesh_resolution": {
+      "type": "integer",
+      "default": 32
+    }
+  },
+  "required": [
+    "problem_type",
+    "geometry",
+    "material"
+  ]
+}
+```
 
 ### `coolprop`
-Thermodynamic property calculator: saturation, phase states, transport properties
-**Input parameters:**
-    - `fluid`: string (required) — Fluid name: Water, R134a, Air, CO2, Nitrogen, etc.
-    - `output`: string (required) — Output property: T, P, H, S, D, Q, Cp, viscosity, conductivity
-    - `input1_name`: string (required) — First input property: T, P, H, S, D, Q
-    - `input1_value`: number (required) — First input value (SI units)
-    - `input2_name`: string (required) — Second input property
-    - `input2_value`: number (required) — Second input value (SI units)
+WHEN TO CALL THIS TOOL:
+Call whenever a thermodynamic or transport property of a real fluid is needed: density, enthalpy, entropy, specific heat, viscosity, thermal conductivity, saturation temperature, or quality at a given state point.
+
+DO NOT CALL if:
+- The fluid is not a standard engineering fluid (use ideal gas relations instead)
+- Only qualitative comparison is needed
+
+REQUIRED inputs:
+- fluid: Water / R134a / Air / CO2 / Nitrogen / Hydrogen / Ammonia / etc.
+- output: T / P / H / S / D / Q / Cp / viscosity / conductivity
+- two independent state properties (e.g. P and T, or P and Q)
+
+Returns verified CoolProp REFPROP-quality fluid properties. Always prefer over ideal gas assumptions for two-phase or near-critical states.
+
+**Input Schema:**
+```json
+{
+  "type": "object",
+  "properties": {
+    "fluid": {
+      "type": "string",
+      "description": "Fluid name: Water, R134a, Air, CO2, Nitrogen, etc."
+    },
+    "output": {
+      "type": "string",
+      "description": "Output property: T, P, H, S, D, Q, Cp, viscosity, conductivity"
+    },
+    "input1_name": {
+      "type": "string",
+      "description": "First input property: T, P, H, S, D, Q"
+    },
+    "input1_value": {
+      "type": "number",
+      "description": "First input value (SI units)"
+    },
+    "input2_name": {
+      "type": "string",
+      "description": "Second input property"
+    },
+    "input2_value": {
+      "type": "number",
+      "description": "Second input value (SI units)"
+    }
+  },
+  "required": [
+    "fluid",
+    "output",
+    "input1_name",
+    "input1_value",
+    "input2_name",
+    "input2_value"
+  ]
+}
+```
+
+
+## Solver Usage Policy
+
+If a solver tool is available for this domain and the problem contains
+quantifiable parameters, you MUST attempt a tool call before writing
+any numerical values in your analysis.
+
+Writing an estimated value (e.g. "approximately 1800 C" or "roughly 250 MPa")
+when a solver could have computed it is a quality failure.
+The Observer agent will flag this and reduce the quality score.
+
+Required sequence when solver tools are available:
+1. Identify which numerical outputs the problem requires
+2. Determine if those outputs map to an available tool
+3. Extract input parameters from the brief (use defaults if not stated)
+4. Call the tool
+5. Write analysis using [VERIFIED — tool_name] for solver values
+6. Use [ASSUMPTION] only for values the solver cannot compute
+
+If the tool call fails (solver not installed, insufficient inputs):
+- State [SOLVER UNAVAILABLE] or [INSUFFICIENT INPUTS FOR SOLVER]
+- Continue with engineering estimate
+- Label every estimated numerical value with [ASSUMPTION]
 

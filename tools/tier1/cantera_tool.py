@@ -28,11 +28,19 @@ class CanteraTool(BaseToolWrapper):
 
     def _description(self) -> str:
         return (
-            "Computes real combustion properties using Cantera with the GRI3.0 mechanism: "
-            "adiabatic flame temperature, equilibrium composition, emissions (CO2, CO, NOx), "
-            "heat release, and laminar flame speed. "
-            "Supports CH4, H2, C3H8, JP-10, C8H18, C2H5OH and other fuels. "
-            "Use for any combustion, flame temperature, or emissions analysis."
+            "WHEN TO CALL THIS TOOL:\n"
+            "Call whenever the analysis requires: adiabatic flame temperature, "
+            "CO/CO2/NOx emissions, heat release rate, or laminar flame speed.\n\n"
+            "DO NOT CALL if:\n"
+            "- Question is qualitative (which fuel is better, not how hot)\n"
+            "- No fuel information is present in the brief\n\n"
+            "REQUIRED inputs:\n"
+            "- fuel: CH4 / H2 / C3H8 / JP-10 / C8H18 (default: CH4)\n"
+            "- phi: equivalence ratio (default: 1.0)\n"
+            "- T_initial: K (default: 300)\n"
+            "- P_initial: Pa (default: 101325)\n\n"
+            "Returns verified Cantera GRI3.0 results. "
+            "Estimating flame temperature when this tool is available is a quality failure."
         )
 
     def is_available(self) -> bool:

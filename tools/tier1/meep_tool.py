@@ -38,11 +38,17 @@ class MeepTool(BaseToolWrapper):
 
     def _description(self) -> str:
         return (
-            "Performs FDTD electromagnetic simulation: dielectric waveguide mode analysis "
-            "(effective index, confinement, propagation loss), 2D photonic crystal band gap "
-            "calculations (gap-midgap ratio, band edges), and antenna radiation pattern "
-            "estimation (directivity, beamwidth, radiation resistance). Use for photonics "
-            "design, optical waveguide optimization, and antenna engineering."
+            "WHEN TO CALL THIS TOOL:\n"
+            "Call whenever the analysis requires: transmission/reflection spectra, "
+            "electric field distribution, resonant frequencies, or near-field "
+            "patterns for a photonic or electromagnetic structure.\n\n"
+            "DO NOT CALL if:\n"
+            "- Problem is ray optics only — use rayoptics_tool instead\n"
+            "- Only qualitative electromagnetic discussion is needed\n\n"
+            "REQUIRED inputs:\n"
+            "- analysis_type: waveguide_analysis / photonic_crystal / antenna_pattern\n"
+            "- em_params: frequency_GHz or wavelength_um, permittivity, dimensions\n\n"
+            "Returns verified Meep FDTD electromagnetic simulation results."
         )
 
     def is_available(self) -> bool:

@@ -40,11 +40,17 @@ class OpenMCTool(BaseToolWrapper):
 
     def _description(self) -> str:
         return (
-            "Performs nuclear transport calculations: reactor criticality analysis "
-            "(k-effective, neutron spectrum, four-factor formula), radiation shielding "
-            "(attenuation through concrete/lead/steel/water), and dose rate estimation "
-            "(gamma dose at distance with buildup factors). Use for nuclear reactor design, "
-            "radiation protection, and shielding assessment."
+            "WHEN TO CALL THIS TOOL:\n"
+            "Call whenever the analysis requires: neutron multiplication factor (k-eff), "
+            "neutron flux distribution, dose rate, or material activation.\n\n"
+            "DO NOT CALL if:\n"
+            "- No geometry or material composition is specified\n"
+            "- Only qualitative nuclear physics discussion is needed\n\n"
+            "REQUIRED inputs:\n"
+            "- analysis_type: criticality / shielding / dose_rate\n"
+            "- nuclear_params: fuel_type, enrichment_pct, geometry dimensions\n"
+            "- For shielding: shield_material, shield_thickness_cm\n\n"
+            "Returns verified OpenMC Monte Carlo neutron transport results."
         )
 
     def is_available(self) -> bool:

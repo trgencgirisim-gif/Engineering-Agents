@@ -118,12 +118,18 @@ class DWSIMTool(BaseToolWrapper):
 
     def _description(self) -> str:
         return (
-            "Performs chemical process simulation: vapor-liquid equilibrium flash "
-            "calculations using Raoult's law (with optional Antoine correlation), "
-            "CSTR/PFR reactor sizing via design equations for 1st/2nd order kinetics, "
-            "and shell-and-tube heat exchanger design using the LMTD method. "
-            "Accepts temperatures, pressures, compositions, kinetic parameters, and "
-            "stream data. Use for process design, experiment planning, or equipment sizing."
+            "WHEN TO CALL THIS TOOL:\n"
+            "Call whenever the analysis requires: mass and energy balances, "
+            "separation efficiency, reactor conversion, or stream compositions "
+            "for a chemical process.\n\n"
+            "DO NOT CALL if:\n"
+            "- No process flowsheet can be described\n"
+            "- Problem is combustion-focused — use cantera_tool instead\n\n"
+            "REQUIRED inputs:\n"
+            "- analysis_type: flash_calculation / reactor_design / heat_exchanger\n"
+            "- parameters: temperature_K, pressure_Pa, compositions\n"
+            "- For reactor: rate_constant, target_conversion, feed_flow\n\n"
+            "Returns verified DWSIM process simulation results."
         )
 
     def is_available(self) -> bool:

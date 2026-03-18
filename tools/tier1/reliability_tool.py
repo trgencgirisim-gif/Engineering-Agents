@@ -54,11 +54,18 @@ class ReliabilityTool(BaseToolWrapper):
 
     def _description(self) -> str:
         return (
-            "Performs reliability engineering calculations: Weibull distribution fitting "
-            "from failure data, MTBF/MTTF computation, steady-state availability analysis, "
-            "and fault tree probability evaluation. Accepts failure rates, repair rates, "
-            "Weibull parameters (beta, eta), and raw failure time data. "
-            "Use for any reliability, maintainability, or availability analysis."
+            "WHEN TO CALL THIS TOOL:\n"
+            "Call whenever the analysis requires: MTBF, failure rate, "
+            "Weibull shape/scale parameters, reliability at a given mission time, "
+            "or B10/B50 life estimates.\n\n"
+            "DO NOT CALL if:\n"
+            "- No failure time data or failure rate data is available\n"
+            "- Only qualitative reliability discussion is needed\n\n"
+            "REQUIRED inputs:\n"
+            "- analysis_type: weibull_fit / mtbf_calculation / availability / fault_tree\n"
+            "- parameters: failure_rate or data (failure times) or beta+eta\n"
+            "- mission_time: hours (for mission reliability)\n\n"
+            "Returns verified reliability statistics using the reliability Python library."
         )
 
     def is_available(self) -> bool:

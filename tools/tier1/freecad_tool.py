@@ -98,12 +98,17 @@ class FreeCADTool(BaseToolWrapper):
 
     def _description(self) -> str:
         return (
-            "Performs CAD/CAM manufacturing analysis: machining time estimation with "
-            "Taylor tool life prediction, statistical tolerance stack-up analysis "
-            "(worst-case and RSS), and material removal rate with cutting force "
-            "estimation. Accepts cutting parameters, tool geometry, workpiece "
-            "dimensions, and tolerance chains. Use for process planning, cycle "
-            "time estimation, or design-for-manufacturing evaluation."
+            "WHEN TO CALL THIS TOOL:\n"
+            "Call whenever the analysis requires: tolerance stack-up, "
+            "machining time estimation, or material removal rate calculations.\n\n"
+            "DO NOT CALL if:\n"
+            "- Problem is analytical (beam theory) — use fenics_tool instead\n"
+            "- No manufacturing parameters are available\n\n"
+            "REQUIRED inputs:\n"
+            "- analysis_type: machining_time / tolerance_analysis / material_removal\n"
+            "- parameters: cutting_speed, feed, depth_of_cut, tool_diameter\n"
+            "- For tolerance: dimensions list with nominal_mm and tolerance_mm\n\n"
+            "Returns verified FreeCAD geometric and manufacturing analysis results."
         )
 
     def is_available(self) -> bool:

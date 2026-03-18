@@ -47,10 +47,18 @@ class CapytaineTool(BaseToolWrapper):
 
     def _description(self) -> str:
         return (
-            "Performs marine hydrodynamic analysis: wave loads on floating structures "
-            "(added mass, damping, excitation forces), ship motion RAOs in regular/irregular "
-            "seas (heave, pitch, roll), and wave resistance estimation. Uses potential flow "
-            "BEM theory. Suitable for hull design, seakeeping assessment, and offshore structure analysis."
+            "WHEN TO CALL THIS TOOL:\n"
+            "Call whenever the analysis requires: added mass, radiation damping, "
+            "wave excitation forces, or response amplitude operators (RAO) "
+            "for a floating or submerged body.\n\n"
+            "DO NOT CALL if:\n"
+            "- Vessel geometry cannot be described parametrically\n"
+            "- Only qualitative seakeeping discussion is needed\n\n"
+            "REQUIRED inputs:\n"
+            "- analysis_type: wave_loads / ship_motion / wave_resistance\n"
+            "- hull_params: length_m, beam_m, draft_m, displacement_t\n"
+            "- wave_params: wave_height_m, wave_period_s\n\n"
+            "Returns verified Capytaine BEM hydrodynamic coefficients."
         )
 
     def is_available(self) -> bool:

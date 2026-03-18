@@ -43,11 +43,18 @@ class PyBulletTool(BaseToolWrapper):
 
     def _description(self) -> str:
         return (
-            "Robotics simulation using PyBullet: forward kinematics (end-effector position "
-            "from joint angles), inverse kinematics (joint angles from target position), "
-            "and rigid-body dynamics (joint torques, inertia, energy). "
-            "Provide link masses, lengths, and joint angles/targets. "
-            "Use for robotic arm analysis, manipulator design, and motion planning."
+            "WHEN TO CALL THIS TOOL:\n"
+            "Call whenever the analysis requires: joint torques, link accelerations, "
+            "end-effector forces, or collision detection in a robotic system.\n\n"
+            "DO NOT CALL if:\n"
+            "- Robot geometry is not described (DOF, link lengths, masses)\n"
+            "- Only kinematic (position-only) analysis is needed\n\n"
+            "REQUIRED inputs:\n"
+            "- simulation_type: forward_kinematics / inverse_kinematics / dynamics\n"
+            "- robot_params.lengths: list of link lengths in meters\n"
+            "- robot_params.masses: list of link masses in kg\n"
+            "- robot_params.joints: list of joint angles in radians\n\n"
+            "Returns verified PyBullet rigid body dynamics results."
         )
 
     def is_available(self) -> bool:

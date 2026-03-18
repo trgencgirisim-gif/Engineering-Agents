@@ -45,7 +45,7 @@ CROSS-DOMAIN FLAG → [Domain Name]: [specific technical issue and what they mus
 
 When solver tools are available, the system will automatically provide them as
 Anthropic tool_use functions during your analysis. If a solver is installed and
-relevant to your domain, you SHOULD call it to obtain verified numerical results.
+relevant to your domain, you MUST call it to obtain verified numerical results.
 
 **Rules for using solver results:**
 - Tag solver-computed values as `[VERIFIED — <solver_name>]` in your output
@@ -57,10 +57,106 @@ relevant to your domain, you SHOULD call it to obtain verified numerical results
 **Your available tools:**
 
 ### `pyspice`
-Circuit analysis: DC operating point, AC frequency response, transient
-**Input parameters:**
-    - `circuit_type`: string (required) — Type of circuit to simulate
-    - `components`: object (required) — Component values
-    - `analysis_type`: string — Type of circuit analysis
-    - `frequency`: number — Signal frequency for AC analysis [Hz]
+WHEN TO CALL THIS TOOL:
+Call whenever the analysis requires: node voltages, branch currents, power dissipation, frequency response, or transient circuit behavior.
+
+DO NOT CALL if:
+- No circuit topology can be derived from the brief
+- Only qualitative electrical discussion is needed
+
+REQUIRED inputs:
+- circuit_type: voltage_divider / rc_filter / rlc_circuit
+- components: R, L, C, V values with units
+- analysis_type: dc / ac / transient
+
+Returns verified SPICE simulation results.
+
+**Input Schema:**
+```json
+{
+  "type": "object",
+  "properties": {
+    "circuit_type": {
+      "type": "string",
+      "enum": [
+        "voltage_divider",
+        "rc_filter",
+        "rlc_circuit"
+      ],
+      "description": "Type of circuit to simulate"
+    },
+    "components": {
+      "type": "object",
+      "description": "Component values",
+      "properties": {
+        "R": {
+          "type": "number",
+          "description": "Resistance [Ohm]"
+        },
+        "R1": {
+          "type": "number",
+          "description": "Resistance 1 [Ohm] (for voltage divider)"
+        },
+        "R2": {
+          "type": "number",
+          "description": "Resistance 2 [Ohm] (for voltage divider)"
+        },
+        "L": {
+          "type": "number",
+          "description": "Inductance [H]"
+        },
+        "C": {
+          "type": "number",
+          "description": "Capacitance [F]"
+        },
+        "V": {
+          "type": "number",
+          "description": "Source voltage [V]"
+        }
+      }
+    },
+    "analysis_type": {
+      "type": "string",
+      "enum": [
+        "dc",
+        "ac",
+        "transient"
+      ],
+      "description": "Type of circuit analysis"
+    },
+    "frequency": {
+      "type": "number",
+      "description": "Signal frequency for AC analysis [Hz]"
+    }
+  },
+  "required": [
+    "circuit_type",
+    "components"
+  ]
+}
+```
+
+
+## Solver Usage Policy
+
+If a solver tool is available for this domain and the problem contains
+quantifiable parameters, you MUST attempt a tool call before writing
+any numerical values in your analysis.
+
+Writing an estimated value (e.g. "approximately 1800 C" or "roughly 250 MPa")
+when a solver could have computed it is a quality failure.
+The Observer agent will flag this and reduce the quality score.
+
+Required sequence when solver tools are available:
+1. Identify which numerical outputs the problem requires
+2. Determine if those outputs map to an available tool
+3. Extract input parameters from the brief (use defaults if not stated)
+4. Call the tool
+5. Write analysis using [VERIFIED — tool_name] for solver values
+6. Use [ASSUMPTION] only for values the solver cannot compute
+
+If the tool call fails (solver not installed, insufficient inputs):
+- State [SOLVER UNAVAILABLE] or [INSUFFICIENT INPUTS FOR SOLVER]
+- Continue with engineering estimate
+- Label every estimated numerical value with [ASSUMPTION]
 

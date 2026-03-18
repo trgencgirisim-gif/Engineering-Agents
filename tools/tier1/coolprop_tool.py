@@ -32,11 +32,19 @@ class CoolPropTool(BaseToolWrapper):
 
     def _description(self) -> str:
         return (
-            "Computes real fluid thermophysical properties via CoolProp. "
-            "Supports 100+ fluids: Water, R134a, R410a, Air, CO2, Nitrogen, Hydrogen, etc. "
-            "Outputs: temperature, pressure, enthalpy, entropy, density, quality, "
-            "specific heat, dynamic viscosity, thermal conductivity. "
-            "Use for thermodynamic cycle analysis, heat exchanger design, phase change."
+            "WHEN TO CALL THIS TOOL:\n"
+            "Call whenever a thermodynamic or transport property of a real fluid is needed: "
+            "density, enthalpy, entropy, specific heat, viscosity, thermal conductivity, "
+            "saturation temperature, or quality at a given state point.\n\n"
+            "DO NOT CALL if:\n"
+            "- The fluid is not a standard engineering fluid (use ideal gas relations instead)\n"
+            "- Only qualitative comparison is needed\n\n"
+            "REQUIRED inputs:\n"
+            "- fluid: Water / R134a / Air / CO2 / Nitrogen / Hydrogen / Ammonia / etc.\n"
+            "- output: T / P / H / S / D / Q / Cp / viscosity / conductivity\n"
+            "- two independent state properties (e.g. P and T, or P and Q)\n\n"
+            "Returns verified CoolProp REFPROP-quality fluid properties. "
+            "Always prefer over ideal gas assumptions for two-phase or near-critical states."
         )
 
     def is_available(self) -> bool:

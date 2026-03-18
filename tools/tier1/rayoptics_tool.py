@@ -37,11 +37,17 @@ class RayOpticsTool(BaseToolWrapper):
 
     def _description(self) -> str:
         return (
-            "Performs optical ray tracing and analysis: thin lens imaging (magnification, "
-            "image distance, f-number), doublet lens design (chromatic aberration, Petzval sum), "
-            "and mirror systems (focal length, spherical aberration). Supports paraxial and "
-            "third-order aberration calculations. Use for optical system design, camera lens "
-            "analysis, and telescope/microscope assessments."
+            "WHEN TO CALL THIS TOOL:\n"
+            "Call whenever the analysis requires: focal length, f-number, "
+            "spot size, wavefront aberrations, or field of view for an optical system.\n\n"
+            "DO NOT CALL if:\n"
+            "- Optical system cannot be described with lens/mirror elements\n"
+            "- Only qualitative photonics discussion is needed\n\n"
+            "REQUIRED inputs:\n"
+            "- analysis_type: lens_analysis / mirror_analysis / optical_system\n"
+            "- optics_params: focal_length_mm, diameter_mm, object_distance_mm\n"
+            "- wavelength_nm for chromatic analysis\n\n"
+            "Returns verified rayoptics paraxial and third-order aberration results."
         )
 
     def is_available(self) -> bool:

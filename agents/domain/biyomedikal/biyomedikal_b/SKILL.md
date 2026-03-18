@@ -53,7 +53,7 @@ Do not simply repeat Expert A's conclusions. Your value is the field reality che
 
 When solver tools are available, the system will automatically provide them as
 Anthropic tool_use functions during your analysis. If a solver is installed and
-relevant to your domain, you SHOULD call it to obtain verified numerical results.
+relevant to your domain, you MUST call it to obtain verified numerical results.
 
 **Rules for using solver results:**
 - Tag solver-computed values as `[VERIFIED — <solver_name>]` in your output
@@ -65,14 +65,211 @@ relevant to your domain, you SHOULD call it to obtain verified numerical results
 **Your available tools:**
 
 ### `opensim`
-Musculoskeletal biomechanics: joint forces, gait analysis, muscle modeling
-**Input parameters:**
-    - `analysis_type`: string (required) — Type of musculoskeletal analysis to perform
-    - `parameters`: object — Biomechanics parameters
+WHEN TO CALL THIS TOOL:
+Call whenever the analysis requires: joint contact forces, muscle activation levels, joint moments, or gait kinematics.
+
+DO NOT CALL if:
+- Problem does not involve human or animal musculoskeletal mechanics
+- Only qualitative biomechanical discussion is needed
+
+REQUIRED inputs:
+- analysis_type: joint_analysis / gait_analysis / muscle_force
+- parameters.body_mass_kg, parameters.height_m
+- parameters.joint: hip / knee / ankle / shoulder / elbow
+- parameters.gait_speed_m_s (for gait analysis)
+
+Returns verified OpenSim musculoskeletal simulation results.
+
+**Input Schema:**
+```json
+{
+  "type": "object",
+  "properties": {
+    "analysis_type": {
+      "type": "string",
+      "enum": [
+        "joint_analysis",
+        "gait_analysis",
+        "muscle_force"
+      ],
+      "description": "Type of musculoskeletal analysis to perform"
+    },
+    "parameters": {
+      "type": "object",
+      "description": "Biomechanics parameters",
+      "properties": {
+        "body_mass_kg": {
+          "type": "number",
+          "description": "Subject body mass [kg]"
+        },
+        "height_m": {
+          "type": "number",
+          "description": "Subject height [m]"
+        },
+        "joint": {
+          "type": "string",
+          "enum": [
+            "hip",
+            "knee",
+            "ankle",
+            "shoulder",
+            "elbow"
+          ],
+          "description": "Target joint for analysis"
+        },
+        "flexion_angle_deg": {
+          "type": "number",
+          "description": "Joint flexion angle [degrees]"
+        },
+        "external_load_N": {
+          "type": "number",
+          "description": "External load applied [N]"
+        },
+        "gait_speed_m_s": {
+          "type": "number",
+          "description": "Walking speed [m/s]"
+        },
+        "muscle_name": {
+          "type": "string",
+          "description": "Target muscle (e.g. 'quadriceps', 'gastrocnemius', 'biceps')"
+        },
+        "muscle_length_ratio": {
+          "type": "number",
+          "description": "Normalised muscle fibre length (L/L_opt), default 1.0"
+        },
+        "activation_level": {
+          "type": "number",
+          "description": "Muscle activation 0..1"
+        },
+        "pennation_angle_deg": {
+          "type": "number",
+          "description": "Muscle fibre pennation angle [degrees]"
+        }
+      }
+    }
+  },
+  "required": [
+    "analysis_type"
+  ]
+}
+```
 
 ### `febio`
-Nonlinear FEM for biological tissues: hyperelastic, implant stress
-**Input parameters:**
-    - `analysis_type`: string (required) — Type of nonlinear biological FE analysis
-    - `parameters`: object — Material and geometry parameters
+WHEN TO CALL THIS TOOL:
+Call for soft tissue mechanics, bone remodeling, fluid-structure interaction in biological systems, or implant stress analysis.
+
+DO NOT CALL if:
+- Problem involves metallic structures only — use fenics_tool instead
+- No biological material properties are available
+
+REQUIRED inputs:
+- analysis_type: tissue_mechanics / implant_stress / vessel_pressure
+- parameters: C1, C2 (Mooney-Rivlin) or youngs_modulus_MPa
+- geometry: dimensions in mm
+- loading: applied_force_N or internal_pressure_mmHg
+
+Returns verified FEBio nonlinear FEM results for biological tissues.
+
+**Input Schema:**
+```json
+{
+  "type": "object",
+  "properties": {
+    "analysis_type": {
+      "type": "string",
+      "enum": [
+        "tissue_mechanics",
+        "implant_stress",
+        "vessel_pressure"
+      ],
+      "description": "Type of nonlinear biological FE analysis"
+    },
+    "parameters": {
+      "type": "object",
+      "description": "Material and geometry parameters",
+      "properties": {
+        "C1": {
+          "type": "number",
+          "description": "Mooney-Rivlin constant C1 [Pa]"
+        },
+        "C2": {
+          "type": "number",
+          "description": "Mooney-Rivlin constant C2 [Pa]"
+        },
+        "bulk_modulus_Pa": {
+          "type": "number",
+          "description": "Bulk modulus kappa for near-incompressibility [Pa]"
+        },
+        "stretch_ratio": {
+          "type": "number",
+          "description": "Applied uniaxial stretch ratio lambda"
+        },
+        "youngs_modulus_MPa": {
+          "type": "number",
+          "description": "Young's modulus for implant material [MPa]"
+        },
+        "poissons_ratio": {
+          "type": "number",
+          "description": "Poisson's ratio for implant material"
+        },
+        "implant_diameter_mm": {
+          "type": "number",
+          "description": "Implant stem/pin diameter [mm]"
+        },
+        "implant_length_mm": {
+          "type": "number",
+          "description": "Implant length [mm]"
+        },
+        "applied_force_N": {
+          "type": "number",
+          "description": "Applied load on implant [N]"
+        },
+        "inner_radius_mm": {
+          "type": "number",
+          "description": "Vessel inner radius [mm]"
+        },
+        "wall_thickness_mm": {
+          "type": "number",
+          "description": "Vessel wall thickness [mm]"
+        },
+        "internal_pressure_mmHg": {
+          "type": "number",
+          "description": "Internal blood pressure [mmHg]"
+        },
+        "external_pressure_mmHg": {
+          "type": "number",
+          "description": "External pressure [mmHg], default 0"
+        }
+      }
+    }
+  },
+  "required": [
+    "analysis_type"
+  ]
+}
+```
+
+
+## Solver Usage Policy
+
+If a solver tool is available for this domain and the problem contains
+quantifiable parameters, you MUST attempt a tool call before writing
+any numerical values in your analysis.
+
+Writing an estimated value (e.g. "approximately 1800 C" or "roughly 250 MPa")
+when a solver could have computed it is a quality failure.
+The Observer agent will flag this and reduce the quality score.
+
+Required sequence when solver tools are available:
+1. Identify which numerical outputs the problem requires
+2. Determine if those outputs map to an available tool
+3. Extract input parameters from the brief (use defaults if not stated)
+4. Call the tool
+5. Write analysis using [VERIFIED — tool_name] for solver values
+6. Use [ASSUMPTION] only for values the solver cannot compute
+
+If the tool call fails (solver not installed, insufficient inputs):
+- State [SOLVER UNAVAILABLE] or [INSUFFICIENT INPUTS FOR SOLVER]
+- Continue with engineering estimate
+- Label every estimated numerical value with [ASSUMPTION]
 

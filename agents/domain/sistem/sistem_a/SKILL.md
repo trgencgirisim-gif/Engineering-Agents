@@ -46,7 +46,7 @@ CROSS-DOMAIN FLAG → [Domain Name]: [specific technical issue and what they mus
 
 When solver tools are available, the system will automatically provide them as
 Anthropic tool_use functions during your analysis. If a solver is installed and
-relevant to your domain, you SHOULD call it to obtain verified numerical results.
+relevant to your domain, you MUST call it to obtain verified numerical results.
 
 **Rules for using solver results:**
 - Tag solver-computed values as `[VERIFIED — <solver_name>]` in your output
@@ -58,5 +58,138 @@ relevant to your domain, you SHOULD call it to obtain verified numerical results
 **Your available tools:**
 
 ### `openmodelica`
-Multi-domain physical modeling (Modelica): hydraulic, thermal, dynamic systems
+WHEN TO CALL THIS TOOL:
+Call for multi-domain dynamic system simulation: hydraulic circuits, thermal-mechanical coupling, or system-level dynamic response.
+
+DO NOT CALL if:
+- Problem is single-domain and better handled by a specialized tool
+- Only qualitative system discussion is needed
+
+REQUIRED inputs:
+- analysis_type: hydraulic_circuit / thermal_system / dynamic_system
+- parameters: pipe geometry, fluid properties, or transfer function coefficients
+- simulation_time_s: simulation duration
+
+Returns verified OpenModelica time-domain simulation results.
+
+**Input Schema:**
+```json
+{
+  "type": "object",
+  "properties": {
+    "analysis_type": {
+      "type": "string",
+      "enum": [
+        "hydraulic_circuit",
+        "thermal_system",
+        "dynamic_system"
+      ],
+      "description": "Type of multi-domain physical system analysis"
+    },
+    "parameters": {
+      "type": "object",
+      "description": "System parameters",
+      "properties": {
+        "pipe_diameter_m": {
+          "type": "number",
+          "description": "Pipe inner diameter [m]"
+        },
+        "pipe_length_m": {
+          "type": "number",
+          "description": "Pipe length [m]"
+        },
+        "flow_rate_m3_s": {
+          "type": "number",
+          "description": "Volumetric flow rate [m^3/s]"
+        },
+        "fluid_density_kg_m3": {
+          "type": "number",
+          "description": "Fluid density [kg/m^3], default 998 (water)"
+        },
+        "dynamic_viscosity_Pa_s": {
+          "type": "number",
+          "description": "Dynamic viscosity [Pa.s], default 1.003e-3 (water 20C)"
+        },
+        "pump_head_m": {
+          "type": "number",
+          "description": "Pump total head [m]"
+        },
+        "elevation_change_m": {
+          "type": "number",
+          "description": "Elevation change (positive = uphill) [m]"
+        },
+        "thermal_mass_J_K": {
+          "type": "number",
+          "description": "Lumped thermal mass m*c_p [J/K]"
+        },
+        "thermal_resistance_K_W": {
+          "type": "number",
+          "description": "Thermal resistance to ambient [K/W]"
+        },
+        "heat_input_W": {
+          "type": "number",
+          "description": "Heat source power [W]"
+        },
+        "ambient_temp_C": {
+          "type": "number",
+          "description": "Ambient temperature [C]"
+        },
+        "initial_temp_C": {
+          "type": "number",
+          "description": "Initial body temperature [C]"
+        },
+        "num_gain": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "description": "Transfer function numerator coefficients [high->low order]"
+        },
+        "den_gain": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          },
+          "description": "Transfer function denominator coefficients [high->low order]"
+        },
+        "step_amplitude": {
+          "type": "number",
+          "description": "Step input amplitude, default 1.0"
+        },
+        "simulation_time_s": {
+          "type": "number",
+          "description": "Simulation duration [s]"
+        }
+      }
+    }
+  },
+  "required": [
+    "analysis_type"
+  ]
+}
+```
+
+
+## Solver Usage Policy
+
+If a solver tool is available for this domain and the problem contains
+quantifiable parameters, you MUST attempt a tool call before writing
+any numerical values in your analysis.
+
+Writing an estimated value (e.g. "approximately 1800 C" or "roughly 250 MPa")
+when a solver could have computed it is a quality failure.
+The Observer agent will flag this and reduce the quality score.
+
+Required sequence when solver tools are available:
+1. Identify which numerical outputs the problem requires
+2. Determine if those outputs map to an available tool
+3. Extract input parameters from the brief (use defaults if not stated)
+4. Call the tool
+5. Write analysis using [VERIFIED — tool_name] for solver values
+6. Use [ASSUMPTION] only for values the solver cannot compute
+
+If the tool call fails (solver not installed, insufficient inputs):
+- State [SOLVER UNAVAILABLE] or [INSUFFICIENT INPUTS FOR SOLVER]
+- Continue with engineering estimate
+- Label every estimated numerical value with [ASSUMPTION]
 

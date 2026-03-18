@@ -62,11 +62,17 @@ class PyPSATool(BaseToolWrapper):
 
     def _description(self) -> str:
         return (
-            "Performs energy system optimization using PyPSA: optimal economic dispatch "
-            "(minimizing generation cost to meet demand), capacity expansion planning "
-            "(investment optimization for new generation), and AC/DC power flow analysis. "
-            "Supports solar, wind, gas, coal, nuclear, and hydro generators with storage. "
-            "Use for electricity grid planning, renewable integration, and generation cost studies."
+            "WHEN TO CALL THIS TOOL:\n"
+            "Call whenever the analysis requires: power flow results, optimal dispatch, "
+            "line loading percentages, or generation mix for a power network.\n\n"
+            "DO NOT CALL if:\n"
+            "- No network topology or load data is present\n"
+            "- Only qualitative energy policy discussion is needed\n\n"
+            "REQUIRED inputs:\n"
+            "- analysis_type: optimal_dispatch / capacity_expansion / power_flow\n"
+            "- generators: list with capacity_MW and marginal_cost\n"
+            "- demand_MW: total electricity demand\n\n"
+            "Returns verified PyPSA optimal power flow results."
         )
 
     def is_available(self) -> bool:

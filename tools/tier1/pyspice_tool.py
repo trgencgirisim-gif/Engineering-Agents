@@ -43,11 +43,17 @@ class PySpiceTool(BaseToolWrapper):
 
     def _description(self) -> str:
         return (
-            "Circuit simulation using PySpice/SPICE: voltage divider (output voltage, "
-            "current, power), RC low-pass/high-pass filter (cutoff frequency, gain, phase), "
-            "and series RLC circuit (resonant frequency, Q-factor, bandwidth, impedance). "
-            "Supports DC, AC, and transient analysis types. "
-            "Use for electrical/electronic circuit design and analysis."
+            "WHEN TO CALL THIS TOOL:\n"
+            "Call whenever the analysis requires: node voltages, branch currents, "
+            "power dissipation, frequency response, or transient circuit behavior.\n\n"
+            "DO NOT CALL if:\n"
+            "- No circuit topology can be derived from the brief\n"
+            "- Only qualitative electrical discussion is needed\n\n"
+            "REQUIRED inputs:\n"
+            "- circuit_type: voltage_divider / rc_filter / rlc_circuit\n"
+            "- components: R, L, C, V values with units\n"
+            "- analysis_type: dc / ac / transient\n\n"
+            "Returns verified SPICE simulation results."
         )
 
     def is_available(self) -> bool:

@@ -77,10 +77,17 @@ class MatminerTool(BaseToolWrapper):
 
     def _description(self) -> str:
         return (
-            "Material property prediction using Matminer composition-based featurizers. "
-            "Given a chemical formula, computes descriptors such as average electronegativity, "
-            "atomic radius, estimated band gap, formation energy proxy, and density estimate. "
-            "Use for rapid material screening or when composition-property relationships are needed."
+            "WHEN TO CALL THIS TOOL:\n"
+            "Call whenever the analysis requires: composition-based property "
+            "predictions (band gap, formation energy, bulk modulus) using ML models, "
+            "or when Materials Project data is insufficient.\n\n"
+            "DO NOT CALL if:\n"
+            "- materials_project_tool already returned the needed properties\n"
+            "- Only qualitative material comparison is needed\n\n"
+            "REQUIRED inputs:\n"
+            "- formula: chemical formula string (e.g. Fe2O3, TiO2, LiCoO2)\n"
+            "- properties: list of target properties (band_gap, formation_energy, density)\n\n"
+            "Returns Matminer ML-predicted material properties with uncertainty estimate."
         )
 
     def is_available(self) -> bool:

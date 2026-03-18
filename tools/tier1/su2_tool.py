@@ -45,11 +45,17 @@ class SU2Tool(BaseToolWrapper):
 
     def _description(self) -> str:
         return (
-            "Performs computational fluid dynamics analysis using SU2 or analytical "
-            "aerodynamic approximations: thin airfoil theory for lift, flat-plate skin "
-            "friction plus induced drag for drag estimation, compressibility corrections "
-            "(Prandtl-Glauert, Ackeret). Supports subsonic and supersonic regimes. "
-            "Use for airfoil aerodynamic performance, pressure distribution, and flow analysis."
+            "WHEN TO CALL THIS TOOL:\n"
+            "Call whenever the analysis requires: lift coefficient (CL), drag coefficient (CD), "
+            "pressure distribution, or shock wave location for an aerodynamic body.\n\n"
+            "DO NOT CALL if:\n"
+            "- Geometry cannot be described with standard airfoil/body parameters\n"
+            "- Only qualitative aerodynamic discussion is needed\n\n"
+            "REQUIRED inputs:\n"
+            "- analysis_type: airfoil_analysis / 3d_flow\n"
+            "- flow_params: mach, reynolds, alpha_deg\n"
+            "- geometry: airfoil_type (NACA code) or shape description\n\n"
+            "Returns verified SU2 RANS CFD aerodynamic coefficients."
         )
 
     def is_available(self) -> bool:

@@ -2,9 +2,9 @@
 core.py — Shared tool-integration layer for all entry points.
 
 Provides:
-- _ajan_api_with_tools(): Agent API call with Anthropic native tool_use
-- _ajan_api_routed(): Router that selects tool-enabled or standard path
+- run_tool_loop(): Agent API call with Anthropic native tool_use
 - get_domain_from_key(): Extract domain key from agent key
+- has_tools_for_agent(): Check tool availability for an agent
 
 This module is imported by orchestrator.py, main.py, and app.py.
 It does NOT replace the existing _api_call / ajan_calistir functions —
@@ -20,6 +20,15 @@ import anthropic
 
 from config.agents_config import AGENTS, DESTEK_AJANLARI
 from config.pricing import compute_cost
+
+# Layer 4: Tool reminder prefix — prepended to user message when tools are available
+TOOL_REMINDER_PREFIX = (
+    "BEFORE WRITING ANY NUMERICAL ANALYSIS:\n"
+    "Check — does this problem require a numerical value that an available "
+    "solver tool can compute?\n"
+    "If yes: call the tool first, then write your analysis using verified values.\n"
+    "Do not estimate what can be verified.\n\n"
+)
 
 # Lazy-imported to avoid circular imports and startup penalty
 _solver_tools = None
@@ -98,6 +107,18 @@ def run_tool_loop(
 
     domain = get_domain_from_key(agent_key)
     anthropic_tools = _solver_tools.get_anthropic_tools_for_domain(domain)
+
+    # Layer 4: Prepend tool reminder to last user message when tools are available
+    if anthropic_tools and messages:
+        messages = list(messages)  # shallow copy to avoid mutating caller's list
+        for i in range(len(messages) - 1, -1, -1):
+            if messages[i].get("role") == "user":
+                msg = dict(messages[i])
+                content = msg.get("content", "")
+                if isinstance(content, str):
+                    msg["content"] = TOOL_REMINDER_PREFIX + content
+                    messages[i] = msg
+                break
 
     totals = {"cost": 0.0, "inp": 0, "out": 0, "c_cre": 0, "c_rd": 0, "saved": 0.0}
     final_text = ""

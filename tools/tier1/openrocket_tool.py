@@ -51,11 +51,17 @@ class OpenRocketTool(BaseToolWrapper):
 
     def _description(self) -> str:
         return (
-            "Performs rocket trajectory simulation and stability analysis: apogee prediction "
-            "(with drag and gravity losses), motor performance metrics (total impulse, mass "
-            "ratio, delta-V), and static stability assessment (CP/CG locations, stability "
-            "margin). Suitable for sounding rockets, model rockets, and preliminary missile/launch "
-            "vehicle design."
+            "WHEN TO CALL THIS TOOL:\n"
+            "Call whenever the analysis requires: apogee altitude, max velocity, "
+            "max acceleration, stability margin (calibers), or flight time.\n\n"
+            "DO NOT CALL if:\n"
+            "- No rocket geometry or motor data is available\n"
+            "- Only qualitative propulsion discussion is needed\n\n"
+            "REQUIRED inputs:\n"
+            "- analysis_type: trajectory / motor_performance / stability\n"
+            "- rocket_params: mass_kg, propellant_mass_kg, diameter_m, thrust_N, burn_time_s\n"
+            "- launch_params: launch_angle_deg (optional)\n\n"
+            "Returns verified OpenRocketPy 6-DOF flight simulation results."
         )
 
     def is_available(self) -> bool:

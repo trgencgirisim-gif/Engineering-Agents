@@ -95,12 +95,17 @@ class OpenModelicaTool(BaseToolWrapper):
 
     def _description(self) -> str:
         return (
-            "Performs multi-domain physical system simulation using Modelica language: "
-            "hydraulic circuit analysis (Bernoulli, Hagen-Poiseuille, Darcy-Weisbach), "
-            "lumped-parameter thermal system transients, and dynamic system step response "
-            "from transfer functions. Accepts pipe geometry, fluid properties, thermal "
-            "masses/resistances, and transfer function coefficients. Use for hydraulic "
-            "network sizing, thermal management, or control system dynamics."
+            "WHEN TO CALL THIS TOOL:\n"
+            "Call for multi-domain dynamic system simulation: hydraulic circuits, "
+            "thermal-mechanical coupling, or system-level dynamic response.\n\n"
+            "DO NOT CALL if:\n"
+            "- Problem is single-domain and better handled by a specialized tool\n"
+            "- Only qualitative system discussion is needed\n\n"
+            "REQUIRED inputs:\n"
+            "- analysis_type: hydraulic_circuit / thermal_system / dynamic_system\n"
+            "- parameters: pipe geometry, fluid properties, or transfer function coefficients\n"
+            "- simulation_time_s: simulation duration\n\n"
+            "Returns verified OpenModelica time-domain simulation results."
         )
 
     def is_available(self) -> bool:

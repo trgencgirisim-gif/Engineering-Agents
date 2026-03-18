@@ -105,13 +105,17 @@ class SUMOTool(BaseToolWrapper):
 
     def _description(self) -> str:
         return (
-            "Performs traffic and vehicle dynamics analysis: macroscopic traffic flow "
-            "using the Greenshields model (speed-density-flow fundamental diagram), "
-            "bicycle-model vehicle lateral dynamics with understeer gradient computation, "
-            "and signalised intersection analysis using the Webster delay formula. "
-            "Accepts traffic densities, vehicle parameters, and signal timing data. "
-            "Use for traffic impact assessment, vehicle handling evaluation, or "
-            "intersection level-of-service estimation."
+            "WHEN TO CALL THIS TOOL:\n"
+            "Call whenever the analysis requires: traffic flow speed/density/capacity, "
+            "vehicle understeer gradient, or intersection delay and level-of-service.\n\n"
+            "DO NOT CALL if:\n"
+            "- No traffic or vehicle dynamics parameters are available\n"
+            "- Only qualitative transportation discussion is needed\n\n"
+            "REQUIRED inputs:\n"
+            "- analysis_type: traffic_flow / vehicle_dynamics / intersection_analysis\n"
+            "- parameters: density_veh_km, free_flow_speed, or vehicle mass/wheelbase\n"
+            "- For intersection: cycle_length_s, green_time_s, arrival_rate_veh_h\n\n"
+            "Returns verified traffic simulation results with level-of-service rating."
         )
 
     def is_available(self) -> bool:

@@ -49,11 +49,21 @@ class FenicsTool(BaseToolWrapper):
 
     def _description(self) -> str:
         return (
-            "Finite element analysis using FEniCS: beam bending (max stress, deflection, "
-            "safety factor), plate stress, heat conduction (temperature distribution), "
-            "modal analysis (natural frequencies). "
-            "Returns verified numerical results with units. "
-            "Use for structural, thermal, or dynamic problems requiring real FEM."
+            "WHEN TO CALL THIS TOOL:\n"
+            "Call whenever the analysis requires: maximum stress, deflection, safety factor, "
+            "natural frequencies, or temperature distribution from a FEM calculation.\n\n"
+            "DO NOT CALL if:\n"
+            "- Geometry is too complex to describe with length/width/height (use ANSYS instead)\n"
+            "- Only a qualitative structural assessment is needed\n\n"
+            "REQUIRED inputs:\n"
+            "- problem_type: beam_bending / heat_conduction / modal_analysis\n"
+            "- geometry.length, geometry.width, geometry.height: meters\n"
+            "- material.E: Young's modulus in Pa (e.g. steel = 210e9)\n"
+            "- material.nu: Poisson's ratio (e.g. 0.3)\n"
+            "- material.sigma_yield: yield strength in Pa (for safety factor)\n"
+            "- loads.distributed: N/m^2 or loads.temperature: K\n\n"
+            "Returns verified FEM results. Safety factor below 2.0 must be flagged CRITICAL. "
+            "Estimating stress when geometry and loads are known is a quality failure."
         )
 
     def is_available(self) -> bool:

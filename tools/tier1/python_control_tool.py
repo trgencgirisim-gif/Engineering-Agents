@@ -24,11 +24,19 @@ class PythonControlTool(BaseToolWrapper):
 
     def _description(self) -> str:
         return (
-            "Control system analysis via python-control. "
-            "Computes gain margin [dB], phase margin [deg], gain/phase crossover frequencies, "
-            "step response (overshoot %, settling time, steady-state value), and stability assessment. "
-            "Requires transfer function as numerator and denominator coefficient arrays. "
-            "Use for any PID design, stability check, or frequency-domain analysis."
+            "WHEN TO CALL THIS TOOL:\n"
+            "Call whenever the analysis requires: gain margin, phase margin, "
+            "stability assessment, step response overshoot, or settling time.\n\n"
+            "DO NOT CALL if:\n"
+            "- No transfer function can be derived from the brief\n"
+            "- Only a qualitative stability discussion is needed\n\n"
+            "REQUIRED inputs:\n"
+            "- analysis_type: stability_margins / step_response / pid_design\n"
+            "- numerator: transfer function numerator coefficients [b0, b1, ...]\n"
+            "- denominator: transfer function denominator coefficients [a0, a1, ...]\n\n"
+            "Returns verified control analysis. Phase margin below 45 deg must be flagged HIGH risk. "
+            "is_stable=False must be flagged CRITICAL. "
+            "Guessing stability without computing margins is a quality failure."
         )
 
     def is_available(self) -> bool:

@@ -116,7 +116,7 @@ SOLVER_USAGE_HEADER = "## Available Solver Tools"
 SOLVER_USAGE_PREAMBLE = """
 When solver tools are available, the system will automatically provide them as
 Anthropic tool_use functions during your analysis. If a solver is installed and
-relevant to your domain, you SHOULD call it to obtain verified numerical results.
+relevant to your domain, you MUST call it to obtain verified numerical results.
 
 **Rules for using solver results:**
 - Tag solver-computed values as `[VERIFIED — <solver_name>]` in your output
@@ -127,6 +127,191 @@ relevant to your domain, you SHOULD call it to obtain verified numerical results
 
 **Your available tools:**
 """
+
+# ---------------------------------------------------------------------------
+# Layer 2: Solver obligation block (appended to all domain SKILL.md files)
+# ---------------------------------------------------------------------------
+SOLVER_OBLIGATION_BLOCK = """
+## Solver Usage Policy
+
+If a solver tool is available for this domain and the problem contains
+quantifiable parameters, you MUST attempt a tool call before writing
+any numerical values in your analysis.
+
+Writing an estimated value (e.g. "approximately 1800 C" or "roughly 250 MPa")
+when a solver could have computed it is a quality failure.
+The Observer agent will flag this and reduce the quality score.
+
+Required sequence when solver tools are available:
+1. Identify which numerical outputs the problem requires
+2. Determine if those outputs map to an available tool
+3. Extract input parameters from the brief (use defaults if not stated)
+4. Call the tool
+5. Write analysis using [VERIFIED — tool_name] for solver values
+6. Use [ASSUMPTION] only for values the solver cannot compute
+
+If the tool call fails (solver not installed, insufficient inputs):
+- State [SOLVER UNAVAILABLE] or [INSUFFICIENT INPUTS FOR SOLVER]
+- Continue with engineering estimate
+- Label every estimated numerical value with [ASSUMPTION]
+"""
+
+# Domain-specific critical rules for high-impact domains
+CRITICAL_SOLVER_DOMAINS: dict[str, str] = {
+    "yapisal": """
+CRITICAL RULE for structural analysis:
+If geometry (length, width, height) and material (E, nu, sigma_yield)
+and loads (distributed or point) are all present in the brief,
+you MUST call fenics_tool. No exceptions.
+A safety factor computed without FEM when FEM was possible
+is scored as a quality failure by the Observer.
+""",
+    "yanma": """
+CRITICAL RULE for combustion analysis:
+If fuel type and any two of (phi, T_initial, P_initial) can be
+extracted from the brief, you MUST call cantera_tool.
+An estimated flame temperature when Cantera was available
+is scored as a quality failure by the Observer.
+""",
+    "kontrol": """
+CRITICAL RULE for control analysis:
+If a transfer function (numerator and denominator coefficients)
+can be derived from the brief, you MUST call python_control_tool.
+A stability assessment without computed margins is a quality failure.
+""",
+}
+
+# ---------------------------------------------------------------------------
+# Layer 3: Few-shot examples for high-impact domains
+# ---------------------------------------------------------------------------
+FEW_SHOT_EXAMPLES: dict[str, str] = {
+
+    "yanma": """
+## Tool Usage Examples
+
+### CORRECT - Tool called, verified values used
+Brief: "Natural gas burner, equivalence ratio 0.85, inlet temperature 400K,
+atmospheric pressure. Compute adiabatic flame temperature and NOx."
+
+Agent behavior:
+1. Extracts: fuel=CH4, phi=0.85, T_initial=400, P_initial=101325
+2. Calls cantera tool
+3. Receives: T_adiabatic_flame_K=1923.4, NOx_ppm=12.4, CO_mole_fraction=0.000031
+4. Writes in analysis:
+   "Adiabatic flame temperature: 1923.4 K [VERIFIED - cantera]
+   NOx emissions: 12.4 ppm [VERIFIED - cantera]
+   The lean mixture (phi=0.85) suppresses NOx formation relative to
+   stoichiometric conditions..."
+
+### INCORRECT - Do not do this
+Same brief.
+
+Agent writes:
+"Adiabatic flame temperature is approximately 1800-2000 C for natural gas..."
+WRONG. Cantera was available. This is a quality failure.
+""",
+
+    "yapisal": """
+## Tool Usage Examples
+
+### CORRECT - FEM called, safety factor verified
+Brief: "Steel cantilever beam, length 2m, width 100mm, height 80mm,
+E=210GPa, yield strength 250MPa, distributed load 5000 N/m."
+
+Agent behavior:
+1. Extracts: L=2.0, b=0.1, h=0.08, E=210e9, sigma_yield=250e6, q=5000
+2. Calls fenics tool with problem_type=beam_bending
+3. Receives: max_bending_stress_MPa=35.2, safety_factor=7.1, max_deflection_m=0.00286
+4. Writes:
+   "Maximum bending stress: 35.2 MPa [VERIFIED - fenics]
+   Safety factor: 7.1 vs yield (target >= 2.0) [VERIFIED - fenics]
+   Maximum deflection: 2.86 mm [VERIFIED - fenics]
+   The section is significantly over-designed..."
+
+### INCORRECT - Do not do this
+Same brief.
+
+Agent writes:
+"Estimated bending stress is approximately 30-40 MPa..."
+WRONG. FEM was available with complete inputs. This is a quality failure.
+""",
+
+    "kontrol": """
+## Tool Usage Examples
+
+### CORRECT - Stability margins computed
+Brief: "Second-order system with transfer function G(s) = 10/(s^2 + 3s + 2).
+Assess stability and step response."
+
+Agent behavior:
+1. Extracts: numerator=[10], denominator=[1, 3, 2]
+2. Calls python_control tool with analysis_type=stability_margins
+3. Receives: gain_margin_dB=inf, phase_margin_deg=61.3,
+             step_overshoot_pct=8.1, settling_time_2pct_s=2.7, is_stable=True
+4. Writes:
+   "Phase margin: 61.3 deg [VERIFIED - python_control] - adequate (target >= 45 deg)
+   Step overshoot: 8.1% [VERIFIED - python_control] - within spec
+   Settling time (2%): 2.7 s [VERIFIED - python_control]
+   The system is stable with comfortable margins..."
+
+### INCORRECT - Do not do this
+Same brief.
+
+Agent writes:
+"The system appears stable based on the denominator roots..."
+WRONG. Transfer function was available. Margins must be computed. Quality failure.
+""",
+
+    "malzeme": """
+## Tool Usage Examples
+
+### CORRECT - Database properties retrieved
+Brief: "Evaluate titanium dioxide (TiO2) for thermal barrier coating.
+Need density and elastic modulus."
+
+Agent behavior:
+1. Identifies: query_type=by_formula, formula=TiO2
+2. Calls materials_project tool
+3. Receives: density=3.89 g/cm^3, bulk_modulus_vrh_GPa=186.2, band_gap=3.05 eV
+4. Writes:
+   "TiO2 density: 3.89 g/cm^3 [VERIFIED - materials_project, DFT 0K]
+   Bulk modulus: 186.2 GPa [VERIFIED - materials_project]
+   Note: DFT values are for pure rutile phase at 0K.
+   Real coating properties depend on deposition method and porosity..."
+
+### INCORRECT - Do not do this
+Same brief.
+
+Agent writes:
+"TiO2 typically has a density around 3.5-4.2 g/cm^3..."
+WRONG. materials_project was available. Use the database. Quality failure.
+""",
+
+    "termodinamik": """
+## Tool Usage Examples
+
+### CORRECT - Real fluid properties retrieved
+Brief: "Steam Rankine cycle: boiler at 10 MPa and 550 C, condenser at 10 kPa.
+Compute turbine inlet enthalpy and condenser outlet state."
+
+Agent behavior:
+1. Calls coolprop for turbine inlet: fluid=Water, P=10e6 Pa, T=823.15 K -> output=H
+2. Receives: H_Water=3500.9 kJ/kg
+3. Calls coolprop for condenser outlet: fluid=Water, P=10000 Pa, Q=0 -> output=T
+4. Receives: T_Water=318.8 K (saturation temperature at 10 kPa)
+5. Writes:
+   "Turbine inlet enthalpy: 3500.9 kJ/kg [VERIFIED - coolprop]
+   Condenser saturation temperature: 318.8 K (45.6 C) [VERIFIED - coolprop]
+   Cycle thermal efficiency calculation proceeds from these verified state points..."
+
+### INCORRECT - Do not do this
+Same brief.
+
+Agent writes:
+"Steam enthalpy at 10 MPa and 550 C is approximately 3500 kJ/kg from steam tables..."
+WRONG. CoolProp was available for exact values. Quality failure.
+""",
+}
 
 
 def _build_tool_section(domain: str) -> str:
@@ -163,6 +348,17 @@ def _build_tool_section(domain: str) -> str:
             lines.append(json.dumps(schema, indent=2))
             lines.append("```")
         lines.append("")
+
+    # Append solver obligation block
+    lines.append(SOLVER_OBLIGATION_BLOCK)
+
+    # Append critical solver domain rule if applicable
+    if domain in CRITICAL_SOLVER_DOMAINS:
+        lines.append(CRITICAL_SOLVER_DOMAINS[domain])
+
+    # Append few-shot examples if applicable
+    if domain in FEW_SHOT_EXAMPLES:
+        lines.append(FEW_SHOT_EXAMPLES[domain])
 
     return "\n".join(lines)
 

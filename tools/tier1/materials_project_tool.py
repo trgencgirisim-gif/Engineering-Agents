@@ -27,11 +27,18 @@ class MaterialsProjectTool(BaseToolWrapper):
 
     def _description(self) -> str:
         return (
-            "Retrieves DFT-computed material properties from the Materials Project database. "
-            "Query by chemical formula, MP ID, or element list. "
-            "Returns: density, band gap, bulk modulus, shear modulus, energy per atom. "
-            "Requires MP_API_KEY in environment. "
-            "Use for material selection, property verification, or structural analysis inputs."
+            "WHEN TO CALL THIS TOOL:\n"
+            "Call whenever the analysis needs verified material properties: "
+            "elastic moduli, density, band gap, or formation energy for a specific material.\n\n"
+            "DO NOT CALL if:\n"
+            "- Material is an alloy or composite not in the database\n"
+            "- Only comparative material selection without exact values is needed\n"
+            "- MP_API_KEY is not set in environment\n\n"
+            "REQUIRED inputs:\n"
+            "- query_type: by_formula / by_material_id / by_elements\n"
+            "- formula: e.g. Fe, Al2O3, TiO2, SiC, Ti6Al4V (approximate)\n\n"
+            "Returns DFT-computed properties at 0K for pure material. "
+            "Always note that real alloy properties depend on processing history."
         )
 
     def is_available(self) -> bool:

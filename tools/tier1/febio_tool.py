@@ -81,12 +81,18 @@ class FEBioTool(BaseToolWrapper):
 
     def _description(self) -> str:
         return (
-            "Performs nonlinear finite element analysis for biological tissues and "
-            "medical implants: Mooney-Rivlin hyperelastic tissue mechanics, implant "
-            "stress/strain with bone-implant interface assessment, and thick-wall "
-            "vessel (Lame) pressure analysis. Accepts material constants (C1, C2), "
-            "geometry, and loading conditions. Use for biocompatibility evaluation, "
-            "implant design verification, or vascular device assessment."
+            "WHEN TO CALL THIS TOOL:\n"
+            "Call for soft tissue mechanics, bone remodeling, fluid-structure "
+            "interaction in biological systems, or implant stress analysis.\n\n"
+            "DO NOT CALL if:\n"
+            "- Problem involves metallic structures only — use fenics_tool instead\n"
+            "- No biological material properties are available\n\n"
+            "REQUIRED inputs:\n"
+            "- analysis_type: tissue_mechanics / implant_stress / vessel_pressure\n"
+            "- parameters: C1, C2 (Mooney-Rivlin) or youngs_modulus_MPa\n"
+            "- geometry: dimensions in mm\n"
+            "- loading: applied_force_N or internal_pressure_mmHg\n\n"
+            "Returns verified FEBio nonlinear FEM results for biological tissues."
         )
 
     def is_available(self) -> bool:

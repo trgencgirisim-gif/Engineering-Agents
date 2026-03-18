@@ -88,13 +88,19 @@ class OpenFOAMTool(BaseToolWrapper):
 
     def _description(self) -> str:
         return (
-            "Performs computational fluid dynamics analysis: internal pipe flow using "
-            "Darcy-Weisbach equation with Moody chart friction factor (pressure drop, "
-            "head loss, flow regime), external flow over flat plates and airfoils "
-            "(boundary layer, drag/lift coefficients), and convective heat transfer "
-            "using Nusselt number correlations (Dittus-Boelter, Churchill-Bernstein). "
-            "Supports multiple fluids with built-in property database. Suitable for "
-            "HVAC, piping, aerodynamics, and thermal management analysis."
+            "WHEN TO CALL THIS TOOL:\n"
+            "Call for internal pipe/duct flow, external bluff body flows, "
+            "or turbulent flow fields requiring velocity, pressure, and turbulence data.\n\n"
+            "DO NOT CALL if:\n"
+            "- Problem is better handled by SU2 (external aerodynamics with airfoils)\n"
+            "- Only qualitative flow discussion is needed\n\n"
+            "REQUIRED inputs:\n"
+            "- analysis_type: pipe_flow / external_flow / heat_transfer\n"
+            "- parameters.fluid: air / water / oil_sae30 / etc.\n"
+            "- parameters.velocity_mps: flow velocity in m/s\n"
+            "- parameters.diameter_m: pipe diameter or characteristic length\n\n"
+            "Returns verified OpenFOAM CFD results: pressure drop, velocity profile, "
+            "friction factor, Nusselt number."
         )
 
     def is_available(self) -> bool:

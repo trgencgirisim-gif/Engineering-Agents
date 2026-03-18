@@ -70,12 +70,18 @@ class OpenSimTool(BaseToolWrapper):
 
     def _description(self) -> str:
         return (
-            "Performs musculoskeletal biomechanics analysis using OpenSim models: "
-            "inverse dynamics for joint moment estimation, gait cycle analysis with "
-            "ground reaction force prediction, and Hill-type muscle force computation. "
-            "Accepts body mass, joint angles, external loads, gait speed, and muscle "
-            "parameters. Use for implant loading, rehabilitation assessment, or "
-            "ergonomic evaluation."
+            "WHEN TO CALL THIS TOOL:\n"
+            "Call whenever the analysis requires: joint contact forces, "
+            "muscle activation levels, joint moments, or gait kinematics.\n\n"
+            "DO NOT CALL if:\n"
+            "- Problem does not involve human or animal musculoskeletal mechanics\n"
+            "- Only qualitative biomechanical discussion is needed\n\n"
+            "REQUIRED inputs:\n"
+            "- analysis_type: joint_analysis / gait_analysis / muscle_force\n"
+            "- parameters.body_mass_kg, parameters.height_m\n"
+            "- parameters.joint: hip / knee / ankle / shoulder / elbow\n"
+            "- parameters.gait_speed_m_s (for gait analysis)\n\n"
+            "Returns verified OpenSim musculoskeletal simulation results."
         )
 
     def is_available(self) -> bool:
