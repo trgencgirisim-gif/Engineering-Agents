@@ -1,5 +1,14 @@
 # Engineering Multi-Agent Analysis System
 
+## Memory Layer
+
+**Always load at session start:**
+- Read and inline `memory/recent-memory.md` — rolling 48hr context with recent decisions, actions, and state
+- Reference `memory/long-term-memory.md` (path: `memory/long-term-memory.md`) — distilled facts, user preferences, recurring patterns. Consult when you need historical context or user preference recall.
+- Reference `memory/project-memory.md` (path: `memory/project-memory.md`) — active branches, work items, and recent changes. Consult when resuming work or checking project state.
+
+**Consolidation:** Run `python skills/consolidate-memory/consolidate.py` nightly or invoke `/consolidate-memory` to process recent conversation logs into the memory layer.
+
 ## Architecture Overview
 
 Multi-agent engineering analysis platform orchestrating 78 AI agents across 28 engineering domains.
@@ -139,6 +148,10 @@ Round 2+:
 | `rag/store.py` | RAGStore class — save/query/delete analyses with ChromaDB |
 | `report_generator.py` | Academic DOCX report generation (cover, abstract, findings, appendices) |
 | `static/index.html` | Web UI for FastAPI backend (vanilla JS, SSE client) |
+| `memory/recent-memory.md` | Rolling 48hr context — inlined at session start |
+| `memory/long-term-memory.md` | Distilled facts, preferences, patterns — referenced by path |
+| `memory/project-memory.md` | Active project state, branches, work items |
+| `skills/consolidate-memory/` | Nightly memory consolidation skill + script |
 
 ## Important Patterns
 
