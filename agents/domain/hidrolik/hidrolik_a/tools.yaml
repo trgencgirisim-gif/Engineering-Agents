@@ -2,7 +2,7 @@
 domain: hidrolik
 agent: hidrolik_a
 solver_tier: 1
-active_tools: []
+active_tools: ["openmodelica"]
 
 planned_tools:
   - name: openmodelica
@@ -10,5 +10,5 @@ planned_tools:
     tier: 1
     install: "apt install openmodelica && pip install OMPython"
     capability: "Modelica system dynamics simulation"
-    status: planned
-    wrapper: null
+    status: active
+    wrapper: tools/tier1/openmodelica_tool.py

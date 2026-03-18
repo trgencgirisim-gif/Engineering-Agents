@@ -2,7 +2,7 @@
 domain: robotik
 agent: robotik_a
 solver_tier: 1
-active_tools: []
+active_tools: ["pybullet"]
 
 planned_tools:
   - name: pybullet
@@ -10,5 +10,5 @@ planned_tools:
     tier: 1
     install: "pip install pybullet"
     capability: "Rigid body dynamics and robotics simulation"
-    status: planned
-    wrapper: null
+    status: active
+    wrapper: tools/tier1/pybullet_tool.py

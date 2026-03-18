@@ -2,7 +2,7 @@
 domain: mekanik_tasarim
 agent: mekanik_tasarim_b
 solver_tier: 1
-active_tools: []
+active_tools: ["fenics"]
 
 planned_tools:
   - name: fenics
@@ -10,5 +10,5 @@ planned_tools:
     tier: 1
     install: "conda install -c conda-forge fenics-dolfinx"
     capability: "Finite element analysis: structural, thermal, fluid"
-    status: planned
-    wrapper: null
+    status: active
+    wrapper: tools/tier1/fenics_tool.py

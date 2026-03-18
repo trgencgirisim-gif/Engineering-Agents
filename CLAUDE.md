@@ -1,12 +1,21 @@
 # Engineering Multi-Agent Analysis System
 
+## Memory Layer
+
+**Always load at session start:**
+- Read and inline `memory/recent-memory.md` — rolling 48hr context with recent decisions, actions, and state
+- Reference `memory/long-term-memory.md` (path: `memory/long-term-memory.md`) — distilled facts, user preferences, recurring patterns. Consult when you need historical context or user preference recall.
+- Reference `memory/project-memory.md` (path: `memory/project-memory.md`) — active branches, work items, and recent changes. Consult when resuming work or checking project state.
+
+**Consolidation:** Run `python skills/consolidate-memory/consolidate.py` nightly or invoke `/consolidate-memory` to process recent conversation logs into the memory layer.
+
 ## Architecture Overview
 
-Multi-agent engineering analysis platform orchestrating 78 AI agents across 28 engineering domains.
+Multi-agent engineering analysis platform orchestrating 76 AI agents across 28 engineering domains.
 
 - **3 entry points:** `orchestrator.py` (CLI), `main.py` (FastAPI backend), `app.py` (Streamlit frontend)
 - **56 domain agents:** 28 domains x 2 experts (_a = theoretical/rigorous, _b = practical/field)
-- **22 support agents:** Observer, Final Report Writer, Prompt Engineer, Cross-Validator, Conflict Resolution, etc.
+- **20 support agents:** Observer, Final Report Writer, Prompt Engineer, Cross-Validator, Conflict Resolution, etc.
 - **RAG:** ChromaDB with sentence-transformers (`all-MiniLM-L6-v2`) in `rag/store.py`
 - **Reports:** Academic-style DOCX (IEEE/ASME) via `report_generator.py`
 
@@ -54,7 +63,7 @@ pip install -r requirements.txt
 ### Anthropic Prompt Caching (2-block)
 - **Block 1:** `CACHE_PREAMBLE` (~4175 tokens) — universal quality standards, shared by all agents. Cached with `{"type": "ephemeral"}`. Defined in `orchestrator.py`.
 - **Block 2:** Agent-specific `sistem_promptu` — varies per agent. Cached separately with `{"type": "ephemeral"}`.
-- This 2-block split ensures the preamble is cached once and reused across all 78 agents.
+- This 2-block split ensures the preamble is cached once and reused across all 76 agents.
 - Minimum cache thresholds: Sonnet 1024 tokens, Opus 4096 tokens.
 
 ### User Context Caching
@@ -128,7 +137,7 @@ Round 2+:
 
 | File | Purpose |
 |------|---------|
-| `config/agents_config.py` | AGENTS + DESTEK_AJANLARI dicts (all 78 agent definitions with prompts) |
+| `config/agents_config.py` | AGENTS + DESTEK_AJANLARI dicts (all 76 agent definitions with prompts) |
 | `config/domains.py` | Shared DOMAINS dict (28 engineering domains) |
 | `config/pricing.py` | Model pricing rates and cost calculation utility |
 | `orchestrator.py` | CLI mode, CACHE_PREAMBLE definition, standalone `ajan_calistir()` |
@@ -139,6 +148,10 @@ Round 2+:
 | `rag/store.py` | RAGStore class — save/query/delete analyses with ChromaDB |
 | `report_generator.py` | Academic DOCX report generation (cover, abstract, findings, appendices) |
 | `static/index.html` | Web UI for FastAPI backend (vanilla JS, SSE client) |
+| `memory/recent-memory.md` | Rolling 48hr context — inlined at session start |
+| `memory/long-term-memory.md` | Distilled facts, preferences, patterns — referenced by path |
+| `memory/project-memory.md` | Active project state, branches, work items |
+| `skills/consolidate-memory/` | Nightly memory consolidation skill + script |
 
 ## Important Patterns
 

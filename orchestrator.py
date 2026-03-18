@@ -15,6 +15,13 @@ from rag.store import RAGStore
 from blackboard import Blackboard
 from parser import parse_agent_output
 
+# ─── Tool Integration Layer ─────────────────────────────────
+try:
+    from core import has_tools_for_agent, run_tool_loop
+    TOOLS_OK = True
+except ImportError:
+    TOOLS_OK = False
+
 rag = RAGStore()
 
 
@@ -391,6 +398,56 @@ def _api_call(ajan, system_blocks, mesajlar):
     return None
 
 
+def _api_call_stream(ajan, system_blocks, mesajlar):
+    """C3: Streaming API call — prints tokens to stdout in real-time."""
+    thinking_budget = ajan.get("thinking_budget", 0)
+    max_tokens      = ajan.get("max_tokens", 2000)
+    extra_kwargs = {}
+    if thinking_budget:
+        extra_kwargs["thinking"] = {"type": "enabled", "budget_tokens": thinking_budget}
+
+    for deneme in range(5):
+        try:
+            collected_text = []
+            collected_thinking = []
+            with client.messages.stream(
+                model=ajan["model"],
+                max_tokens=max_tokens,
+                system=system_blocks,
+                messages=mesajlar,
+                **extra_kwargs,
+            ) as stream:
+                for event in stream:
+                    if hasattr(event, 'type') and event.type == 'content_block_delta':
+                        delta = event.delta
+                        if hasattr(delta, 'text'):
+                            collected_text.append(delta.text)
+                            print(delta.text, end='', flush=True)
+                        elif hasattr(delta, 'thinking'):
+                            collected_thinking.append(delta.thinking)
+                response = stream.get_final_message()
+            print()  # newline after streaming
+            return response
+        except Exception as e:
+            err = str(e)
+            if "thinking" in err.lower() and thinking_budget:
+                extra_kwargs = {}
+                continue
+            elif "stream" in err.lower():
+                return _api_call(ajan, system_blocks, mesajlar)
+            elif "rate_limit" in err.lower() or "429" in err:
+                bekleme = 60 * (deneme + 1)
+                print(f"\n⏳ Rate limit — {bekleme}s bekleniyor (deneme {deneme+1}/5)...")
+                time.sleep(bekleme)
+            else:
+                raise e
+    return None
+
+
+# C3: Enable streaming for sequential agents (observer, sentez, final_rapor)
+_STREAM_AGENTS = {"gozlemci", "sentez", "final_rapor", "capraz_dogrulama"}
+
+
 def _maliyet_kaydet(ajan_key, ajan, yanit):
     """Token kullanımını ve maliyeti kaydet. Cache tasarrufunu da izle. Thread-safe."""
     model = ajan["model"]
@@ -487,12 +544,63 @@ def ajan_calistir(ajan_key, mesaj, gecmis=None, cache_context: Optional[str] = N
     print(f"AGENT: {ajan['isim']}")
     print(f"{'='*50}")
 
-    yanit = _api_call(ajan, system_blocks, mesajlar)
+    # ── Tool-aware path for domain agents with available solvers ──
+    _is_domain = ajan_key in AGENTS
+    if TOOLS_OK and _is_domain and has_tools_for_agent(ajan_key):
+        try:
+            result = run_tool_loop(
+                client_instance=client,
+                agent_key=ajan_key,
+                system_blocks=system_blocks,
+                messages=mesajlar,
+                model=ajan["model"],
+                max_tokens=ajan.get("max_tokens", 2000),
+                brief=mesaj,
+                thinking_budget=thinking_budget,
+            )
+            cevap   = result["cevap"]
+            dusunce = result.get("dusunce", "")
+            if dusunce:
+                print(f"[THINKING — {len(dusunce.split())} kelime]")
+            print(cevap)
+            # Record cost
+            with _MALIYET_LOCK:
+                actual_cost = result["cost"]
+                MALIYET["input_token"]    += result["inp"]
+                MALIYET["output_token"]   += result["out"]
+                MALIYET["usd"]            += actual_cost
+                MALIYET["cache_create"]   += result["c_cre"]
+                MALIYET["cache_read"]     += result["c_rd"]
+                MALIYET["cache_saved_usd"] += result["saved"]
+                if ajan_key not in MALIYET_DETAY:
+                    MALIYET_DETAY[ajan_key] = {"calls": 0, "input": 0, "output": 0, "usd": 0.0}
+                MALIYET_DETAY[ajan_key]["calls"]  += 1
+                MALIYET_DETAY[ajan_key]["input"]  += result["inp"]
+                MALIYET_DETAY[ajan_key]["output"] += result["out"]
+                MALIYET_DETAY[ajan_key]["usd"]    += actual_cost
+            print(f"\nCost:  ${actual_cost:.4f} (~{actual_cost*44:.2f} TL)")
+            # Store in cache
+            if cache_key:
+                with _result_cache_lock:
+                    if len(_result_cache) >= _RESULT_CACHE_MAX:
+                        oldest = next(iter(_result_cache))
+                        del _result_cache[oldest]
+                    _result_cache[cache_key] = cevap
+            return cevap
+        except Exception as e:
+            print(f"[TOOL LOOP FAILED] {e} — falling back to standard API call")
+
+    # ── Standard API call — C3: streaming for sequential agents ──
+    if ajan_key in _STREAM_AGENTS:
+        yanit = _api_call_stream(ajan, system_blocks, mesajlar)
+    else:
+        yanit = _api_call(ajan, system_blocks, mesajlar)
     if yanit is None:
         return "ERROR: Rate limit aşıldı, maksimum deneme sayısına ulaşıldı."
 
     text_blocks     = [b.text     for b in yanit.content if b.type == "text"]
-    thinking_blocks = [b.thinking for b in yanit.content if b.type == "thinking"]
+    thinking_blocks = [b.thinking for b in yanit.content
+                       if hasattr(b, "thinking") and b.type == "thinking"]
 
     cevap   = "\n".join(text_blocks).strip()
     dusunce = "\n".join(thinking_blocks).strip() if thinking_blocks else ""
@@ -875,6 +983,9 @@ def _feedback_loop_core(brief, guclendirilmis_brief, aktif_alanlar, max_tur, mod
     shared_ctx      = []
     bb              = Blackboard()
 
+    # C1: Adaptive model selection — round 1 Sonnet, round 2+ low-scoring agents promoted to Opus
+    _promoted_agents = set()
+
     # C2: Incremental execution — skip agents without directives
     _skip_agents = set()
     _CTX_WORD_LIMIT = 8000  # A3: Context compression threshold
@@ -908,6 +1019,12 @@ def _feedback_loop_core(brief, guclendirilmis_brief, aktif_alanlar, max_tur, mod
                     if ak not in _agents_with_directives:
                         _skip_agents.add(ak)
 
+            # C1: Adaptive — low score → promote directive agents to Opus
+            if tur_ozeti:
+                last_score = tur_ozeti[-1].get("puan", 70)
+                if last_score and last_score < 70:
+                    _promoted_agents.update(_agents_with_directives)
+
         # ── GRUP A: Domain ajanları PARALEL ────────────────────────
         print(f"\n--- GRUP A: {len(aktif_alanlar)} domain × 2 ajan paralel çalışıyor ---")
         gorev_a = []
@@ -928,8 +1045,25 @@ def _feedback_loop_core(brief, guclendirilmis_brief, aktif_alanlar, max_tur, mod
                 gorev_a.append((ak, _msg, gecmis[ak], None))
                 _gorev_keys.append(ak)
 
+        # C1: Adaptive model — temporarily override promoted agents to Opus
+        _model_overrides = {}
+        if _promoted_agents:
+            for ak in _gorev_keys:
+                if ak in _promoted_agents:
+                    ajan = AGENTS.get(ak)
+                    if ajan and "opus" not in ajan.get("model", ""):
+                        _model_overrides[ak] = ajan.get("model", "")
+                        ajan["model"] = "claude-opus-4-6"
+                        print(f"  ⬆ {ak} promoted to Opus (C1 adaptive)")
+
         sonuc_a = _ajan_paralel(gorev_a, max_workers=6) if gorev_a else []
         _sonuc_map = {k: sonuc_a[i] for i, k in enumerate(_gorev_keys) if i < len(sonuc_a)}
+
+        # C1: Restore original models
+        for ak, orig_model in _model_overrides.items():
+            ajan = AGENTS.get(ak)
+            if ajan:
+                ajan["model"] = orig_model
 
         for key, name in aktif_alanlar:
             for ab in ("a", "b"):

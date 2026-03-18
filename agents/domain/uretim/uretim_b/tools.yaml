@@ -2,7 +2,7 @@
 domain: uretim
 agent: uretim_b
 solver_tier: 1
-active_tools: []
+active_tools: ["freecad"]
 
 planned_tools:
   - name: freecad
@@ -10,5 +10,5 @@ planned_tools:
     tier: 1
     install: "conda install -c conda-forge freecad"
     capability: "Mechanical CAD and tolerance analysis"
-    status: planned
-    wrapper: null
+    status: active
+    wrapper: tools/tier1/freecad_tool.py

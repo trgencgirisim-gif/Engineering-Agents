@@ -2,7 +2,7 @@
 domain: enerji
 agent: enerji_a
 solver_tier: 1
-active_tools: []
+active_tools: ["pypsa"]
 
 planned_tools:
   - name: pypsa
@@ -10,5 +10,5 @@ planned_tools:
     tier: 1
     install: "pip install pypsa"
     capability: "Power systems analysis and optimization"
-    status: planned
-    wrapper: null
+    status: active
+    wrapper: tools/tier1/pypsa_tool.py

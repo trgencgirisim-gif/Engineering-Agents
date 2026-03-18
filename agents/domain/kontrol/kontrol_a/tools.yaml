@@ -2,7 +2,7 @@
 domain: kontrol
 agent: kontrol_a
 solver_tier: 1
-active_tools: []
+active_tools: ["python_control"]
 
 planned_tools:
   - name: python_control
@@ -10,5 +10,5 @@ planned_tools:
     tier: 1
     install: "pip install control"
     capability: "Control system analysis: stability, PID, Bode, step response"
-    status: planned
-    wrapper: null
+    status: active
+    wrapper: tools/tier1/python_control_tool.py

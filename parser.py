@@ -52,6 +52,12 @@ _RE_ASSUMPTION_INLINE = re.compile(
     re.IGNORECASE
 )
 
+# Solver-verified values: "[VERIFIED — cantera]", "[VERIFIED - fenics]"
+_RE_VERIFIED = re.compile(
+    r'\[VERIFIED\s*[—\-]+\s*(\w+)\]',
+    re.IGNORECASE
+)
+
 # Cross-validator errors: ERROR_[N]: Agent=X | Claimed=Y | Expected=Z | Impact=W
 _RE_ERROR = re.compile(
     r'ERROR_?\[?(\d+)\]?:\s*'
@@ -206,6 +212,7 @@ def parse_domain_output(text: str, agent_key: str) -> dict:
         "cross_domain_flags": [],
         "assumptions": [],
         "key_findings_raw": "",
+        "verified_by": [],
     }
 
     if not text:
@@ -266,6 +273,22 @@ def parse_domain_output(text: str, agent_key: str) -> dict:
                     "unit": unit,
                     "context": context,
                 })
+
+    # ── Solver-verified tags ──────────────────────────────
+    verified_tools = set()
+    for m in _RE_VERIFIED.finditer(text):
+        verified_tools.add(m.group(1).lower())
+    result["verified_by"] = sorted(verified_tools)
+
+    # Mark parameters near VERIFIED tags with high confidence
+    if verified_tools:
+        for param in result["parameters"]:
+            ctx = param.get("context", "")
+            for tool in verified_tools:
+                if tool in ctx.lower():
+                    param["confidence"] = "HIGH"
+                    param["verified_by"] = tool
+                    break
 
     return result
 

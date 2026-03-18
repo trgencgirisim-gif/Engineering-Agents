@@ -41,3 +41,129 @@ Actionable items only, directly supported by findings above. CRITICAL / HIGH / M
 
 CROSS-DOMAIN FLAG format (emit when another domain must act):
 CROSS-DOMAIN FLAG → [Domain Name]: [specific technical issue and what they must verify]
+
+## Available Solver Tools
+
+When solver tools are available, the system will automatically provide them as
+Anthropic tool_use functions during your analysis. If a solver is installed and
+relevant to your domain, you MUST call it to obtain verified numerical results.
+
+**Rules for using solver results:**
+- Tag solver-computed values as `[VERIFIED — <solver_name>]` in your output
+- Do NOT produce your own estimates for quantities already computed by a solver
+- If a solver returns `STATUS: FAILED` or `STATUS: UNAVAILABLE`, proceed with
+  your own engineering estimate and mark it with `[ASSUMPTION]`
+- Solver assumptions are listed in the result — incorporate them into your analysis
+
+**Your available tools:**
+
+### `openmc`
+WHEN TO CALL THIS TOOL:
+Call whenever the analysis requires: neutron multiplication factor (k-eff), neutron flux distribution, dose rate, or material activation.
+
+DO NOT CALL if:
+- No geometry or material composition is specified
+- Only qualitative nuclear physics discussion is needed
+
+REQUIRED inputs:
+- analysis_type: criticality / shielding / dose_rate
+- nuclear_params: fuel_type, enrichment_pct, geometry dimensions
+- For shielding: shield_material, shield_thickness_cm
+
+Returns verified OpenMC Monte Carlo neutron transport results.
+
+**Input Schema:**
+```json
+{
+  "type": "object",
+  "properties": {
+    "analysis_type": {
+      "type": "string",
+      "enum": [
+        "criticality",
+        "shielding",
+        "dose_rate"
+      ],
+      "description": "Type of nuclear transport analysis"
+    },
+    "nuclear_params": {
+      "type": "object",
+      "description": "Nuclear analysis parameters",
+      "properties": {
+        "fuel_type": {
+          "type": "string",
+          "description": "Fuel type: UO2, MOX, U-metal"
+        },
+        "enrichment_pct": {
+          "type": "number",
+          "description": "U-235 enrichment [%]"
+        },
+        "fuel_radius_cm": {
+          "type": "number",
+          "description": "Fuel pin radius [cm]"
+        },
+        "clad_thickness_cm": {
+          "type": "number",
+          "description": "Cladding thickness [cm]"
+        },
+        "pitch_cm": {
+          "type": "number",
+          "description": "Lattice pitch [cm]"
+        },
+        "moderator": {
+          "type": "string",
+          "description": "Moderator: water, heavy_water, graphite"
+        },
+        "shield_material": {
+          "type": "string",
+          "description": "Shielding material: concrete, lead, steel, water"
+        },
+        "shield_thickness_cm": {
+          "type": "number",
+          "description": "Shield thickness [cm]"
+        },
+        "source_activity_Bq": {
+          "type": "number",
+          "description": "Source activity [Bq]"
+        },
+        "source_energy_MeV": {
+          "type": "number",
+          "description": "Source gamma energy [MeV]"
+        },
+        "distance_m": {
+          "type": "number",
+          "description": "Distance from source [m]"
+        }
+      }
+    }
+  },
+  "required": [
+    "analysis_type"
+  ]
+}
+```
+
+
+## Solver Usage Policy
+
+If a solver tool is available for this domain and the problem contains
+quantifiable parameters, you MUST attempt a tool call before writing
+any numerical values in your analysis.
+
+Writing an estimated value (e.g. "approximately 1800 C" or "roughly 250 MPa")
+when a solver could have computed it is a quality failure.
+The Observer agent will flag this and reduce the quality score.
+
+Required sequence when solver tools are available:
+1. Identify which numerical outputs the problem requires
+2. Determine if those outputs map to an available tool
+3. Extract input parameters from the brief (use defaults if not stated)
+4. Call the tool
+5. Write analysis using [VERIFIED — tool_name] for solver values
+6. Use [ASSUMPTION] only for values the solver cannot compute
+
+If the tool call fails (solver not installed, insufficient inputs):
+- State [SOLVER UNAVAILABLE] or [INSUFFICIENT INPUTS FOR SOLVER]
+- Continue with engineering estimate
+- Label every estimated numerical value with [ASSUMPTION]
+

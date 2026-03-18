@@ -2,7 +2,7 @@
 domain: termal
 agent: termal_b
 solver_tier: 1
-active_tools: []
+active_tools: ["fenics", "coolprop"]
 
 planned_tools:
   - name: fenics
@@ -10,13 +10,13 @@ planned_tools:
     tier: 1
     install: "conda install -c conda-forge fenics-dolfinx"
     capability: "Finite element analysis: structural, thermal, fluid"
-    status: planned
-    wrapper: null
+    status: active
+    wrapper: tools/tier1/fenics_tool.py
 
   - name: coolprop
     type: open_source
     tier: 1
     install: "pip install coolprop"
     capability: "Fluid thermophysical properties for 100+ fluids"
-    status: planned
-    wrapper: null
+    status: active
+    wrapper: tools/tier1/coolprop_tool.py
