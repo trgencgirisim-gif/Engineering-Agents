@@ -5,6 +5,7 @@ import time
 import datetime
 import hashlib
 import threading
+from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional, List, Tuple, Any
 from dotenv import load_dotenv
@@ -36,19 +37,20 @@ _MALIYET_LOCK  = threading.Lock()  # thread-safe maliyet güncellemesi için
 # DOMAINS imported from config.domains
 
 # ── Local Result Cache (A6) ──────────────────────────────────
-_result_cache: dict = {}
+_result_cache: OrderedDict = OrderedDict()
 _RESULT_CACHE_MAX = 200
 _result_cache_lock = threading.Lock()
 
-def _make_cache_key(ajan_key: str, mesaj: str, gecmis_len: int) -> str:
-    raw = f"{ajan_key}:{gecmis_len}:{mesaj}"
+def _make_cache_key(ajan_key: str, mesaj: str, gecmis: list) -> str:
+    gecmis_hash = hashlib.sha256(str(gecmis).encode()).hexdigest()[:12]
+    raw = f"{ajan_key}:{gecmis_hash}:{mesaj}"
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 
 # ═════════════════════════════════════════════════════════════
 # CACHE PREAMBLE — tüm sistem promptlarına eklenir
-# Minimum eşik: Sonnet 1024 token | Opus 2048 token
-# Bu preamble ~1900 token → eşik her iki model için de geçilir
+# Minimum eşik: Sonnet 1024 token | Opus 4096 token
+# Bu preamble ~1900 token → Sonnet eşiğini geçer, Opus için preamble+sistem_promptu birlikte geçer
 # ═════════════════════════════════════════════════════════════
 CACHE_PREAMBLE = """
 ════════════════════════════════════════════════════════════════════
@@ -504,7 +506,7 @@ def ajan_calistir(ajan_key, mesaj, gecmis=None, cache_context: Optional[str] = N
     # 2-block system prompt: CACHE_PREAMBLE cached once across all agents
     if CACHE_PREAMBLE:
         system_blocks = [
-            {"type": "text", "text": CACHE_PREAMBLE, "cache_control": {"type": "ephemeral"}},
+            {"type": "text", "text": CACHE_PREAMBLE, "cache_control": {"type": "ephemeral", "ttl": "1h"}},
             {"type": "text", "text": ajan["sistem_promptu"], "cache_control": {"type": "ephemeral"}},
         ]
     else:
@@ -534,9 +536,10 @@ def ajan_calistir(ajan_key, mesaj, gecmis=None, cache_context: Optional[str] = N
     thinking_budget = ajan.get("thinking_budget", 0)
     cache_key = None
     if not thinking_budget:
-        cache_key = _make_cache_key(ajan_key, mesaj, len(gecmis))
+        cache_key = _make_cache_key(ajan_key, mesaj, gecmis)
         with _result_cache_lock:
             if cache_key in _result_cache:
+                _result_cache.move_to_end(cache_key)
                 print(f"\n[CACHE HIT] {ajan['isim']}")
                 return _result_cache[cache_key]
 
@@ -583,8 +586,7 @@ def ajan_calistir(ajan_key, mesaj, gecmis=None, cache_context: Optional[str] = N
             if cache_key:
                 with _result_cache_lock:
                     if len(_result_cache) >= _RESULT_CACHE_MAX:
-                        oldest = next(iter(_result_cache))
-                        del _result_cache[oldest]
+                        _result_cache.popitem(last=False)
                     _result_cache[cache_key] = cevap
             return cevap
         except Exception as e:
@@ -614,8 +616,7 @@ def ajan_calistir(ajan_key, mesaj, gecmis=None, cache_context: Optional[str] = N
     if cache_key:
         with _result_cache_lock:
             if len(_result_cache) >= _RESULT_CACHE_MAX:
-                oldest = next(iter(_result_cache))
-                del _result_cache[oldest]
+                _result_cache.popitem(last=False)
             _result_cache[cache_key] = cevap
 
     return cevap

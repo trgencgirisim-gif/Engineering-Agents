@@ -16,6 +16,7 @@ import queue
 from pathlib import Path
 
 import hashlib
+from collections import OrderedDict
 import anthropic
 import requests as req_lib
 from dotenv import load_dotenv
@@ -81,13 +82,14 @@ def get_kur():
 from config.pricing import compute_cost
 
 # ─── Local Result Cache ──────────────────────────────────────
-_result_cache: dict = {}       # hash → response_text
+_result_cache: OrderedDict = OrderedDict()  # hash → response_text (LRU)
 _RESULT_CACHE_MAX   = 200
 _result_cache_lock  = threading.Lock()
 
-def _make_cache_key(ajan_key: str, mesaj: str, gecmis_len: int) -> str:
+def _make_cache_key(ajan_key: str, mesaj: str, gecmis: list) -> str:
     """Deterministic hash for agent call deduplication."""
-    raw = f"{ajan_key}:{gecmis_len}:{mesaj}"
+    gecmis_hash = hashlib.sha256(str(gecmis).encode()).hexdigest()[:12]
+    raw = f"{ajan_key}:{gecmis_hash}:{mesaj}"
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 # ─── Session Yönetimi ─────────────────────────────────────────
@@ -183,7 +185,7 @@ class Session:
         # 2-block system prompt: CACHE_PREAMBLE cached once across all agents
         if CACHE_PREAMBLE:
             system_blocks = [
-                {"type": "text", "text": CACHE_PREAMBLE, "cache_control": {"type": "ephemeral"}},
+                {"type": "text", "text": CACHE_PREAMBLE, "cache_control": {"type": "ephemeral", "ttl": "1h"}},
                 {"type": "text", "text": ajan["sistem_promptu"], "cache_control": {"type": "ephemeral"}},
             ]
         else:
@@ -209,9 +211,10 @@ class Session:
         # ── Local result cache check (skip for thinking-mode agents) ──
         cache_key = None
         if not thinking_budget:
-            cache_key = _make_cache_key(ajan_key, mesaj, len(gecmis))
+            cache_key = _make_cache_key(ajan_key, mesaj, gecmis)
             with _result_cache_lock:
                 if cache_key in _result_cache:
+                    _result_cache.move_to_end(cache_key)
                     cached = _result_cache[cache_key]
                     self.emit("agent_done", {
                         "key": ajan_key, "name": ajan["isim"],
@@ -271,8 +274,7 @@ class Session:
                 if cache_key:
                     with _result_cache_lock:
                         if len(_result_cache) >= _RESULT_CACHE_MAX:
-                            oldest = next(iter(_result_cache))
-                            del _result_cache[oldest]
+                            _result_cache.popitem(last=False)
                         _result_cache[cache_key] = cevap
                 self.emit("agent_done", {
                     "key":        ajan_key,
@@ -383,9 +385,7 @@ class Session:
         if cache_key:
             with _result_cache_lock:
                 if len(_result_cache) >= _RESULT_CACHE_MAX:
-                    # Evict oldest entry
-                    oldest = next(iter(_result_cache))
-                    del _result_cache[oldest]
+                    _result_cache.popitem(last=False)  # LRU eviction
                 _result_cache[cache_key] = cevap
 
         self.emit("agent_done", {
