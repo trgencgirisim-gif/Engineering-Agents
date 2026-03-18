@@ -1,31 +1,85 @@
 #!/usr/bin/env python3
 """
-Append solver tool usage instructions to SKILL.md system prompts.
+scripts/update_skill_prompts.py
+Reads all domain-agent SKILL.md files, looks up available tools from the
+registry's DOMAIN_TOOLS mapping, and appends (or replaces) an
+"## Available Solver Tools" section listing each tool's name, description,
+and full input schema.
 
-For each domain agent SKILL.md, reads the agent's domain, looks up available tools
-from the registry, and appends a '## Available Solver Tools' section with
-tool names, descriptions, and input schemas.
-
-Idempotent: removes any existing '## Available Solver Tools' section before appending.
+Idempotent: any existing "## Available Solver Tools" section is stripped
+before the new one is appended.
 
 Usage:
     python scripts/update_skill_prompts.py
 """
+from __future__ import annotations
 
-import os
-import sys
-import re
-import json
 import glob
+import importlib
+import inspect
+import json
+import os
+import re
+import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from tools.registry import DOMAIN_TOOLS, _REGISTRY
+from tools.base import BaseToolWrapper  # noqa: E402
+from tools.registry import DOMAIN_TOOLS  # noqa: E402
+
+# ---------------------------------------------------------------------------
+# Lazy tool-wrapper instantiation (does not require libraries to be installed)
+# ---------------------------------------------------------------------------
+_TOOL_INSTANCES: dict[str, BaseToolWrapper] = {}
+_SCAN_DONE = False
 
 
-# Tool descriptions (short) — fallback if wrapper not loaded
-TOOL_DESCRIPTIONS = {
+def _scan_all_tools() -> None:
+    """Import all *_tool.py modules under tools/ to discover wrapper classes."""
+    global _SCAN_DONE
+    if _SCAN_DONE:
+        return
+
+    tools_dir = os.path.join(ROOT, "tools")
+    for tier_name in sorted(os.listdir(tools_dir)):
+        tier_path = os.path.join(tools_dir, tier_name)
+        if not os.path.isdir(tier_path) or tier_name.startswith("__"):
+            continue
+        for fname in sorted(os.listdir(tier_path)):
+            if not fname.endswith("_tool.py"):
+                continue
+            module_name = f"tools.{tier_name}.{fname[:-3]}"
+            try:
+                mod = importlib.import_module(module_name)
+            except Exception:
+                continue
+            for attr_name in dir(mod):
+                obj = getattr(mod, attr_name)
+                if (
+                    inspect.isclass(obj)
+                    and issubclass(obj, BaseToolWrapper)
+                    and obj is not BaseToolWrapper
+                    and hasattr(obj, "name")
+                    and isinstance(getattr(obj, "name", None), str)
+                ):
+                    try:
+                        instance = obj()
+                        _TOOL_INSTANCES[instance.name] = instance
+                    except Exception:
+                        pass
+    _SCAN_DONE = True
+
+
+def _get_tool(name: str) -> BaseToolWrapper | None:
+    _scan_all_tools()
+    return _TOOL_INSTANCES.get(name)
+
+
+# ---------------------------------------------------------------------------
+# Fallback descriptions for tools whose wrappers haven't been written yet
+# ---------------------------------------------------------------------------
+FALLBACK_DESCRIPTIONS: dict[str, str] = {
     "cantera":           "Combustion kinetics solver: adiabatic flame temperature, species equilibrium, emissions",
     "coolprop":          "Thermodynamic property calculator: saturation, phase states, transport properties",
     "fenics":            "Finite Element Method (FEM) solver: structural, thermal, fluid problems",
@@ -54,6 +108,9 @@ TOOL_DESCRIPTIONS = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Section builder
+# ---------------------------------------------------------------------------
 SOLVER_USAGE_HEADER = "## Available Solver Tools"
 
 SOLVER_USAGE_PREAMBLE = """
@@ -72,8 +129,8 @@ relevant to your domain, you SHOULD call it to obtain verified numerical results
 """
 
 
-def build_tool_section(domain: str) -> str:
-    """Build the tool usage section for a given domain."""
+def _build_tool_section(domain: str) -> str:
+    """Build the '## Available Solver Tools' section for *domain*."""
     tool_names = DOMAIN_TOOLS.get(domain, [])
     if not tool_names:
         return ""
@@ -81,79 +138,100 @@ def build_tool_section(domain: str) -> str:
     lines = [SOLVER_USAGE_HEADER, SOLVER_USAGE_PREAMBLE]
 
     for name in tool_names:
-        desc = TOOL_DESCRIPTIONS.get(name, "Solver tool")
+        wrapper = _get_tool(name)
 
-        # Try to get INPUT_SCHEMA from registered wrapper
-        wrapper = _REGISTRY.get(name)
-        schema_text = ""
-        if wrapper and hasattr(wrapper, "INPUT_SCHEMA") and wrapper.INPUT_SCHEMA:
-            props = wrapper.INPUT_SCHEMA.get("properties", {})
-            required = wrapper.INPUT_SCHEMA.get("required", [])
-            if props:
-                schema_lines = []
-                for prop_name, prop_def in list(props.items())[:8]:
-                    prop_type = prop_def.get("type", "any")
-                    prop_desc = prop_def.get("description", "")
-                    req_mark = " (required)" if prop_name in required else ""
-                    schema_lines.append(f"    - `{prop_name}`: {prop_type}{req_mark} — {prop_desc}")
-                schema_text = "\n".join(schema_lines)
+        # Description: prefer wrapper._description(), fall back to dict
+        if wrapper and hasattr(wrapper, "_description"):
+            try:
+                desc = wrapper._description()
+            except Exception:
+                desc = FALLBACK_DESCRIPTIONS.get(name, "Solver tool")
+        else:
+            desc = FALLBACK_DESCRIPTIONS.get(name, "Solver tool")
+
+        # Schema: prefer wrapper.INPUT_SCHEMA, else show nothing
+        schema = {}
+        if wrapper and hasattr(wrapper, "INPUT_SCHEMA"):
+            schema = getattr(wrapper, "INPUT_SCHEMA", {})
 
         lines.append(f"### `{name}`")
-        lines.append(f"{desc}")
-        if schema_text:
-            lines.append(f"**Input parameters:**")
-            lines.append(schema_text)
+        lines.append(desc)
+        if schema:
+            lines.append("")
+            lines.append("**Input Schema:**")
+            lines.append("```json")
+            lines.append(json.dumps(schema, indent=2))
+            lines.append("```")
         lines.append("")
 
     return "\n".join(lines)
 
 
-def update_skill_md(filepath: str) -> bool:
-    """Update a single SKILL.md with tool instructions. Returns True if modified."""
-    with open(filepath, "r") as f:
+# ---------------------------------------------------------------------------
+# SKILL.md mutation
+# ---------------------------------------------------------------------------
+def _update_skill_md(filepath: str) -> bool:
+    """Update a single SKILL.md. Returns True if file was modified."""
+    with open(filepath, "r", encoding="utf-8") as f:
         content = f.read()
 
-    # Extract domain from frontmatter
-    domain_match = re.search(r'^domain:\s*"?(\w+)"?', content, re.MULTILINE)
-    if not domain_match:
+    # Extract domain from YAML frontmatter
+    m = re.search(r'^domain:\s*"?(\w+)"?', content, re.MULTILINE)
+    if not m:
         return False
-    domain = domain_match.group(1)
+    domain = m.group(1)
 
-    # Check if domain has tools
     tool_names = DOMAIN_TOOLS.get(domain, [])
     if not tool_names:
+        # No tools — strip old section if present, leave file otherwise
+        cleaned = re.sub(
+            rf"\n*{re.escape(SOLVER_USAGE_HEADER)}.*", "", content, flags=re.DOTALL
+        ).rstrip()
+        if cleaned != content.rstrip():
+            with open(filepath, "w", encoding="utf-8") as f:
+                f.write(cleaned + "\n")
+            return True
         return False
 
-    # Remove existing tool section (idempotent)
-    pattern = rf'\n*{re.escape(SOLVER_USAGE_HEADER)}.*'
-    content = re.sub(pattern, '', content, flags=re.DOTALL).rstrip()
+    # Strip existing section (idempotent)
+    cleaned = re.sub(
+        rf"\n*{re.escape(SOLVER_USAGE_HEADER)}.*", "", content, flags=re.DOTALL
+    ).rstrip()
 
-    # Build and append new section
-    tool_section = build_tool_section(domain)
-    if tool_section:
-        content = content + "\n\n" + tool_section + "\n"
+    section = _build_tool_section(domain)
+    new_content = cleaned + "\n\n" + section + "\n"
 
-    with open(filepath, "w") as f:
-        f.write(content)
+    if new_content.rstrip() == content.rstrip():
+        return False
+
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.write(new_content)
     return True
 
 
-def main():
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+def main() -> None:
     pattern = os.path.join(ROOT, "agents", "domain", "**", "SKILL.md")
-    files = glob.glob(pattern, recursive=True)
+    files = sorted(glob.glob(pattern, recursive=True))
+
+    if not files:
+        print("No SKILL.md files found under agents/domain/.")
+        sys.exit(1)
 
     updated = 0
     skipped = 0
-    for filepath in sorted(files):
+    for filepath in files:
         rel = os.path.relpath(filepath, ROOT)
-        if update_skill_md(filepath):
-            print(f"  UPDATED: {rel}")
+        if _update_skill_md(filepath):
+            print(f"  UPDATED  {rel}")
             updated += 1
         else:
-            print(f"  SKIPPED: {rel} (no tools for domain)")
+            print(f"  SKIPPED  {rel}")
             skipped += 1
 
-    print(f"\nTotal: {updated} updated, {skipped} skipped out of {len(files)}")
+    print(f"\nDone. Updated: {updated}, Skipped: {skipped}, Total: {len(files)}")
 
 
 if __name__ == "__main__":
