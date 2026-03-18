@@ -42,6 +42,11 @@ class RAGStore:
             metadata={"hnsw:space": "cosine"}
         )
 
+    @classmethod
+    def preload_embedding(cls):
+        """Preload embedding model at startup to avoid first-query delay."""
+        _get_embed_fn()
+
     # ─────────────────────────────────────────────────────────
     # KAYDET — zengin metadata ile
     # ─────────────────────────────────────────────────────────

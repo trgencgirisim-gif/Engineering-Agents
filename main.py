@@ -61,6 +61,16 @@ app = FastAPI(title="Engineering AI")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
+
+@app.on_event("startup")
+async def _preload_rag():
+    """Preload RAG embedding model at startup to avoid first-query delay."""
+    try:
+        from rag.store import RAGStore
+        RAGStore.preload_embedding()
+    except Exception:
+        pass  # RAG is optional
+
 # ─── Domain Listesi (shared module) ──────────────────────────
 from config.domains import DOMAINS
 
@@ -1068,17 +1078,25 @@ async def confirm_domains(req: ConfirmDomainsRequest):
     name_to_key = {v[1]: v[0] for v in DOMAINS.values()}
 
     new_domains = []
+    skipped = []
     for d in req.domains:
-        k = d.get("key") or name_to_key.get(d.get("name",""))
-        n = d.get("name") or domain_map.get(d.get("key",""))
+        k = d.get("key") or name_to_key.get(d.get("name", ""))
+        n = d.get("name") or domain_map.get(d.get("key", ""))
         if k and n:
             new_domains.append((k, n))
+        else:
+            skipped.append(d.get("key") or d.get("name") or str(d))
 
-    if new_domains:
-        sess.domains = new_domains
+    if not new_domains:
+        raise HTTPException(400, f"No valid domains resolved. Skipped: {skipped}")
 
+    sess.domains = new_domains
     sess.domain_event.set()
-    return {"ok": True, "domains": [{"key": k, "name": n} for k, n in sess.domains]}
+
+    resp = {"ok": True, "domains": [{"key": k, "name": n} for k, n in sess.domains]}
+    if skipped:
+        resp["warnings"] = [f"Unrecognized domain skipped: {s}" for s in skipped]
+    return resp
 
 
 # ── QA Cevapla ────────────────────────────────────────────────
@@ -1155,6 +1173,26 @@ async def kb_stats():
         return rag.istatistik()
     except Exception:
         return {"toplam": 0, "analizler": []}
+
+
+# ── KB Clear All ──────────────────────────────────────────────
+@app.delete("/api/kb/clear")
+async def kb_clear():
+    rag = get_rag()
+    if not rag:
+        raise HTTPException(503, "RAG not available")
+    rag.clear()
+    return {"ok": True, "message": "Knowledge base cleared"}
+
+
+# ── KB Delete Single ─────────────────────────────────────────
+@app.delete("/api/kb/{doc_id}")
+async def kb_delete(doc_id: str):
+    rag = get_rag()
+    if not rag:
+        raise HTTPException(503, "RAG not available")
+    rag.delete(doc_id)
+    return {"ok": True, "message": f"Deleted {doc_id}"}
 
 
 # ── Döviz Kuru ────────────────────────────────────────────────

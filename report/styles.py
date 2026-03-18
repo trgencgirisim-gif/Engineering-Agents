@@ -384,9 +384,19 @@ def _to_prose_sentences(text: str, max_sentences: int = 5) -> str:
 
     prose = " ".join(l for l in lines if l).strip()
     prose = re.sub(r'\s{2,}', ' ', prose)
+
+    # Protect common abbreviations from sentence splitting
+    _ABBREVS = ["e.g.", "i.e.", "vs.", "etc.", "Dr.", "Mr.", "Ms.",
+                "Prof.", "Fig.", "Eq.", "No.", "Vol.", "approx.",
+                "min.", "max.", "avg.", "ref.", "incl."]
+    for a in _ABBREVS:
+        prose = prose.replace(a, a.replace(".", "\x00"))
+
     sentences = re.split(r'(?<=[.!?])\s+', prose)
+    sentences = [s.replace("\x00", ".") for s in sentences if len(s.split()) >= 3]
+
     result = " ".join(sentences[:max_sentences])
-    if result and not result[-1] in ".!?":
+    if result and result[-1] not in ".!?":
         result += "."
     return result
 

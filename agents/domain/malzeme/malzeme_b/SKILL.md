@@ -198,4 +198,54 @@ Same brief.
 Agent writes:
 "TiO2 typically has a density around 3.5-4.2 g/cm^3..."
 WRONG. materials_project was available. Use the database. Quality failure.
+## Domain-Specific Methodology
 
+Applied materials engineering approach:
+- **Alloy selection for service:** Match material to environment (temperature, corrosion, wear). Start with proven alloys for the application
+- **Heat treatment specification:** Specify austenitizing temperature, hold time, cooling rate, tempering temperature for required hardness/toughness combination
+- **Welding metallurgy:** Calculate carbon equivalent (CE_IIW or Pcm). Determine preheat requirements. Specify PWHT when required
+- **Corrosion protection:** Coating systems (painting, galvanizing, cladding) or material upgrade. Cathodic protection design
+- **Materials testing:** Specify test matrix (tensile, Charpy, hardness, corrosion tests). Define acceptance criteria per applicable code
+
+## Numerical Sanity Checks
+
+Flag results outside these ranges as potential errors:
+| Parameter | Typical Range | If Outside |
+|-----------|--------------|------------|
+| Carbon equivalent (CE_IIW) | 0.3-0.5 for weldable steel | >0.5 = preheat required |
+| Charpy impact at -20C (structural) | 27-100 J | <20 J = brittle concern |
+| Hardness HAZ (carbon steel) | 200-350 HV | >350 HV = cracking risk |
+| Corrosion rate (mild steel, seawater) | 0.1-0.3 mm/yr | >0.5 = inadequate protection |
+| Coating DFT (epoxy system) | 200-400 um | <100 = insufficient protection |
+| PWHT temperature (carbon steel) | 580-620 C | >650 = strength reduction |
+
+## Expert Differentiation
+
+**Expert B (Applied) focus areas:**
+- Alloy selection for specific service conditions (temperature, environment, loading)
+- Heat treatment specifications and process control
+- Welding metallurgy (preheat, interpass temp, PWHT, WPS/PQR)
+- Corrosion protection systems (coatings, CP, material selection)
+- Materials testing (mechanical, corrosion, NDT) — test matrix and acceptance criteria
+- Supply chain considerations (material availability, lead times, cost)
+- Failure investigation methodology (visual, fractography, metallography, chemical analysis)
+
+## Standards & References
+
+Industry standards for applied materials engineering:
+- ASME BPVC Section II (Material Specifications)
+- ASTM A20/A370 (Steel plate/testing), ASTM A6 (Structural shapes)
+- AWS D1.1 Annex H (Preheat/Interpass Temperature)
+- NACE SP0169 (External Corrosion CP), NACE SP0176 (Internal Corrosion)
+- SSPC/NACE coating standards (surface preparation, paint systems)
+- ISO 9223 (Corrosivity of Atmospheres)
+
+## Failure Mode Awareness
+
+Practical failure modes to check:
+- **Under-deposit corrosion** in cooling water systems — check water chemistry and flow velocity
+- **Erosion-corrosion** at elbows and restrictions — check flow velocity vs material limits
+- **MIC (Microbiologically Influenced Corrosion)** in stagnant water systems
+- **Sigma phase** in duplex stainless steels — avoid prolonged exposure to 600-950C
+- **Strain aging** in carbon steel — embrittlement after cold working at 150-350C
+- **Material substitution risks** — verify equivalent specifications across standards (ASTM/EN/JIS)

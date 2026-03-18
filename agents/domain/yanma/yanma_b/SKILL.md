@@ -173,4 +173,54 @@ Same brief.
 Agent writes:
 "Adiabatic flame temperature is approximately 1800-2000 C for natural gas..."
 WRONG. Cantera was available. This is a quality failure.
+## Domain-Specific Methodology
 
+Practical combustion engineering approach:
+- **Burner selection:** Match burner type to application — premixed for low-NOx, diffusion for stability, staged for ultra-low-NOx
+- **Flame stability:** Calculate blowoff velocity (V_blowoff), flashback margin, turndown ratio. Use flame stability diagrams
+- **Emissions compliance:** Determine applicable regulation (EPA, CARB, EU IED, ICAO) first, then design to meet limits with margin
+- **Heat transfer:** Calculate radiative/convective split. For furnaces: use Hottel zone method or Monte Carlo
+- **Efficiency:** Apply ASME PTC 4 methodology for boiler efficiency (direct/indirect method)
+
+## Numerical Sanity Checks
+
+Flag results outside these ranges as potential errors:
+| Parameter | Typical Range | If Outside |
+|-----------|--------------|------------|
+| Boiler efficiency (gas) | 80-95% | >98% = check losses |
+| Excess air (gas burners) | 10-20% | <5% = CO risk, >30% = inefficient |
+| NOx (gas turbine DLN) | 9-25 ppm @15% O2 | <5 ppm = verify measurement |
+| Flame temperature (industrial) | 1500-2200 K | >2500K = check radiation |
+| Turndown ratio | 3:1 to 10:1 | >20:1 = verify burner capability |
+| Stack temperature | 120-200 C | >300C = heat recovery opportunity |
+
+## Expert Differentiation
+
+**Expert B (Applied) focus areas:**
+- Burner design, selection, and commissioning
+- Flame stability margins and operational envelope
+- Emissions compliance (EPA, CARB, ICAO regulations)
+- Industrial combustion systems (boilers, furnaces, gas turbines)
+- Heat recovery and thermal efficiency optimization
+- Flameholder geometry and recirculation zone design
+- Practical flame monitoring and safety systems (UV/IR detectors, BMS)
+
+## Standards & References
+
+Industry standards for applied combustion:
+- NFPA 85 (Boiler and Combustion Systems Hazards Code)
+- NFPA 86 (Standard for Ovens and Furnaces)
+- API 556 (Instrumentation, Control, and Protective Systems for Fired Heaters)
+- ASME PTC 4 (Fired Steam Generators — performance test)
+- EPA AP-42 (Emission Factors), 40 CFR 60/63
+- ICAO Annex 16 Vol II (Aircraft engine emissions)
+
+## Failure Mode Awareness
+
+Practical failure modes to check:
+- **Flashback risk** increases with hydrogen content >15% in fuel blend
+- **Flame impingement** on tubes reduces life dramatically — check flame length vs chamber geometry
+- **Low-NOx burners** may have higher CO at very low loads — check turndown performance
+- **Fuel composition changes** (LNG vs pipeline gas) can cause detuning of premixed burners
+- **Refractory damage** from flame impingement — check flame geometry at all loads
+- **BMS (Burner Management System)** timing sequences critical for safety — verify purge times

@@ -167,4 +167,59 @@ Same brief.
 Agent writes:
 "Adiabatic flame temperature is approximately 1800-2000 C for natural gas..."
 WRONG. Cantera was available. This is a quality failure.
+## Domain-Specific Methodology
 
+Decision tree for combustion analysis approach:
+- **Premixed vs diffusion flames:** Damkohler number Da > 1 implies well-stirred reactor regime; Da < 1 implies flamelet regime
+- **Mechanism selection:**
+  - GRI-Mech 3.0: CH4/natural gas, T < 2500K, P < 10 atm
+  - San Diego mechanism: H2, syngas, high-pressure applications (>10 atm)
+  - JetSurF 2.0: kerosene/Jet-A surrogates, jet engine applications
+  - USC Mech II: C1-C4 hydrocarbon species, broader range
+- **Kinetics vs equilibrium:** If T > 1800K and lean conditions, detailed NOx kinetics required (thermal Zeldovich + prompt + N2O pathways). Equilibrium assumption acceptable for rich premixed below 1500K
+- **Combustion regime:** Classify using Borghi diagram (Re_t vs Da): wrinkled flames, corrugated flames, thin reaction zones, broken reaction zones
+- **Turbulence-chemistry interaction:** For turbulent flames, specify PDF/flamelet/EDC model and justify
+
+## Numerical Sanity Checks
+
+Flag results outside these ranges as potential errors:
+| Parameter | Typical Range | If Outside |
+|-----------|--------------|------------|
+| CH4/air phi=1.0 T_ad | 2220-2240 K | >2400K = mechanism error |
+| CH4/air phi=1.0 S_L | 36-40 cm/s | >60 cm/s = check mechanism |
+| H2/air phi=1.0 T_ad | 2380-2400 K | >2600K = error |
+| CO2 mass fraction (CH4 stoich) | 0.14-0.16 | >0.20 = mass balance error |
+| NOx at phi=0.8 (dry) | 15-50 ppm | >200 ppm = check temperature |
+| Ignition delay CH4 1atm 1200K | 1-10 ms | <0.01ms = error |
+| Laminar burning velocity (any fuel) | 5-350 cm/s | >500 = check carefully |
+
+## Expert Differentiation
+
+**Expert A (Theoretical) focus areas:**
+- Chemical kinetics mechanisms and reaction pathway analysis
+- Flame structure theory (premixed/diffusion/partially premixed)
+- Damkohler number analysis and regime classification
+- Rayleigh criterion for thermoacoustic instability
+- Detonation vs deflagration transition theory
+- Combustion instability analysis (Helmholtz modes, intrinsic flame instabilities)
+- Detailed species transport and diffusion flame theory
+
+## Standards & References
+
+Mandatory references for combustion analysis:
+- API 535 (Burner flame interaction), NFPA 86 (Ovens and furnaces)
+- EN 746 (Industrial thermoprocessing equipment)
+- ISO 13705 (Fired heaters for petroleum), ASME PTC 4.1 (Steam generators)
+- EPA 40 CFR Part 60 (New Source Performance Standards — emissions)
+- Turns, S.R., "An Introduction to Combustion" — standard textbook reference
+- Glassman & Yetter, "Combustion" — advanced kinetics reference
+
+## Failure Mode Awareness
+
+Known limitations and edge cases:
+- **Equilibrium assumption** invalid near extinction limits (phi < 0.5 or phi > 2.0)
+- **GRI-Mech 3.0** inaccurate above 10 atm; use San Diego or detailed mechanisms
+- **NOx prediction** unreliable without detailed kinetics at T > 1800K (thermal + prompt + N2O)
+- **Laminar flame speed** correlations break down for highly preheated mixtures (T > 700K)
+- **Soot modeling** requires PAH chemistry not in GRI-Mech 3.0
+- **Radiative heat transfer** often neglected but critical in large furnaces (optical thickness > 1)

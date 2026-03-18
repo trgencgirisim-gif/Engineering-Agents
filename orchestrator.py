@@ -15,6 +15,9 @@ from config.pricing import get_rates, compute_cost
 from rag.store import RAGStore
 from blackboard import Blackboard
 from parser import parse_agent_output
+from shared.agent_runner import (
+    resolve_agent, build_system_blocks, build_messages
+)
 
 # ─── Tool Integration Layer ─────────────────────────────────
 try:
@@ -499,38 +502,15 @@ def ajan_calistir(ajan_key, mesaj, gecmis=None, cache_context: Optional[str] = N
     if gecmis is None:
         gecmis = []
 
-    ajan = AGENTS.get(ajan_key) or DESTEK_AJANLARI.get(ajan_key)
+    ajan = resolve_agent(ajan_key)
     if not ajan:
         return f"ERROR: Agent '{ajan_key}' not found."
 
-    # 2-block system prompt: CACHE_PREAMBLE cached once across all agents
-    if CACHE_PREAMBLE:
-        system_blocks = [
-            {"type": "text", "text": CACHE_PREAMBLE, "cache_control": {"type": "ephemeral", "ttl": "1h"}},
-            {"type": "text", "text": ajan["sistem_promptu"], "cache_control": {"type": "ephemeral"}},
-        ]
-    else:
-        system_blocks = [
-            {"type": "text", "text": ajan["sistem_promptu"], "cache_control": {"type": "ephemeral"}},
-        ]
+    # 2-block system prompt via shared builder
+    system_blocks = build_system_blocks(ajan, CACHE_PREAMBLE)
 
-    # Mesaj yapısı: cache_context varsa ayrı block olarak ekle
-    if cache_context and len(cache_context) > 800:
-        user_content = [
-            {
-                "type": "text",
-                "text": cache_context,
-                "cache_control": {"type": "ephemeral"}
-            },
-            {
-                "type": "text",
-                "text": mesaj
-            }
-        ]
-    else:
-        user_content = mesaj
-
-    mesajlar = gecmis + [{"role": "user", "content": user_content}]
+    # Message array with optional cache_context via shared builder
+    mesajlar = build_messages(mesaj, gecmis, cache_context)
 
     # ── A6: Local result cache check ──────────────────────
     thinking_budget = ajan.get("thinking_budget", 0)
@@ -635,8 +615,10 @@ def kalite_puani_oku(metin):
     return 70
 
 
-def kaydet(brief, mod, sonuc, aktif_alanlar=[], tur_ozeti=[]):
-    """Analiz çıktısını outputs/ klasörüne kaydeder. Per-agent maliyet tablosu dahil."""
+def kaydet(brief, mod, sonuc, aktif_alanlar=[], tur_ozeti=[],
+           quality_score=None, gozlemci_full="", capraz_full="",
+           blackboard_summary="", parameter_table="", agent_log=None):
+    """Save analysis output to outputs/ and RAG knowledge base."""
     zaman = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     mod_etiket = {1: "single", 2: "dual", 3: "semi_auto", 4: "full_auto"}
     dosya_adi = f"outputs/analiz_{mod_etiket.get(mod, 'unknown')}_{zaman}.txt"
@@ -684,13 +666,27 @@ def kaydet(brief, mod, sonuc, aktif_alanlar=[], tur_ozeti=[]):
     print(f"{'='*50}")
     print(f"\n💾 Saved: {dosya_adi}")
 
-    # RAG: analizi knowledge base'e kaydet
+    # Derive quality_score from tur_ozeti if not provided
+    if quality_score is None and tur_ozeti:
+        quality_score = tur_ozeti[-1].get("puan")
+
+    # Build round_scores from tur_ozeti
+    round_scores = [{"tur": oz["tur"], "puan": oz["puan"]} for oz in tur_ozeti] if tur_ozeti else None
+
+    # RAG: save analysis with enriched metadata
     rag.kaydet(
         brief=brief,
         domains=aktif_alanlar,
         final_report=sonuc,
         mode=mod,
-        cost=MALIYET["usd"]
+        cost=MALIYET["usd"],
+        quality_score=quality_score,
+        observer_full=gozlemci_full,
+        crossval_full=capraz_full,
+        round_scores=round_scores,
+        blackboard_summary=blackboard_summary,
+        parameter_table=parameter_table,
+        agent_log=agent_log,
     )
     print(f"🧠 Knowledge base'e kaydedildi.")
 
@@ -1260,7 +1256,10 @@ def _feedback_loop_core(brief, guclendirilmis_brief, aktif_alanlar, max_tur, mod
          None, None),
     ], max_workers=2)
 
-    kaydet(brief, mod, final, alan_isimleri, tur_ozeti)
+    kaydet(brief, mod, final, alan_isimleri, tur_ozeti,
+           gozlemci_full=gozlemci_cevabi,
+           capraz_full=capraz_cevap,
+           blackboard_summary=_bb_final)
     return final
 
 # =============================================================
@@ -1336,7 +1335,10 @@ def tekli_analiz(brief):
         f"Note: Single-perspective analysis. Recommend dual or full analysis for critical decisions.",
         gecmis=shared_ctx)
 
-    kaydet(brief, 1, final, alan_isimleri)
+    kaydet(brief, 1, final, alan_isimleri,
+           gozlemci_full=gozlemci_cevabi,
+           capraz_full=capraz_cevap,
+           blackboard_summary=bb.to_summary())
     return final
 
 
@@ -1438,7 +1440,10 @@ def cift_ajan_analiz(brief):
         f"Report: distinguish theoretical vs practical perspectives. English only.",
         gecmis=shared_ctx)
 
-    kaydet(brief, 2, final, alan_isimleri)
+    kaydet(brief, 2, final, alan_isimleri,
+           gozlemci_full=gozlemci_cevabi,
+           capraz_full=capraz_cevap,
+           blackboard_summary=bb.to_summary())
     return final
 
 

@@ -225,4 +225,53 @@ Same brief.
 Agent writes:
 "Steam enthalpy at 10 MPa and 550 C is approximately 3500 kJ/kg from steam tables..."
 WRONG. CoolProp was available for exact values. Quality failure.
+## Domain-Specific Methodology
 
+Applied thermodynamics engineering approach:
+- **Industrial cycle optimization:** Start with base cycle, then add feedwater heaters (Rankine), intercooling/regeneration (Brayton). Use vendor data for component efficiencies
+- **Heat integration (pinch analysis):** Construct composite curves. Identify minimum utility requirements. Design HEN (Heat Exchanger Network) above and below pinch
+- **Equipment sizing:** Use duty (Q) and LMTD to determine required UA. Select exchanger type based on application. Add fouling allowance per TEMA
+- **Cost-performance tradeoffs:** Use annualized capital + operating cost for optimization. Higher efficiency equipment costs more — find economic optimum
+
+## Numerical Sanity Checks
+
+Flag results outside these ranges as potential errors:
+| Parameter | Typical Range | If Outside |
+|-----------|--------------|------------|
+| LMTD correction factor F | 0.75-1.0 | <0.75 = redesign needed |
+| Fouling resistance (cooling water) | 0.0002-0.0004 m2K/W | >0.001 = severe fouling |
+| Approach temperature (cooling tower) | 3-8 K | <2 = uneconomical |
+| Pinch temperature (HEN design) | 10-20 K | <5 = excessive HX area |
+| Steam quality at turbine exit | >0.88 | <0.85 = blade erosion |
+| Condenser pressure | 5-10 kPa (abs) | >15 = poor vacuum |
+
+## Expert Differentiation
+
+**Expert B (Applied) focus areas:**
+- Industrial cycle optimization (feedwater heating, reheat, regeneration)
+- Heat integration and pinch analysis (composite curves, grand composite)
+- Equipment sizing and selection (HX type, pump curves, compressor maps)
+- Cost-performance tradeoff analysis (annualized cost optimization)
+- Maintenance considerations (fouling, cleaning schedules, spare parts)
+- Part-load performance and operational flexibility
+- Energy auditing and efficiency improvement identification
+
+## Standards & References
+
+Industry standards for applied thermodynamics:
+- TEMA (Heat Exchanger Standards — type selection, fouling factors)
+- API 660 (Shell-and-Tube Heat Exchangers — petroleum)
+- API 661 (Air-Cooled Heat Exchangers)
+- ASME PTC 4.4 (Gas Turbine HRSGs)
+- ASHRAE Handbook — HVAC systems and applications
+- HEI (Heat Exchange Institute Standards — condensers, feedwater heaters)
+
+## Failure Mode Awareness
+
+Practical failure modes to check:
+- **Temperature cross** in heat exchangers — verify LMTD is positive at all points
+- **Vibration** in shell-and-tube exchangers (tube bundle natural frequency vs flow-induced excitation)
+- **Water hammer** from steam condensation in subcooled lines — install proper drainage
+- **Thermal expansion** differential between tubes and shell — verify expansion joint or floating head design
+- **Cavitation** in pumps — check NPSHa > NPSHr at all operating conditions
+- **Carryover** in boiler drums — check steam quality and drum internals at peak load

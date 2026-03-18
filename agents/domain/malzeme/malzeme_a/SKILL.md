@@ -192,4 +192,56 @@ Same brief.
 Agent writes:
 "TiO2 typically has a density around 3.5-4.2 g/cm^3..."
 WRONG. materials_project was available. Use the database. Quality failure.
+## Domain-Specific Methodology
 
+Decision tree for materials analysis:
+- **Material selection:** Ashby charts (property mapping), weighted property indices, Cambridge Engineering Selector (CES) methodology
+- **Failure analysis:** Examine fracture surface morphology — dimples = ductile, cleavage facets = brittle, striations = fatigue, intergranular = creep/corrosion
+- **Phase diagrams:** Lever rule for equilibrium composition. Scheil equation for non-equilibrium solidification (as-cast microstructure)
+- **Corrosion assessment:** Pourbaix diagrams for thermodynamic stability. Galvanic series for dissimilar metal contact. Stress corrosion cracking susceptibility maps (material + environment + stress)
+- **Heat treatment:** TTT/CCT diagrams for transformation kinetics. Jominy end-quench for hardenability. Tempering parameter (Hollomon-Jaffe) for tempered martensite properties
+
+## Numerical Sanity Checks
+
+Flag results outside these ranges as potential errors:
+| Parameter | Typical Range | If Outside |
+|-----------|--------------|------------|
+| Steel density | 7800-7900 kg/m3 | <7000 = wrong alloy class |
+| Aluminum density | 2700 kg/m3 | >3000 = wrong material |
+| Titanium density | 4500 kg/m3 | >5000 = error |
+| Steel CTE | 11-13 um/m/K | >20 = wrong material |
+| Fatigue endurance ratio | 0.35-0.60 * UTS | >0.7 = questionable |
+| Fracture toughness (steel) | 30-150 MPa*sqrt(m) | <10 = brittle ceramic range |
+| Hardness-UTS correlation (steel) | UTS approx 3.45 * HB | >15% deviation = check data |
+
+## Expert Differentiation
+
+**Expert A (Theoretical) focus areas:**
+- Crystal structure and crystallography (FCC, BCC, HCP behavior)
+- Dislocation theory and strengthening mechanisms (solid solution, precipitation, work hardening)
+- Phase transformation thermodynamics (Gibbs energy, nucleation, growth kinetics)
+- Diffusion mechanisms (Fick's laws, activation energy, Arrhenius behavior)
+- Mechanical metallurgy (yield criteria, plasticity theory, hardening models)
+- Computational materials science (DFT, molecular dynamics, CALPHAD)
+- Creep mechanisms (dislocation creep, diffusion creep, Larson-Miller parameter)
+
+## Standards & References
+
+Materials science references:
+- ASTM E8/E8M (Tension Testing of Metallic Materials)
+- ASTM E23 (Standard Test for Charpy Impact)
+- ASTM G48 (Pitting and Crevice Corrosion Resistance)
+- ASME SA/SB specifications (Boiler and Pressure Vessel materials)
+- AMS specifications (Aerospace Materials — titanium, nickel alloys)
+- NACE MR0175/ISO 15156 (Materials for Sour Service)
+- ASM Handbook series (comprehensive materials reference)
+
+## Failure Mode Awareness
+
+Known limitations and edge cases:
+- **Hydrogen embrittlement** in high-strength steel (>1000 MPa UTS) — may not show in standard testing
+- **Sensitization** in austenitic stainless steel (chromium carbide precipitation at 500-800C)
+- **Temper embrittlement** (P, Sn, Sb, As segregation at 375-575C)
+- **Creep-fatigue interaction** not captured by separate creep or fatigue analysis
+- **Galvanic corrosion** rate depends on area ratio — small anode / large cathode is worst case
+- **Residual stresses** from welding or forming not usually included in handbook data

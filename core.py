@@ -63,6 +63,69 @@ def _ensure_extractors():
 
 MAX_TOOL_ROUNDS = 3
 
+# Domains where solver MUST run before LLM analysis (deterministic pre-execution)
+PRE_EXEC_DOMAINS = {"yanma", "yapisal"}
+
+# Maps domain to (tool_name, extractor_name)
+PRE_EXEC_TOOLS = {
+    "yanma":   ("cantera", "cantera"),
+    "yapisal": ("fenics",  "fenics"),
+}
+
+
+def pre_execute_solvers(agent_key: str, brief: str) -> str:
+    """
+    For critical domains, extract parameters from brief and run solver
+    BEFORE the LLM generates its analysis. Returns formatted solver
+    results to inject into the user message, or empty string if
+    not applicable or solver unavailable.
+    """
+    _ensure_tools()
+    _ensure_extractors()
+
+    domain = get_domain_from_key(agent_key)
+    if domain not in PRE_EXEC_DOMAINS:
+        return ""
+
+    tool_name, extractor_name = PRE_EXEC_TOOLS.get(domain, (None, None))
+    if not tool_name:
+        return ""
+
+    # Check solver availability
+    solver = _solver_tools.get_tool(tool_name)
+    if not solver or not solver.is_available():
+        return ""
+
+    # Extract parameters from brief
+    extractor = _extractors.get(extractor_name) if _extractors else None
+    if not extractor:
+        return ""
+
+    try:
+        params = extractor.extract("", brief)
+    except Exception:
+        return ""
+    if not params:
+        return ""
+
+    # Run solver
+    try:
+        result = solver.execute(params)
+    except Exception:
+        return ""
+    if not result.success:
+        return ""
+
+    # Format as injection block
+    return (
+        f"\n\n[PRE-COMPUTED SOLVER RESULTS — {tool_name.upper()}]\n"
+        f"STATUS: VERIFIED (solver ran successfully before your analysis)\n"
+        f"INSTRUCTION: Use these verified values in your analysis. "
+        f"Do NOT re-estimate what has been computed.\n"
+        f"{result.to_agent_text()}\n"
+        f"[/PRE-COMPUTED SOLVER RESULTS]\n"
+    )
+
 
 def get_domain_from_key(agent_key: str) -> str:
     """Extract domain from agent key. 'yanma_a' -> 'yanma'."""
@@ -119,6 +182,21 @@ def run_tool_loop(
                     msg["content"] = TOOL_REMINDER_PREFIX + content
                 elif isinstance(content, list):
                     msg["content"] = [{"type": "text", "text": TOOL_REMINDER_PREFIX}] + list(content)
+                messages[i] = msg
+                break
+
+    # Pre-execution: for critical domains, run solver deterministically before LLM
+    pre_exec_results = pre_execute_solvers(agent_key, brief)
+    if pre_exec_results:
+        messages = list(messages) if not anthropic_tools else messages  # ensure mutable copy
+        for i in range(len(messages) - 1, -1, -1):
+            if messages[i].get("role") == "user":
+                msg = dict(messages[i])
+                content = msg.get("content", "")
+                if isinstance(content, str):
+                    msg["content"] = content + pre_exec_results
+                elif isinstance(content, list):
+                    msg["content"] = list(content) + [{"type": "text", "text": pre_exec_results}]
                 messages[i] = msg
                 break
 

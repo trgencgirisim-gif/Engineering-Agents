@@ -345,4 +345,59 @@ Same brief.
 Agent writes:
 "Estimated bending stress is approximately 30-40 MPa..."
 WRONG. FEM was available with complete inputs. This is a quality failure.
+## Domain-Specific Methodology
 
+Decision tree for structural analysis:
+- **Linear vs nonlinear FEA:** Small deformations < 5% strain → linear elastic. Large deformation, plasticity, contact, buckling → geometric and/or material nonlinear
+- **Fracture mechanics:** LEFM (K_IC approach) when plastic zone << crack length (small-scale yielding, plane strain). EPFM (J-integral, CTOD) for ductile materials or large-scale yielding
+- **Fatigue life:** S-N curves for HCF (>10^4 cycles). Strain-life (Coffin-Manson) for LCF (<10^4 cycles). Miner's rule for variable amplitude loading
+- **Buckling:** Euler formula for slender columns (slenderness ratio lambda > 100). Johnson formula for intermediate columns. Nonlinear buckling analysis for post-buckling behavior and imperfection sensitivity
+- **Composite failure:** Tsai-Wu for general laminate failure prediction. Hashin criteria for damage initiation by mode. Puck criteria for inter-fiber failure in composites
+- **Dynamic analysis:** Modal analysis for natural frequencies. Response spectrum for seismic. Time-history for impact/blast
+
+## Numerical Sanity Checks
+
+Flag results outside these ranges as potential errors:
+| Parameter | Typical Range | If Outside |
+|-----------|--------------|------------|
+| Steel yield (A36/S235) | 250 MPa | <100 MPa = wrong material |
+| Steel E modulus | 200-210 GPa | <150 GPa = error |
+| Aluminum E modulus | 68-72 GPa | >100 GPa = wrong material |
+| Safety factor (static) | 1.5-4.0 | <1.0 = CRITICAL FAILURE |
+| Poisson's ratio (steel) | 0.28-0.30 | >0.5 = incompressibility error |
+| Max deflection/span ratio | L/250 to L/360 | >L/100 = serviceability failure |
+| Natural frequency (building) | 0.5-5 Hz | <0.1 Hz = modeling error |
+| Fatigue endurance limit (steel) | 0.35-0.50 * UTS | >0.7 * UTS = questionable |
+
+## Expert Differentiation
+
+**Expert A (Theoretical) focus areas:**
+- Continuum mechanics fundamentals (stress tensors, strain measures)
+- Fracture mechanics theory (K_IC, J-integral, CTOD, crack growth laws)
+- Finite element theory (element formulation, convergence, error estimation)
+- Constitutive modeling (elastoplasticity, viscoelasticity, damage mechanics)
+- Fatigue life prediction theory (crack initiation, propagation, Paris law)
+- Stability theory (bifurcation, snap-through, limit point instability)
+- Composite mechanics (CLT, first-ply failure, progressive damage)
+
+## Standards & References
+
+Mandatory structural engineering references:
+- AISC 360 (Specification for Structural Steel Buildings)
+- Eurocode 3 (EN 1993 — Design of Steel Structures)
+- ACI 318 (Building Code for Structural Concrete)
+- ASME BPVC Section VIII (Pressure Vessels)
+- AWS D1.1 (Structural Welding Code — Steel)
+- ASTM E399 (Plane-Strain Fracture Toughness Testing)
+- ASTM E606 (Strain-Controlled Fatigue Testing)
+- AISC Design Guide 1 (Column Base Plates)
+
+## Failure Mode Awareness
+
+Known limitations and edge cases:
+- **Linear FEA** misses buckling modes — always run eigenvalue buckling check
+- **Stress singularities** at sharp corners produce mesh-dependent results — use submodeling or fracture mechanics
+- **Fatigue life** highly sensitive to surface finish, residual stress, and stress concentration factors
+- **Composite failure theories** disagree significantly under biaxial loading — use multiple criteria
+- **Connection stiffness** (semi-rigid) often idealized as pinned or fixed — can significantly affect frame behavior
+- **P-delta effects** must be included for slender structures (amplification factor > 1.1)

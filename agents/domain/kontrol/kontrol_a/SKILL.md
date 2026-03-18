@@ -162,4 +162,56 @@ Same brief.
 Agent writes:
 "The system appears stable based on the denominator roots..."
 WRONG. Transfer function was available. Margins must be computed. Quality failure.
+## Domain-Specific Methodology
 
+Decision tree for control system analysis:
+- **SISO vs MIMO:** SISO systems → classical methods (Bode, root locus, Nyquist). MIMO systems → state-space, singular value decomposition, decoupling
+- **PID tuning:** Ziegler-Nichols (oscillation method) for initial tuning. Cohen-Coon (process reaction curve) for FOPDT models. IMC (Internal Model Control) for model-based tuning. SIMC (Skogestad) for simple, robust rules
+- **Robust control:** Use H-infinity when plant uncertainty >20%. Mu-synthesis for structured uncertainty. Loop shaping for unstructured multiplicative uncertainty
+- **Nonlinear systems:** Describing function for limit cycle prediction. Lyapunov methods for stability proof. Sliding mode control for robust tracking under model uncertainty
+- **Digital control:** ZOH discretization for slow sampling (Ts > tau/10). Tustin (bilinear) for preserving frequency response shape. Matched pole-zero for critical dynamics
+
+## Numerical Sanity Checks
+
+Flag results outside these ranges as potential errors:
+| Parameter | Typical Range | If Outside |
+|-----------|--------------|------------|
+| Phase margin | 30-90 deg | <30 = fragile, <0 = unstable |
+| Gain margin | 6-20 dB | <6 = fragile, <0 = unstable |
+| Bandwidth | 2-10x crossover freq | >100 rad/s for mechanical = sensor noise issue |
+| Settling time (2%) | 3-5 time constants | <1 tau = overly aggressive |
+| Overshoot | 0-25% | >50% = underdamped, potential instability risk |
+| Sampling rate | 10-20x bandwidth | <5x bandwidth = aliasing risk |
+| Sensitivity peak Ms | 1.2-2.0 | >2.0 = robustness concern |
+
+## Expert Differentiation
+
+**Expert A (Theoretical) focus areas:**
+- Nyquist criterion rigorous application and encirclement counting
+- Root locus rules (departure angles, breakaway points, asymptotic behavior)
+- State-space controllability and observability analysis (PBH test, Kalman rank)
+- Optimal control theory (LQR/LQG, Riccati equation, separation principle)
+- H-infinity and mu-synthesis theory
+- Nonlinear stability analysis (Lyapunov direct method, La Salle's invariance)
+- Model reduction (balanced truncation, Hankel singular values)
+
+## Standards & References
+
+Control systems engineering references:
+- ISA-5.1 (Instrumentation Symbols and Identification)
+- IEC 61131-3 (Programmable Controllers — Programming Languages)
+- IEC 61508 (Functional Safety — Safety Integrity Levels)
+- DO-178C (Software Considerations in Airborne Systems)
+- ISO 13849 (Safety of Machinery — Safety-Related Parts of Control Systems)
+- Ogata, "Modern Control Engineering" — standard textbook
+- Skogestad & Postlethwaite, "Multivariable Feedback Control" — MIMO reference
+
+## Failure Mode Awareness
+
+Known limitations and edge cases:
+- **Bode/Nyquist** assume LTI — check linearization validity range
+- **PID anti-windup** essential when actuator saturates — specify implementation
+- **Sampling delay** adds phase lag of Ts/2 — include in continuous design margin
+- **Sensor noise amplification** at high frequencies — check noise sensitivity function
+- **Actuator rate limits** can cause limit cycles not predicted by linear analysis
+- **Gain scheduling** linearization may miss transitions between operating points
