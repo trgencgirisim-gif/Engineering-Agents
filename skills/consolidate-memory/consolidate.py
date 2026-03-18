@@ -56,6 +56,8 @@ def is_stale(duration: timedelta) -> bool:
         return True
     try:
         last_run = datetime.fromisoformat(LAST_RUN_FILE.read_text().strip())
+        if last_run.tzinfo is None:
+            last_run = last_run.replace(tzinfo=timezone.utc)
         return datetime.now(timezone.utc) - last_run > duration
     except (ValueError, OSError):
         return True
