@@ -117,7 +117,9 @@ def run_tool_loop(
                 content = msg.get("content", "")
                 if isinstance(content, str):
                     msg["content"] = TOOL_REMINDER_PREFIX + content
-                    messages[i] = msg
+                elif isinstance(content, list):
+                    msg["content"] = [{"type": "text", "text": TOOL_REMINDER_PREFIX}] + list(content)
+                messages[i] = msg
                 break
 
     totals = {"cost": 0.0, "inp": 0, "out": 0, "c_cre": 0, "c_rd": 0, "saved": 0.0}

@@ -57,6 +57,7 @@ _TOKEN_PROFILES = {
     "dokumantasyon_hafiza": (4000, 1000),
     "prompt_muhendisi": (1500, 800),
     "domain_selector": (1200, 400),
+    "soru_uretici_pm": (5000, 800),
 }
 
 

@@ -24,6 +24,12 @@ try:
 except ImportError:
     CACHE_PREAMBLE = ""  # orchestrator.py yoksa boş
 
+try:
+    from core import has_tools_for_agent, run_tool_loop
+    TOOLS_OK = True
+except ImportError:
+    TOOLS_OK = False
+
 load_dotenv()
 
 
@@ -1007,6 +1013,28 @@ def _ajan_api(ajan_key: str, mesaj: str,
         ajan["max_tokens"] = _tb[ajan_key]
 
     thinking_budget = ajan.get("thinking_budget", 0)
+
+    # ── Tool-aware path: use core.run_tool_loop for domain agents with solvers
+    if TOOLS_OK and _is_domain and has_tools_for_agent(ajan_key):
+        try:
+            brief = mesaj  # pass the user message as brief for input extraction
+            r = run_tool_loop(
+                client_instance=client,
+                agent_key=ajan_key,
+                system_blocks=system_blocks,
+                messages=mesajlar,
+                model=ajan["model"],
+                max_tokens=ajan.get("max_tokens", 2000),
+                brief=brief,
+                thinking_budget=thinking_budget,
+            )
+            r["key"] = ajan_key
+            r["name"] = ajan["isim"]
+            r["model"] = ajan["model"]
+            return r
+        except Exception as e:
+            print(f"[WARN] Tool loop failed for {ajan_key}, falling back: {e}")
+
     extra_kwargs = {}
     if thinking_budget:
         extra_kwargs["thinking"] = {"type": "enabled", "budget_tokens": thinking_budget}

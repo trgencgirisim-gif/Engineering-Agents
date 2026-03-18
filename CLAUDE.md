@@ -11,11 +11,11 @@
 
 ## Architecture Overview
 
-Multi-agent engineering analysis platform orchestrating 78 AI agents across 28 engineering domains.
+Multi-agent engineering analysis platform orchestrating 76 AI agents across 28 engineering domains.
 
 - **3 entry points:** `orchestrator.py` (CLI), `main.py` (FastAPI backend), `app.py` (Streamlit frontend)
 - **56 domain agents:** 28 domains x 2 experts (_a = theoretical/rigorous, _b = practical/field)
-- **22 support agents:** Observer, Final Report Writer, Prompt Engineer, Cross-Validator, Conflict Resolution, etc.
+- **20 support agents:** Observer, Final Report Writer, Prompt Engineer, Cross-Validator, Conflict Resolution, etc.
 - **RAG:** ChromaDB with sentence-transformers (`all-MiniLM-L6-v2`) in `rag/store.py`
 - **Reports:** Academic-style DOCX (IEEE/ASME) via `report_generator.py`
 
