@@ -219,3 +219,11 @@ Practical failure modes to check:
 - **Power supply interruption** — specify UPS and fail-safe valve action (fail-open/close)
 - **Electromagnetic interference** — check cable routing, shielding, grounding
 - **Cybersecurity** for networked control systems — IEC 62443 compliance
+
+
+## Pre-Computed Solver Results
+
+When a `[PRE-COMPUTED SOLVER RESULTS]` block appears in your input, the system has already run the solver deterministically before your analysis. You MUST:
+1. Use these verified values directly — do NOT re-estimate or override them
+2. Build your analysis around the verified data
+3. You may still call tools for additional calculations not covered by the pre-computed results

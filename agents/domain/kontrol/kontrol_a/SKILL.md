@@ -215,3 +215,11 @@ Known limitations and edge cases:
 - **Sensor noise amplification** at high frequencies — check noise sensitivity function
 - **Actuator rate limits** can cause limit cycles not predicted by linear analysis
 - **Gain scheduling** linearization may miss transitions between operating points
+
+
+## Pre-Computed Solver Results
+
+When a `[PRE-COMPUTED SOLVER RESULTS]` block appears in your input, the system has already run the solver deterministically before your analysis. You MUST:
+1. Use these verified values directly — do NOT re-estimate or override them
+2. Build your analysis around the verified data
+3. You may still call tools for additional calculations not covered by the pre-computed results

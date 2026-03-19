@@ -64,12 +64,35 @@ def _ensure_extractors():
 MAX_TOOL_ROUNDS = 3
 
 # Domains where solver MUST run before LLM analysis (deterministic pre-execution)
-PRE_EXEC_DOMAINS = {"yanma", "yapisal"}
+PRE_EXEC_DOMAINS = {
+    # cantera extractor
+    "yanma", "termodinamik", "kimya",
+    # fenics extractor
+    "yapisal", "termal", "dinamik", "akiskan", "insaat", "mekanik_tasarim",
+    # python_control extractor
+    "kontrol", "savunma",
+    # materials_project extractor
+    "malzeme",
+}
 
 # Maps domain to (tool_name, extractor_name)
 PRE_EXEC_TOOLS = {
-    "yanma":   ("cantera", "cantera"),
-    "yapisal": ("fenics",  "fenics"),
+    # cantera extractor — combustion, thermo, chemistry
+    "yanma":           ("cantera", "cantera"),
+    "termodinamik":    ("cantera", "cantera"),
+    "kimya":           ("cantera", "cantera"),
+    # fenics extractor — structural, thermal, dynamics, fluids, civil, mech design
+    "yapisal":         ("fenics",  "fenics"),
+    "termal":          ("fenics",  "fenics"),
+    "dinamik":         ("fenics",  "fenics"),
+    "akiskan":         ("fenics",  "fenics"),
+    "insaat":          ("fenics",  "fenics"),
+    "mekanik_tasarim": ("fenics",  "fenics"),
+    # python_control extractor — control systems, defense
+    "kontrol":         ("python_control", "python_control"),
+    "savunma":         ("python_control", "python_control"),
+    # materials_project extractor — materials
+    "malzeme":         ("materials_project", "materials_project"),
 }
 
 

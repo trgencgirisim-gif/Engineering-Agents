@@ -223,3 +223,11 @@ Known limitations and edge cases:
 - **Laminar flame speed** correlations break down for highly preheated mixtures (T > 700K)
 - **Soot modeling** requires PAH chemistry not in GRI-Mech 3.0
 - **Radiative heat transfer** often neglected but critical in large furnaces (optical thickness > 1)
+
+
+## Pre-Computed Solver Results
+
+When a `[PRE-COMPUTED SOLVER RESULTS]` block appears in your input, the system has already run the solver deterministically before your analysis. You MUST:
+1. Use these verified values directly — do NOT re-estimate or override them
+2. Build your analysis around the verified data
+3. You may still call tools for additional calculations not covered by the pre-computed results

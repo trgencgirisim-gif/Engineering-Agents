@@ -249,3 +249,11 @@ Practical failure modes to check:
 - **Sigma phase** in duplex stainless steels — avoid prolonged exposure to 600-950C
 - **Strain aging** in carbon steel — embrittlement after cold working at 150-350C
 - **Material substitution risks** — verify equivalent specifications across standards (ASTM/EN/JIS)
+
+
+## Pre-Computed Solver Results
+
+When a `[PRE-COMPUTED SOLVER RESULTS]` block appears in your input, the system has already run the solver deterministically before your analysis. You MUST:
+1. Use these verified values directly — do NOT re-estimate or override them
+2. Build your analysis around the verified data
+3. You may still call tools for additional calculations not covered by the pre-computed results

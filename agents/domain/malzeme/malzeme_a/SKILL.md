@@ -245,3 +245,11 @@ Known limitations and edge cases:
 - **Creep-fatigue interaction** not captured by separate creep or fatigue analysis
 - **Galvanic corrosion** rate depends on area ratio — small anode / large cathode is worst case
 - **Residual stresses** from welding or forming not usually included in handbook data
+
+
+## Pre-Computed Solver Results
+
+When a `[PRE-COMPUTED SOLVER RESULTS]` block appears in your input, the system has already run the solver deterministically before your analysis. You MUST:
+1. Use these verified values directly — do NOT re-estimate or override them
+2. Build your analysis around the verified data
+3. You may still call tools for additional calculations not covered by the pre-computed results
