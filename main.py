@@ -16,6 +16,7 @@ import queue
 from pathlib import Path
 
 import hashlib
+from collections import OrderedDict
 import anthropic
 import requests as req_lib
 from dotenv import load_dotenv
@@ -60,6 +61,16 @@ app = FastAPI(title="Engineering AI")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
+
+@app.on_event("startup")
+async def _preload_rag():
+    """Preload RAG embedding model at startup to avoid first-query delay."""
+    try:
+        from rag.store import RAGStore
+        RAGStore.preload_embedding()
+    except Exception:
+        pass  # RAG is optional
+
 # ─── Domain Listesi (shared module) ──────────────────────────
 from config.domains import DOMAINS
 
@@ -81,13 +92,14 @@ def get_kur():
 from config.pricing import compute_cost
 
 # ─── Local Result Cache ──────────────────────────────────────
-_result_cache: dict = {}       # hash → response_text
+_result_cache: OrderedDict = OrderedDict()  # hash → response_text (LRU)
 _RESULT_CACHE_MAX   = 200
 _result_cache_lock  = threading.Lock()
 
-def _make_cache_key(ajan_key: str, mesaj: str, gecmis_len: int) -> str:
+def _make_cache_key(ajan_key: str, mesaj: str, gecmis: list) -> str:
     """Deterministic hash for agent call deduplication."""
-    raw = f"{ajan_key}:{gecmis_len}:{mesaj}"
+    gecmis_hash = hashlib.sha256(str(gecmis).encode()).hexdigest()[:12]
+    raw = f"{ajan_key}:{gecmis_hash}:{mesaj}"
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 # ─── Session Yönetimi ─────────────────────────────────────────
@@ -183,7 +195,7 @@ class Session:
         # 2-block system prompt: CACHE_PREAMBLE cached once across all agents
         if CACHE_PREAMBLE:
             system_blocks = [
-                {"type": "text", "text": CACHE_PREAMBLE, "cache_control": {"type": "ephemeral"}},
+                {"type": "text", "text": CACHE_PREAMBLE, "cache_control": {"type": "ephemeral", "ttl": "1h"}},
                 {"type": "text", "text": ajan["sistem_promptu"], "cache_control": {"type": "ephemeral"}},
             ]
         else:
@@ -209,9 +221,10 @@ class Session:
         # ── Local result cache check (skip for thinking-mode agents) ──
         cache_key = None
         if not thinking_budget:
-            cache_key = _make_cache_key(ajan_key, mesaj, len(gecmis))
+            cache_key = _make_cache_key(ajan_key, mesaj, gecmis)
             with _result_cache_lock:
                 if cache_key in _result_cache:
+                    _result_cache.move_to_end(cache_key)
                     cached = _result_cache[cache_key]
                     self.emit("agent_done", {
                         "key": ajan_key, "name": ajan["isim"],
@@ -271,8 +284,7 @@ class Session:
                 if cache_key:
                     with _result_cache_lock:
                         if len(_result_cache) >= _RESULT_CACHE_MAX:
-                            oldest = next(iter(_result_cache))
-                            del _result_cache[oldest]
+                            _result_cache.popitem(last=False)
                         _result_cache[cache_key] = cevap
                 self.emit("agent_done", {
                     "key":        ajan_key,
@@ -383,9 +395,7 @@ class Session:
         if cache_key:
             with _result_cache_lock:
                 if len(_result_cache) >= _RESULT_CACHE_MAX:
-                    # Evict oldest entry
-                    oldest = next(iter(_result_cache))
-                    del _result_cache[oldest]
+                    _result_cache.popitem(last=False)  # LRU eviction
                 _result_cache[cache_key] = cevap
 
         self.emit("agent_done", {
@@ -1068,17 +1078,25 @@ async def confirm_domains(req: ConfirmDomainsRequest):
     name_to_key = {v[1]: v[0] for v in DOMAINS.values()}
 
     new_domains = []
+    skipped = []
     for d in req.domains:
-        k = d.get("key") or name_to_key.get(d.get("name",""))
-        n = d.get("name") or domain_map.get(d.get("key",""))
+        k = d.get("key") or name_to_key.get(d.get("name", ""))
+        n = d.get("name") or domain_map.get(d.get("key", ""))
         if k and n:
             new_domains.append((k, n))
+        else:
+            skipped.append(d.get("key") or d.get("name") or str(d))
 
-    if new_domains:
-        sess.domains = new_domains
+    if not new_domains:
+        raise HTTPException(400, f"No valid domains resolved. Skipped: {skipped}")
 
+    sess.domains = new_domains
     sess.domain_event.set()
-    return {"ok": True, "domains": [{"key": k, "name": n} for k, n in sess.domains]}
+
+    resp = {"ok": True, "domains": [{"key": k, "name": n} for k, n in sess.domains]}
+    if skipped:
+        resp["warnings"] = [f"Unrecognized domain skipped: {s}" for s in skipped]
+    return resp
 
 
 # ── QA Cevapla ────────────────────────────────────────────────
@@ -1155,6 +1173,26 @@ async def kb_stats():
         return rag.istatistik()
     except Exception:
         return {"toplam": 0, "analizler": []}
+
+
+# ── KB Clear All ──────────────────────────────────────────────
+@app.delete("/api/kb/clear")
+async def kb_clear():
+    rag = get_rag()
+    if not rag:
+        raise HTTPException(503, "RAG not available")
+    rag.clear()
+    return {"ok": True, "message": "Knowledge base cleared"}
+
+
+# ── KB Delete Single ─────────────────────────────────────────
+@app.delete("/api/kb/{doc_id}")
+async def kb_delete(doc_id: str):
+    rag = get_rag()
+    if not rag:
+        raise HTTPException(503, "RAG not available")
+    rag.delete(doc_id)
+    return {"ok": True, "message": f"Deleted {doc_id}"}
 
 
 # ── Döviz Kuru ────────────────────────────────────────────────

@@ -486,6 +486,7 @@ textarea:focus { border-color: var(--accent); }
       <div class="val" id="sb-kb">🧠 …</div>
       <div class="lbl">Kayıtlı Analiz</div>
     </div>
+    <button class="sidebar-btn" style="margin-top:0.3rem;font-size:0.7rem;padding:0.2rem 0.5rem;background:#E05A2B33;border:1px solid #E05A2B55;color:#E05A2B;border-radius:4px;cursor:pointer" onclick="clearKB()">Clear All KB</button>
 
     <div id="new-btn-wrap" style="display:none;margin-top:0.5rem">
       <button class="sidebar-btn" onclick="resetApp()">🔄 Yeni Analiz</button>
@@ -662,6 +663,18 @@ async function loadKB() {
     const d = await r.json();
     document.getElementById('sb-kb').textContent = `🧠 ${d.toplam}`;
   } catch(e) {}
+}
+
+async function clearKB() {
+  if (!confirm('Clear all knowledge base entries? This cannot be undone.')) return;
+  try {
+    const r = await fetch('/api/kb/clear', {method: 'DELETE'});
+    if (r.ok) {
+      loadKB();
+    } else {
+      alert('Failed to clear KB');
+    }
+  } catch(e) { alert('Error: ' + e.message); }
 }
 
 async function loadDomains() {

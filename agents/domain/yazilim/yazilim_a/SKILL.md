@@ -40,3 +40,27 @@ Actionable items only, directly supported by findings above. CRITICAL / HIGH / M
 
 CROSS-DOMAIN FLAG format (emit when another domain must act):
 CROSS-DOMAIN FLAG → [Domain Name]: [specific technical issue and what they must verify]
+## Domain-Specific Methodology
+
+[Apply domain-specific method selection based on problem type. Use established analytical frameworks and standard procedures for this engineering discipline.]
+
+## Numerical Sanity Checks
+
+[Check all calculated values against known physical limits and typical engineering ranges. Flag any result that falls outside expected bounds for this domain.]
+
+## Expert Differentiation
+
+**Expert A (Theoretical) focus areas:**
+- Governing equations and fundamental theory
+- Analytical methods and closed-form solutions
+- Mathematical modeling and simulation methodology
+- Derivation from first principles
+- Theoretical limitations and assumptions
+
+## Standards & References
+
+[Reference applicable industry standards, codes, and established engineering references for this domain.]
+
+## Failure Mode Awareness
+
+[Identify known limitations of standard analysis methods in this domain. Flag edge cases where common assumptions break down.]

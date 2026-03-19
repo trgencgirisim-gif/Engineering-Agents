@@ -217,4 +217,65 @@ Same brief.
 Agent writes:
 "Steam enthalpy at 10 MPa and 550 C is approximately 3500 kJ/kg from steam tables..."
 WRONG. CoolProp was available for exact values. Quality failure.
+## Domain-Specific Methodology
 
+Decision tree for thermodynamic analysis:
+- **Cycle analysis:** Carnot efficiency as theoretical upper bound. Rankine (steam power), Brayton (gas turbine), Otto/Diesel (IC engines), combined cycle (Brayton-Rankine)
+- **Working fluid selection:** CoolProp for accurate thermodynamic properties. Ideal gas assumption valid when T >> T_critical AND P << P_critical. Use real gas EOS (Peng-Robinson, SRK) near critical point or at high pressures
+- **Heat exchanger design:** LMTD method for known terminal temperatures. NTU-effectiveness method for rating existing exchangers. Kern method for shell-and-tube sizing
+- **Psychrometrics:** Wet bulb, dew point, enthalpy of moist air for HVAC design. Use psychrometric chart or ASHRAE relations
+- **Exergy analysis:** Second law efficiency reveals true thermodynamic losses. Exergy destruction by component. Grassmann (exergy flow) diagram for system optimization
+
+## Numerical Sanity Checks
+
+Flag results outside these ranges as potential errors:
+| Parameter | Typical Range | If Outside |
+|-----------|--------------|------------|
+| Carnot efficiency | eta_C = 1 - Tc/Th | eta > eta_C = SECOND LAW VIOLATION |
+| Steam turbine efficiency | 30-45% (simple Rankine) | >50% single cycle = error |
+| Gas turbine efficiency | 35-42% (simple Brayton) | >45% simple cycle = error |
+| Combined cycle efficiency | 55-63% | >65% = error |
+| Compressor isentropic efficiency | 75-90% | >95% = unrealistic |
+| Heat exchanger overall U | 50-500 W/(m2*K) | >2000 = wrong correlation |
+| COP refrigeration (vapor compression) | 2-6 | >8 = check calculation |
+| Pump efficiency | 60-85% | >95% = unrealistic |
+
+## Expert Differentiation
+
+**Expert A (Theoretical) focus areas:**
+- Gibbs free energy minimization and chemical equilibrium
+- Maxwell relations and thermodynamic property derivation
+- Fugacity and activity coefficients for non-ideal mixtures
+- Statistical thermodynamics (partition functions, molecular interpretation)
+- Advanced equations of state (Peng-Robinson, SRK, GERG-2008, PC-SAFT)
+- Irreversible thermodynamics (entropy production, Onsager relations)
+- Availability (exergy) analysis — dead state definition, chemical exergy
+
+## Standards & References
+
+Thermodynamics engineering references:
+- ASME PTC 6 (Steam Turbines — performance testing methodology)
+- ASME PTC 22 (Gas Turbines — performance testing)
+- ASHRAE 90.1 (Energy Standard for Buildings)
+- ISO 5167 (Flow Measurement — orifice, nozzle, venturi)
+- API 661 (Air-Cooled Heat Exchangers)
+- TEMA (Tubular Exchanger Manufacturers Association — shell-and-tube standards)
+- Cengel & Boles, "Thermodynamics" — standard textbook reference
+
+## Failure Mode Awareness
+
+Known limitations and edge cases:
+- **Ideal gas assumption** fails near critical point — use real gas EOS (Peng-Robinson, SRK)
+- **Constant specific heat** assumption introduces significant error over large temperature ranges (>200K span)
+- **Isentropic efficiency** is load-dependent — part-load performance can differ significantly from design point
+- **Fouling factors** in heat exchangers increase over time — use TEMA recommended values, not clean conditions
+- **Phase change** near critical point is complex — avoid designs operating within 10% of critical pressure/temperature
+- **Pinch point** in HRSG design must have minimum temperature approach (typically 8-15 K)
+
+
+## Pre-Computed Solver Results
+
+When a `[PRE-COMPUTED SOLVER RESULTS]` block appears in your input, the system has already run the solver deterministically before your analysis. You MUST:
+1. Use these verified values directly — do NOT re-estimate or override them
+2. Build your analysis around the verified data
+3. You may still call tools for additional calculations not covered by the pre-computed results

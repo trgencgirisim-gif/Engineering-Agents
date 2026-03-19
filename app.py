@@ -1557,7 +1557,8 @@ def _build_ctx_history(brief_msg: str, tum_ciktilar: str) -> list:
         {"role": "assistant", "content": tum_ciktilar},
     ]
 
-def run_tekli(brief, aktif_alanlar):
+def run_tekli(brief, aktif_alanlar, agent_runner=None):
+    _runner = agent_runner or ajan_calistir
     alan_isimleri = [name for _, name in aktif_alanlar]
     bb = _get_or_create_blackboard()
 
@@ -1604,7 +1605,7 @@ def run_tekli(brief, aktif_alanlar):
 
     # ── Gözlemci ────────────────────────────────────────────────
     _bb_observer_ctx = bb.get_context_for("gozlemci", 1)
-    gozlemci = ajan_calistir("gozlemci",
+    gozlemci = _runner("gozlemci",
         f"Problem: {brief}\nActive domains: {', '.join(alan_isimleri)}\n"
         f"CROSS-VALIDATION:\n{capraz}\n\n"
         f"{_bb_observer_ctx}\n"
@@ -1619,7 +1620,7 @@ def run_tekli(brief, aktif_alanlar):
         if rag_final_ctx else ""
     )
     _bb_summary = bb.to_summary()
-    final = ajan_calistir("final_rapor",
+    final = _runner("final_rapor",
         f"Single-agent analysis. Domains: {', '.join(alan_isimleri)}\n"
         f"PROBLEM: {brief}\n"
         f"OBSERVER: {gozlemci}\n"
@@ -1639,7 +1640,8 @@ def run_tekli(brief, aktif_alanlar):
     return final, [{"tur": 1, "puan": puan}]
 
 
-def run_cift(brief, aktif_alanlar):
+def run_cift(brief, aktif_alanlar, agent_runner=None):
+    _runner = agent_runner or ajan_calistir
     alan_isimleri = [name for _, name in aktif_alanlar]
     bb = _get_or_create_blackboard()
 
@@ -1692,7 +1694,7 @@ def run_cift(brief, aktif_alanlar):
     _update_blackboard(bb, "varsayim_belirsizlik", varsayim, 1)
 
     _bb_observer_ctx = bb.get_context_for("gozlemci", 1)
-    gozlemci = ajan_calistir("gozlemci",
+    gozlemci = _runner("gozlemci",
         f"Problem: {brief}\nDomains: {', '.join(alan_isimleri)}\n"
         f"CROSS-VAL: {capraz}\nASSUMPTIONS: {varsayim}\n\n"
         f"{_bb_observer_ctx}\n"
@@ -1722,7 +1724,7 @@ def run_cift(brief, aktif_alanlar):
         if rag_final_ctx_cift else ""
     )
     _bb_summary = bb.to_summary()
-    final = ajan_calistir("final_rapor",
+    final = _runner("final_rapor",
         f"Dual-agent analysis. Domains: {', '.join(alan_isimleri)}\n"
         f"PROBLEM: {brief}\n"
         f"OBSERVER: {gozlemci}\n"
@@ -1742,7 +1744,8 @@ def run_cift(brief, aktif_alanlar):
     return final, [{"tur": 1, "puan": puan}]
 
 
-def run_full_loop(brief, aktif_alanlar, max_tur):
+def run_full_loop(brief, aktif_alanlar, max_tur, agent_runner=None):
+    _runner = agent_runner or ajan_calistir
     alan_isimleri = [name for _, name in aktif_alanlar]
     alan_keyleri  = [key  for key, _ in aktif_alanlar]
 
@@ -1996,7 +1999,7 @@ def run_full_loop(brief, aktif_alanlar, max_tur):
 
         # ── Observer: blackboard summary included ──────────────
         _bb_observer_ctx = bb.get_context_for("gozlemci", tur)
-        gozlemci_cevabi = ajan_calistir("gozlemci",
+        gozlemci_cevabi = _runner("gozlemci",
             f"Problem: {brief}\nDomains: {', '.join(alan_isimleri)} — ROUND {tur}\n"
             f"CROSS-VAL: {capraz}\nASSUMPTIONS: {varsayim}\n"
             f"UNCERTAINTY: {belirsiz}\nLITERATURE: {literatur}\n"
@@ -2074,12 +2077,12 @@ def run_full_loop(brief, aktif_alanlar, max_tur):
 
     # ── Sentez + Final rapor ─────────────────────────────────────
     _bb_summary_final = bb.to_summary()
-    baglam_cevap = ajan_calistir("sentez",
+    baglam_cevap = _runner("sentez",
         f"Problem: {brief}\nSummarize confirmed parameters and key decisions from all rounds.\n\n"
         f"STRUCTURED ANALYSIS SUMMARY:\n{_bb_summary_final}",
         gecmis=shared_ctx)
 
-    sentez_cevap = ajan_calistir("sentez",
+    sentez_cevap = _runner("sentez",
         f"Problem: {brief} — Domains: {', '.join(alan_isimleri)}\n"
         f"OBSERVER: {gozlemci_cevabi}\n"
         f"QUESTIONS: {soru_cevap}\nALTERNATIVES: {alt_cevap}\n"
@@ -2102,7 +2105,7 @@ def run_full_loop(brief, aktif_alanlar, max_tur):
     if _convergence["oscillating"]:
         _convergence_note = f"\nWARNING: Oscillating parameters detected: {', '.join(_convergence['oscillating'][:5])}"
 
-    final = ajan_calistir("final_rapor",
+    final = _runner("final_rapor",
         f"Analysis completed in {len(tur_ozeti)} round(s). Domains: {', '.join(alan_isimleri)}\n"
         f"PROBLEM: {brief}\n"
         f"OBSERVER EVALUATION: {gozlemci_cevabi}\n"
@@ -2756,17 +2759,11 @@ elif st.session_state.step == "running":
                 badges += f'<span class="round-badge {cls}">{label}</span>'
             round_placeholder.markdown(badges, unsafe_allow_html=True)
 
-    # Monkey-patch ajan_calistir to update UI after each agent
-    original_ajan_calistir = ajan_calistir
-
+    # UI-updating agent runner — passed as callback instead of monkey-patching
     def ajan_calistir_live(ajan_key, mesaj, gecmis=None, log_container=None, cache_context=None):
-        result = original_ajan_calistir(ajan_key, mesaj, gecmis, cache_context=cache_context)
+        result = ajan_calistir(ajan_key, mesaj, gecmis, cache_context=cache_context)
         update_ui()
         return result
-
-    import builtins
-    _orig = globals()["ajan_calistir"]
-    globals()["ajan_calistir"] = ajan_calistir_live
 
     try:
         mod = st.session_state.mode
@@ -2790,11 +2787,11 @@ elif st.session_state.step == "running":
             st.session_state.agent_token_budget = {}
 
         if mod == 1:
-            final, tur_ozeti = run_tekli(brief, aktif)
+            final, tur_ozeti = run_tekli(brief, aktif, agent_runner=ajan_calistir_live)
         elif mod == 2:
-            final, tur_ozeti = run_cift(brief, aktif)
+            final, tur_ozeti = run_cift(brief, aktif, agent_runner=ajan_calistir_live)
         else:
-            final, tur_ozeti = run_full_loop(brief, aktif, max_t)
+            final, tur_ozeti = run_full_loop(brief, aktif, max_t, agent_runner=ajan_calistir_live)
 
         st.session_state.final_report = final
         st.session_state.round_scores_done = tur_ozeti
@@ -2803,9 +2800,6 @@ elif st.session_state.step == "running":
     except Exception as e:
         st.session_state.error = str(e)
         st.session_state.step = "done"
-
-    finally:
-        globals()["ajan_calistir"] = _orig
 
     update_ui()
     st.rerun()

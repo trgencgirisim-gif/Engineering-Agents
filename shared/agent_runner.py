@@ -35,12 +35,12 @@ def build_system_blocks(ajan: dict, cache_preamble: str = ""):
     """
     Build 2-block system prompt array for Anthropic API.
     Block 1: CACHE_PREAMBLE (shared across all agents, cached 1hr)
-    Block 2: Agent-specific sistem_promptu (per-agent, cached 5min)
+    Block 2: Agent-specific sistem_promptu (per-agent, cached 1h)
     """
     if cache_preamble:
         return [
             {"type": "text", "text": cache_preamble,
-             "cache_control": {"type": "ephemeral"}},
+             "cache_control": {"type": "ephemeral", "ttl": "1h"}},
             {"type": "text", "text": ajan["sistem_promptu"],
              "cache_control": {"type": "ephemeral"}},
         ]
