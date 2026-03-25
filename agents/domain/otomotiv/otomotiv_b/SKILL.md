@@ -206,25 +206,55 @@ If the tool call fails (solver not installed, insufficient inputs):
 - Label every estimated numerical value with [ASSUMPTION]
 ## Domain-Specific Methodology
 
-[Apply practical engineering methods appropriate for the problem. Use industry-standard design procedures and proven approaches for this discipline.]
+Practical automotive engineering approach:
+- **Vehicle architecture:** Package study first — occupant space (SAE J1100), powertrain envelope, crash structure length, ground clearance. Platform strategy for multiple models
+- **Chassis design:** Front suspension: MacPherson strut (cost-effective), double wishbone (performance). Rear: multi-link (comfort), twist beam (cost). Spring rates from target ride frequency (1.0-1.5 Hz front, 1.2-1.7 Hz rear)
+- **Powertrain integration:** Engine/motor mounting (3-point or 4-point). Driveline angles (Cardan joint <7°, CV joint <47°). Exhaust routing with thermal clearances (25mm minimum to body)
+- **EV-specific:** Battery pack: cell selection (pouch/prismatic/cylindrical), module design, cooling (liquid plate cooling preferred), BMS architecture. High-voltage safety: isolation monitoring (>500Ω/V per ECE R100), orange cable marking, service disconnect
+- **Testing and validation:** DVPR (Design Verification Plan and Report). Prototype build levels (A/B/C). Durability: proving ground schedule (PG) with accelerated corrosion. Homologation: FMVSS (US), ECE (Europe), GB (China)
+- **DFMEA:** System → subsystem → component level. Severity, occurrence, detection ratings. RPN threshold (typically >100 requires action). Cross-functional review with design, manufacturing, test
 
 ## Numerical Sanity Checks
 
-[Verify all results against practical experience and field data. Flag any values that conflict with established engineering practice in this domain.]
+Flag results outside these ranges as potential errors:
+| Parameter | Typical Range | If Outside |
+|-----------|--------------|------------|
+| Ride frequency (front) | 1.0-1.5 Hz | >1.8 = harsh ride |
+| Ride frequency (rear) | 1.2-1.7 Hz | <1.0 = floaty |
+| Suspension travel (sedan) | 80-120 mm (jounce) | <60 = bump stop contact |
+| Steering ratio | 14-18:1 (power steering) | <10 = too quick/heavy |
+| Brake pad μ (typical) | 0.35-0.45 | >0.55 = sport compound |
+| Battery cooling ΔT target | <5°C cell-to-cell | >10°C = redesign cooling |
+| Weld pitch (body structure) | 30-50 mm | >60 = check stiffness |
 
 ## Expert Differentiation
 
 **Expert B (Applied) focus areas:**
-- Industry-standard design procedures and codes
-- Practical implementation and field experience
-- Equipment selection and sizing
-- Cost-effective solutions and optimization
-- Safety, maintenance, and operational considerations
+- Vehicle architecture and packaging
+- Suspension design and tuning
+- EV battery pack design and thermal management
+- Prototype testing and validation planning
+- DFMEA and reliability analysis
+- Homologation and regulatory compliance
+- Production launch readiness and PPAP
 
 ## Standards & References
 
-[Reference applicable industry codes, manufacturer guidelines, and field-proven practices for this domain.]
+Industry standards for applied automotive engineering:
+- SAE J standards (J1100, J2954, J3016, etc.)
+- FMVSS series (Federal Motor Vehicle Safety Standards)
+- ECE Regulations (R13, R14, R94, R100, etc.)
+- Euro NCAP Assessment Protocols
+- IATF 16949 (Automotive Quality Management)
+- AIAG FMEA Manual (DFMEA/PFMEA)
+- ISO 26262 (Functional Safety — Road Vehicles)
 
 ## Failure Mode Awareness
 
-[Identify practical failure modes encountered in field applications. Flag common design mistakes and operational issues in this domain.]
+Practical failure modes to check:
+- **Corrosion** at dissimilar metal joints (steel-aluminum); specify isolation washers, sealant, or E-coat coverage
+- **NVH complaints** from resonances coupling powertrain orders with body modes; verify separation margins >3 Hz
+- **Battery thermal runaway** propagation — design for cell-to-cell isolation (thermal barriers, venting paths)
+- **Fastener loosening** from vibration; specify prevailing torque nuts or thread-locking compound for critical joints
+- **Sealing failures** at doors/closures — verify compression set life of EPDM seals over temperature range
+- **EMC interference** between HV system and ADAS sensors; specify shielding and grounding per CISPR 25

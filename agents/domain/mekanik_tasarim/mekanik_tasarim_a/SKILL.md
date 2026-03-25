@@ -187,28 +187,65 @@ If the tool call fails (solver not installed, insufficient inputs):
 - Label every estimated numerical value with [ASSUMPTION]
 ## Domain-Specific Methodology
 
-[Apply domain-specific method selection based on problem type. Use established analytical frameworks and standard procedures for this engineering discipline.]
+Decision tree for mechanical design analysis:
+- **Stress analysis approach:**
+  - Simple geometry + loading: Closed-form solutions (beam bending, torsion, pressure vessels, contact mechanics)
+  - Complex geometry: FEA required. Select element type — 2D plane stress/strain, axisymmetric, 3D solid, shell
+  - Stress concentration: Kt factors (Peterson's). Effective stress = Kt × nominal. Notch sensitivity q for fatigue
+- **Fatigue analysis:**
+  - High-cycle (N > 10⁴): S-N curves, Basquin equation σ_a = σ_f'(2N)^b. Mean stress correction: Goodman, Gerber, Soderberg
+  - Low-cycle (N < 10⁴): Strain-life approach, Coffin-Manson ε_a = (σ_f'/E)(2N)^b + ε_f'(2N)^c
+  - Multiaxial: von Mises equivalent stress for proportional loading. Critical plane methods (Fatemi-Socie, Smith-Watson-Topper) for non-proportional
+  - Cumulative damage: Miner's rule D = Σ(n_i/N_i) < 1. Rainflow counting for variable amplitude
+- **Fracture mechanics:** Linear elastic (LEFM): K_I = Yσ√(πa). Paris law da/dN = C(ΔK)^m. Plane strain fracture toughness K_Ic. J-integral for elastic-plastic
+- **Contact mechanics:** Hertz theory for sphere/cylinder contact. Contact stress p₀ = (1/π)(6FE*²/R²)^(1/3). Subsurface maximum shear at z ≈ 0.48a
+- **Buckling:** Euler column P_cr = π²EI/(KL)². Plate buckling, shell buckling (knockdown factor). Nonlinear post-buckling analysis for thin shells
+- **Thermal stress:** σ = EαΔT/(1-ν) for constrained body. Thermal fatigue from cyclic ΔT. Creep at T > 0.4T_melt (Larson-Miller parameter)
 
 ## Numerical Sanity Checks
 
-[Check all calculated values against known physical limits and typical engineering ranges. Flag any result that falls outside expected bounds for this domain.]
+Flag results outside these ranges as potential errors:
+| Parameter | Typical Range | If Outside |
+|-----------|--------------|------------|
+| Safety factor (static, steel) | 1.5-4.0 | <1.25 = risky, >6 = over-designed |
+| Safety factor (fatigue) | 2.0-4.0 | <1.5 = insufficient |
+| Von Mises stress / yield | <0.6 for fatigue life | >1.0 = yielding |
+| Kt (stress concentration) | 1.0-5.0 | >8 = extreme geometry |
+| Shaft deflection / length | <0.001 (bearings), <0.003 (gears) | >0.005 = too flexible |
+| Bolt preload / proof load | 75-90% | <60% = under-tightened |
+| Press fit interference | 0.01-0.05 mm/mm diameter | >0.1 = may crack hub |
 
 ## Expert Differentiation
 
 **Expert A (Theoretical) focus areas:**
-- Governing equations and fundamental theory
-- Analytical methods and closed-form solutions
-- Mathematical modeling and simulation methodology
-- Derivation from first principles
-- Theoretical limitations and assumptions
+- Elasticity theory (2D/3D stress states, Mohr's circle, failure theories)
+- Fatigue analysis (S-N, ε-N, fracture mechanics, multiaxial)
+- FEA methodology (element selection, meshing, convergence, verification)
+- Contact mechanics (Hertz, rolling contact, wear)
+- Buckling and stability analysis
+- Creep and high-temperature design
+- Composite laminate analysis (CLT, Tsai-Wu, Hashin failure)
 
 ## Standards & References
 
-[Reference applicable industry standards, codes, and established engineering references for this domain.]
+Mandatory references for mechanical design analysis:
+- Shigley's Mechanical Engineering Design — standard design textbook
+- Peterson's Stress Concentration Factors — Kt charts
+- Dowling, N.E., "Mechanical Behavior of Materials" — fatigue/fracture
+- Anderson, T.L., "Fracture Mechanics: Fundamentals and Applications"
+- Timoshenko & Goodier, "Theory of Elasticity"
+- Roark's Formulas for Stress and Strain — closed-form solutions
+- ASME BPVC Section VIII Division 2 — design by analysis
 
 ## Failure Mode Awareness
 
-[Identify known limitations of standard analysis methods in this domain. Flag edge cases where common assumptions break down.]
+Known limitations and edge cases:
+- **Von Mises criterion** invalid for brittle materials; use maximum normal stress or Mohr-Coulomb
+- **Linear FEA** cannot capture yielding, contact, or large deformation; verify stress levels relative to yield
+- **S-N data** typically for polished specimens; apply surface finish (ka), size (kb), and reliability (kc) correction factors
+- **Paris law constants** C and m are material and R-ratio dependent; use matched test data
+- **Euler buckling** overpredicts for short columns (use Johnson parabola) and for imperfect geometries (knockdown factors)
+- **Plane stress/strain assumption** inappropriate for thick 3D geometries; verify with through-thickness stress check
 
 
 ## Pre-Computed Solver Results

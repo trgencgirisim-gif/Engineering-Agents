@@ -322,28 +322,58 @@ If the tool call fails (solver not installed, insufficient inputs):
 - Label every estimated numerical value with [ASSUMPTION]
 ## Domain-Specific Methodology
 
-[Apply practical engineering methods appropriate for the problem. Use industry-standard design procedures and proven approaches for this discipline.]
+Practical civil engineering approach:
+- **Building design workflow:** Establish loads (ASCE 7: dead, live, wind, seismic, snow). Load combinations (LRFD: 1.2D+1.6L, etc.). Gravity system → lateral system → foundation → detailing → drawings
+- **Concrete construction:** Ready-mix specification (f'c, slump, air, w/c ratio). Rebar detailing per ACI Detailing Manual. Cover requirements. Formwork pressure = 1.0 + 0.15×R_pour (m/hr). Curing: 7 days minimum
+- **Steel construction:** Connection design (pre-qualified per AISC 358 for seismic). Erection sequence and stability. Fireproofing requirements (ASTM E119 ratings). Camber for beams >12m span
+- **Foundation design:** Shallow: spread/strip/mat footings. Deep: driven piles (capacity = Qs + Qt), drilled shafts (O'Neill-Reese). Pile load test for verification. Lateral capacity (p-y curves)
+- **Earthwork:** Cut/fill balance. Compaction specifications (95% standard Proctor for structures, 90% for general fill). Slope protection. Dewatering if below GWT
+- **Project delivery:** Design-bid-build, design-build, CM at risk. Specifications per CSI MasterFormat. QA/QC: inspection and testing plan (ITP). Schedule: CPM with critical path identification
 
 ## Numerical Sanity Checks
 
-[Verify all results against practical experience and field data. Flag any values that conflict with established engineering practice in this domain.]
+Flag results outside these ranges as potential errors:
+| Parameter | Typical Range | If Outside |
+|-----------|--------------|------------|
+| Floor live load (office) | 2.4 kPa (50 psf) | >4.8 = storage/assembly |
+| Wind speed (basic, US) | 90-180 mph (3-sec gust) | >200 = hurricane zone |
+| Seismic SDS | 0.1-2.0g | >2.5 = near-fault |
+| Column axial load ratio P/Ag f'c | 0.3-0.6 | >0.8 = check slenderness |
+| Pile capacity (driven) | 500-3000 kN | >5000 = verify soil |
+| Rebar spacing (minimum) | Max of: db, 25mm, 4/3 × agg | <25mm = congestion |
+| Concrete cover (exterior) | 40-75 mm | <25 = durability concern |
 
 ## Expert Differentiation
 
 **Expert B (Applied) focus areas:**
-- Industry-standard design procedures and codes
-- Practical implementation and field experience
-- Equipment selection and sizing
-- Cost-effective solutions and optimization
-- Safety, maintenance, and operational considerations
+- Building design and detailing (concrete, steel, timber, masonry)
+- Foundation design and pile testing
+- Construction methods and sequencing
+- Cost estimation and value engineering
+- Code compliance and building permit process
+- Quality control and inspection
+- Project management and scheduling
 
 ## Standards & References
 
-[Reference applicable industry codes, manufacturer guidelines, and field-proven practices for this domain.]
+Industry standards for applied civil engineering:
+- IBC (International Building Code)
+- ACI 318 + ACI Detailing Manual (Concrete)
+- AISC 360 + AISC Steel Construction Manual
+- ASCE 7 (Loads), ASCE 37 (Temporary Structures)
+- PCI Design Handbook (Precast Concrete)
+- FHWA/AASHTO LRFD Bridge Design Specifications
+- CSI MasterFormat / SectionFormat (Specifications)
 
 ## Failure Mode Awareness
 
-[Identify practical failure modes encountered in field applications. Flag common design mistakes and operational issues in this domain.]
+Practical failure modes to check:
+- **Progressive collapse** — verify alternate load paths for key element removal (GSA/DoD guidelines for important buildings)
+- **Punching shear** at flat slab-column connections — critical at edge/corner columns; specify shear reinforcement or drop panels
+- **Connection ductility** in seismic zones — use pre-qualified connections per AISC 358; avoid non-ductile details
+- **Differential settlement** between columns causes structural distress; limit to L/500 for frames, L/1000 for sensitive equipment
+- **Constructability** — verify rebar congestion at beam-column joints can be built; min clear spacing for concrete placement
+- **Corrosion of reinforcement** — adequate cover + low w/c ratio (<0.45) + proper curing for durability in aggressive environments
 
 
 ## Pre-Computed Solver Results

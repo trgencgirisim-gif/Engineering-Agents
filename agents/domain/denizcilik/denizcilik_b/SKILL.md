@@ -172,25 +172,55 @@ If the tool call fails (solver not installed, insufficient inputs):
 - Label every estimated numerical value with [ASSUMPTION]
 ## Domain-Specific Methodology
 
-[Apply practical engineering methods appropriate for the problem. Use industry-standard design procedures and proven approaches for this discipline.]
+Practical marine engineering approach:
+- **Ship design spiral:** Owner's requirements → concept design (general arrangement) → preliminary design (lines, hydrostatics, powering) → contract design (class approval) → detailed design (production drawings)
+- **Hull form selection:** Parent hull series (Series 60, NPL, etc.) or custom lines. CFD optimization for resistance. Bulbous bow effective for Fn 0.22-0.32. Stern shape for wake uniformity
+- **Propulsion system:** Main engine selection (MAN, Wärtsilä catalogs). 2-stroke for large vessels (>5000 kW), 4-stroke medium-speed + gearbox for smaller. Electric propulsion (cruise ships, icebreakers, offshore). Shafting: alignment, whirling, bearing loads
+- **Outfitting and systems:** Ballast water treatment (BWM Convention). Bilge/fire/fuel oil piping per classification rules. HVAC (23-25°C, 50±10% RH). Deck machinery: crane SWL, mooring winch pull
+- **Classification and survey:** Choose class society (DNV, Lloyd's, BV, ABS, etc.). Plan approval for hull structure, stability, machinery, electrical. Flag state requirements. ISM Code (safety management). Annual/special surveys
+- **Marine coatings:** Anti-fouling (copper-based, silicone foul-release). Shop primer → construction primer → topcoat system. DFT (dry film thickness) per spec. SSPC surface preparation standards
 
 ## Numerical Sanity Checks
 
-[Verify all results against practical experience and field data. Flag any values that conflict with established engineering practice in this domain.]
+Flag results outside these ranges as potential errors:
+| Parameter | Typical Range | If Outside |
+|-----------|--------------|------------|
+| Lightship weight margin | 5-10% over estimate | <3% = risky |
+| Deadweight coefficient | 0.60-0.85 (tanker/bulk) | <0.40 = passenger/naval |
+| EEDI (energy efficiency index) | Per IMO phase requirements | above reference line = non-compliant |
+| Minimum freeboard | Per ILLC tables | below = load line violation |
+| Main engine MCR margin | 85-90% NCR | <80% = oversized engine |
+| Speed trial tolerance | ±0.5 knots of contract | >1.0 = hull/prop issue |
+| Steering gear (35° to 30°) | <28 seconds (SOLAS) | >28s = non-compliant |
 
 ## Expert Differentiation
 
 **Expert B (Applied) focus areas:**
-- Industry-standard design procedures and codes
-- Practical implementation and field experience
-- Equipment selection and sizing
-- Cost-effective solutions and optimization
-- Safety, maintenance, and operational considerations
+- Ship design process and general arrangement
+- Hull form development and powering prediction
+- Main machinery selection and engine room layout
+- Marine systems design (piping, HVAC, electrical)
+- Classification society approval process
+- Shipyard production engineering
+- Marine regulations and compliance (SOLAS, MARPOL, MLC)
 
 ## Standards & References
 
-[Reference applicable industry codes, manufacturer guidelines, and field-proven practices for this domain.]
+Industry standards for applied marine engineering:
+- SOLAS (Safety of Life at Sea) Convention
+- MARPOL (Marine Pollution Prevention) Convention
+- International Load Line Convention (ILLC)
+- Classification society rules (DNV, Lloyd's Register, ABS, BV)
+- IMO EEDI/EEXI/CII (Energy Efficiency Regulations)
+- ISO 484 (Shipbuilding — Ship Screw Propellers)
+- IACS Unified Requirements (UR-S, UR-Z for hull structure)
 
 ## Failure Mode Awareness
 
-[Identify practical failure modes encountered in field applications. Flag common design mistakes and operational issues in this domain.]
+Practical failure modes to check:
+- **Parametric rolling** in following/quartering seas — check metacentric height variation in waves; most dangerous for container ships
+- **Propeller-hull vibration** from blade-rate excitation; verify pressure pulses < 1-2 kPa on hull above propeller
+- **Fatigue cracking** at structural details (bracket toes, cutouts); classification rules specify fatigue design requirements
+- **Corrosion wastage** — plan for corrosion additions per class rules; critical in ballast tanks and cargo holds
+- **Squat and bank effects** in shallow water — increase draft by ½CbV²/gh' (Barrass formula); critical for large vessels in restricted waters
+- **Engine room flooding** — maintain watertight integrity of engine room boundaries; SOLAS damage stability must be satisfied

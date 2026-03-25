@@ -200,25 +200,64 @@ If the tool call fails (solver not installed, insufficient inputs):
 - Label every estimated numerical value with [ASSUMPTION]
 ## Domain-Specific Methodology
 
-[Apply domain-specific method selection based on problem type. Use established analytical frameworks and standard procedures for this engineering discipline.]
+Decision tree for automotive engineering analysis:
+- **Vehicle dynamics:**
+  - Longitudinal: Tractive effort F = ma + Cd½ρAV² + mgCr + mg·sin(θ). Power = F×V. Gear ratio selection for performance/economy
+  - Lateral: Bicycle model for handling. Understeer gradient K_us = (W_f/C_αf - W_r/C_αr). Neutral steer when K_us = 0
+  - Ride: Quarter-car model (2-DOF), half-car (pitch), full-car (7+ DOF). ISO 2631 for vibration comfort
+  - Braking: Stopping distance d = V²/(2μg) + V×t_reaction. Weight transfer ΔF = mah/L. ABS threshold: slip ratio 10-20%
+- **Powertrain analysis:**
+  - ICE: Otto cycle (η = 1 - 1/r^(γ-1)), Diesel cycle, Miller/Atkinson. BSFC mapping, torque curves, emissions (WLTP/EPA cycles)
+  - Electric: Motor efficiency maps (PMSM, induction). Battery sizing: E = Σ(P_drive × dt)/η_powertrain. Range = E_usable/e_consumption. Regenerative braking energy recovery 60-70%
+  - Hybrid: Series (motor drives wheels), parallel (engine+motor), power-split (planetary). Control strategy: rule-based, dynamic programming (optimal), equivalent consumption minimization (ECMS)
+  - Transmission: Gear ratio spacing (geometric/progressive). Shift quality metrics (shift time, torque hole). CVT ratio coverage
+- **Structural (body/chassis):**
+  - Crash: Frontal/side/rear impact per FMVSS/Euro NCAP. Energy absorption E = ∫F×ds. Deceleration pulse < 30g average
+  - NVH: Modal analysis targeting body modes >40 Hz (global bending), >25 Hz (steering column). Transfer path analysis (TPA) for noise sources
+  - Fatigue: Road load data (RLD) from proving grounds. Damage equivalent loads. Virtual testing with MBS + FEA
+- **Tire modeling:** Magic Formula (Pacejka): F_y = D·sin(C·arctan(Bα - E(Bα - arctan(Bα)))). Tire force/moment data from flat-trac testing
 
 ## Numerical Sanity Checks
 
-[Check all calculated values against known physical limits and typical engineering ranges. Flag any result that falls outside expected bounds for this domain.]
+Flag results outside these ranges as potential errors:
+| Parameter | Typical Range | If Outside |
+|-----------|--------------|------------|
+| 0-100 km/h (sedan) | 6-12 s | <3s = sports/EV, >15 = underpowered |
+| Drag coefficient Cd | 0.22-0.35 (sedan) | <0.18 = concept/EV, >0.45 = SUV/truck |
+| Rolling resistance Cr | 0.008-0.015 | >0.020 = check tire/surface |
+| Curb weight (C-segment) | 1200-1700 kg | >2200 = EV battery weight? |
+| BSFC (gasoline) | 230-280 g/kWh | <200 = check efficiency |
+| EV energy consumption | 14-22 kWh/100km | >30 = heavy/inefficient |
+| Battery pack energy density | 140-200 Wh/kg (pack) | >250 = verify chemistry |
 
 ## Expert Differentiation
 
 **Expert A (Theoretical) focus areas:**
-- Governing equations and fundamental theory
-- Analytical methods and closed-form solutions
-- Mathematical modeling and simulation methodology
-- Derivation from first principles
-- Theoretical limitations and assumptions
+- Vehicle dynamics modeling (bicycle model, multi-body)
+- Powertrain thermodynamics and efficiency analysis
+- EV/hybrid powertrain optimization and control
+- Crash mechanics and energy absorption
+- NVH analysis (modal, transfer path, acoustic)
+- Tire mechanics (Pacejka, brush model)
+- Aerodynamic drag reduction theory
 
 ## Standards & References
 
-[Reference applicable industry standards, codes, and established engineering references for this domain.]
+Mandatory references for automotive analysis:
+- Gillespie, T., "Fundamentals of Vehicle Dynamics" — SAE
+- Rajamani, R., "Vehicle Dynamics and Control"
+- Heywood, J., "Internal Combustion Engine Fundamentals"
+- Ehsani, Gao & Emadi, "Modern Electric, Hybrid Electric, and Fuel Cell Vehicles"
+- SAE J standards series (vehicle testing and performance)
+- ISO 2631 (Vibration and Shock — Human Exposure)
+- Pacejka, H., "Tire and Vehicle Dynamics"
 
 ## Failure Mode Awareness
 
-[Identify known limitations of standard analysis methods in this domain. Flag edge cases where common assumptions break down.]
+Known limitations and edge cases:
+- **Bicycle model** assumes small angles and linear tire; invalid above 0.4g lateral acceleration
+- **Quasi-static fuel consumption** models miss transient effects (turbo lag, catalyst light-off); use transient simulation for WLTP
+- **Magic Formula** requires fitted coefficients per tire model and condition; extrapolation beyond test range unreliable
+- **Linear spring/damper ride model** misses bump stop, jounce bumper, and hydraulic mount nonlinearities
+- **Homogeneous battery cell assumption** ignores cell-to-cell variation (±2-5% capacity); worst-cell limits pack
+- **Constant Cd assumption** breaks down at high yaw angles; crosswind stability requires yaw-dependent aero data

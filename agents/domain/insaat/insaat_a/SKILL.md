@@ -316,28 +316,71 @@ If the tool call fails (solver not installed, insufficient inputs):
 - Label every estimated numerical value with [ASSUMPTION]
 ## Domain-Specific Methodology
 
-[Apply domain-specific method selection based on problem type. Use established analytical frameworks and standard procedures for this engineering discipline.]
+Decision tree for civil/structural engineering analysis:
+- **Structural analysis method:**
+  - Determinate structures: Equilibrium equations (ΣF=0, ΣM=0). Influence lines for moving loads
+  - Indeterminate: Force method (compatibility), displacement method (stiffness), moment distribution (Hardy Cross)
+  - Complex: Matrix structural analysis (direct stiffness method). FEA for continuum problems
+  - Dynamic: Modal analysis for seismic (response spectrum, time history). Equivalent lateral force (ELF) for regular structures
+- **Reinforced concrete design:**
+  - Flexure: Whitney stress block (ACI 318), strain compatibility. φMn ≥ Mu. Balanced, under-reinforced, over-reinforced sections
+  - Shear: Vc + Vs ≥ Vu/φ. Inclined cracking model. Strut-and-tie for D-regions (disturbed regions, deep beams, brackets)
+  - Columns: Interaction diagram (P-M). Slenderness effects (moment magnification or P-Δ analysis). Biaxial bending (Bresler load contour)
+  - Serviceability: Deflection limits (L/240, L/360), crack width control (Gergely-Lutz, Eurocode), creep and shrinkage (ACI 209, CEB-FIP)
+- **Steel design:**
+  - Members: AISC LRFD — compact/noncompact/slender classification. Flexure (Mn), shear (Vn), axial (Pn), combined (H1-1)
+  - Connections: Bolted (bearing, slip-critical) and welded. Bolt group (instantaneous center), weld group (elastic/ultimate)
+  - Stability: Frame stability (B1-B2 method, direct analysis). Lateral-torsional buckling (Cb factor)
+- **Geotechnical:**
+  - Bearing capacity: Terzaghi, Meyerhof, Hansen. qu = cNc + qNq + 0.5γBNγ
+  - Settlement: Immediate (elastic), consolidation (Terzaghi 1D theory), secondary (creep). cc/(1+e0) × log(σ'f/σ'0)
+  - Slope stability: Bishop simplified, Janbu, Spencer. Factor of safety FS > 1.5 (static), > 1.1 (seismic)
+  - Earth pressure: Rankine (smooth wall), Coulomb (rough wall). Active Ka, passive Kp, at-rest K0
 
 ## Numerical Sanity Checks
 
-[Check all calculated values against known physical limits and typical engineering ranges. Flag any result that falls outside expected bounds for this domain.]
+Flag results outside these ranges as potential errors:
+| Parameter | Typical Range | If Outside |
+|-----------|--------------|------------|
+| Concrete compressive f'c | 25-60 MPa (normal) | >100 = UHPC? verify |
+| Steel yield Fy | 250-500 MPa | >700 = check grade |
+| Reinforcement ratio ρ | 0.5-2.5% (beams) | >4% = congestion |
+| Steel W-shape Lb/ry | <Lp → full Mp | >Lr → elastic LTB |
+| Bearing capacity (shallow) | 100-500 kPa | >1000 = rock? verify |
+| Settlement (buildings) | 25-50 mm total | >75 = differential issue |
+| Slope FS (static) | 1.3-1.5 minimum | <1.1 = unstable |
 
 ## Expert Differentiation
 
 **Expert A (Theoretical) focus areas:**
-- Governing equations and fundamental theory
-- Analytical methods and closed-form solutions
-- Mathematical modeling and simulation methodology
-- Derivation from first principles
-- Theoretical limitations and assumptions
+- Structural analysis methods (stiffness, flexibility, finite element)
+- Reinforced concrete mechanics (flexure, shear, columns, slabs)
+- Steel structure design theory (stability, connections, seismic)
+- Geotechnical engineering theory (bearing capacity, consolidation, slope stability)
+- Structural dynamics and earthquake engineering
+- Prestressed concrete theory
+- Soil mechanics fundamentals (effective stress, seepage, consolidation)
 
 ## Standards & References
 
-[Reference applicable industry standards, codes, and established engineering references for this domain.]
+Mandatory references for civil engineering analysis:
+- ACI 318 (Building Code Requirements for Structural Concrete)
+- AISC 360 (Specification for Structural Steel Buildings)
+- ASCE 7 (Minimum Design Loads and Associated Criteria)
+- Eurocode 2/3/7/8 (Concrete/Steel/Geotechnical/Seismic)
+- Terzaghi, Peck & Mesri, "Soil Mechanics in Engineering Practice"
+- McCormac & Csernak, "Structural Steel Design"
+- Wight & MacGregor, "Reinforced Concrete: Mechanics and Design"
 
 ## Failure Mode Awareness
 
-[Identify known limitations of standard analysis methods in this domain. Flag edge cases where common assumptions break down.]
+Known limitations and edge cases:
+- **Linear elastic analysis** misses redistribution in indeterminate RC structures; moment redistribution limited to 20% per ACI
+- **Equivalent lateral force (ELF)** inaccurate for irregular structures; use modal response spectrum or time history analysis
+- **Terzaghi bearing capacity** assumes strip footing; apply shape, depth, and inclination correction factors
+- **1D consolidation** theory assumes vertical drainage only; use 2D/3D for wide loaded areas with horizontal drainage
+- **Plane sections assumption** invalid in deep beams (a/d < 2) and corbels; use strut-and-tie models
+- **Elastic analysis** for connections may not capture prying action or bolt group ultimate behavior
 
 
 ## Pre-Computed Solver Results

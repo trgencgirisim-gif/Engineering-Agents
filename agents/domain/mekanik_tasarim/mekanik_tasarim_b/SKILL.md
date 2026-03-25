@@ -194,28 +194,62 @@ If the tool call fails (solver not installed, insufficient inputs):
 - Label every estimated numerical value with [ASSUMPTION]
 ## Domain-Specific Methodology
 
-[Apply practical engineering methods appropriate for the problem. Use industry-standard design procedures and proven approaches for this discipline.]
+Practical mechanical design approach:
+- **Component design:**
+  - Shafts: Size for combined bending + torsion (DE-Goodman criterion). Check deflection at bearing/gear locations. Specify keyways, fits, surface finish
+  - Bearings: Selection from catalog (SKF, NSK). L10 life = (C/P)^p × 10⁶ rev. Check speed limits (dn value), lubrication, sealing
+  - Gears: AGMA 2001 for spur/helical (bending stress, pitting stress). Lewis form factor for preliminary sizing. Specify quality grade (AGMA 2000), material, heat treatment
+  - Bolted joints: VDI 2230 methodology. Preload for joint separation and slip resistance. Torque-tension relationship T = KFd (K = 0.18-0.20 typical)
+  - Springs: Compression/extension (Wahl correction), torsion, Belleville. Fatigue life check per SMI or EN 13906
+- **Tolerance analysis:** Worst-case stack-up for critical assemblies. RSS (root sum square) for statistical approach. GD&T per ASME Y14.5 for form/position control
+- **Material selection:** Ashby charts (strength-density, stiffness-cost). CES EduPack for systematic selection. Consider manufacturing process constraints (casting, forging, machining, AM)
+- **Design for manufacturing (DFM):** Minimize part count, standardize fasteners, draft angles for casting/molding, wall thickness uniformity, access for assembly tools
+- **Welded joint design:** AWS D1.1 for structural steel. Throat area calculation. Fatigue category per EN 1993-1-9 or BS 7608. Weld quality levels per ISO 5817
 
 ## Numerical Sanity Checks
 
-[Verify all results against practical experience and field data. Flag any values that conflict with established engineering practice in this domain.]
+Flag results outside these ranges as potential errors:
+| Parameter | Typical Range | If Outside |
+|-----------|--------------|------------|
+| Bearing L10 life | 20000-100000 hrs | <5000 = undersized |
+| Gear contact stress (case hardened) | 1000-1700 MPa | >2000 = check material |
+| Gear bending stress | 200-500 MPa | >700 = check hardness |
+| Bolt utilization (VDI) | 75-90% of proof load | >100% = failure risk |
+| Shaft critical speed margin | >20% above operating | <15% = vibration risk |
+| Weld fatigue class (BS 7608) | Class B to Class W | below Class W = poor detail |
+| Press fit contact pressure | 20-150 MPa | >200 = yielding risk |
 
 ## Expert Differentiation
 
 **Expert B (Applied) focus areas:**
-- Industry-standard design procedures and codes
-- Practical implementation and field experience
-- Equipment selection and sizing
-- Cost-effective solutions and optimization
-- Safety, maintenance, and operational considerations
+- Machine component selection and sizing (bearings, gears, shafts, fasteners)
+- Tolerance analysis and GD&T specification
+- Material selection for manufacturing constraints
+- Welded and bolted joint design
+- Design for manufacturing and assembly (DFM/DFA)
+- Prototype testing and validation
+- CAD/CAM integration and drawing standards
 
 ## Standards & References
 
-[Reference applicable industry codes, manufacturer guidelines, and field-proven practices for this domain.]
+Industry standards for applied mechanical design:
+- ASME Y14.5 (Dimensioning and Tolerancing — GD&T)
+- AGMA 2001/2101 (Fundamental Rating Factors for Spur/Helical Gears)
+- VDI 2230 (Systematic Calculation of Bolted Joints)
+- ISO 281 (Rolling Bearings — Dynamic Load Rating and Life)
+- AWS D1.1 (Structural Welding Code — Steel)
+- ISO 2768 (General Tolerances)
+- ASME B18 series (Fastener Standards)
 
 ## Failure Mode Awareness
 
-[Identify practical failure modes encountered in field applications. Flag common design mistakes and operational issues in this domain.]
+Practical failure modes to check:
+- **Fretting fatigue** at press fits and bolted interfaces; reduces fatigue strength 50-70%. Mitigate with surface treatment or fretting-resistant coatings
+- **Hydrogen embrittlement** in high-strength bolts (>Grade 10.9) with electroplated coatings; specify bake-out or mechanical zinc
+- **Bearing false brinelling** from vibration during shipping/standstill; specify protection or minimum load
+- **Gear scuffing** (adhesive wear) at high speeds without adequate EP lubricant; check flash temperature per AGMA 925
+- **Weld toe fatigue** — majority of fatigue failures initiate at weld toes; specify toe grinding or peening for critical joints
+- **Galvanic corrosion** at dissimilar metal interfaces; check galvanic series and specify isolation or compatible materials
 
 
 ## Pre-Computed Solver Results
