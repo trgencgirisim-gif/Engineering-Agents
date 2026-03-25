@@ -633,15 +633,33 @@ GENERIC_TEMPLATE_B = """
 """
 
 
+GENERIC_MARKERS = [
+    "[Apply domain-specific method selection",
+    "[Apply practical engineering methods",
+    "[Check all calculated values against",
+    "[Verify all results against practical",
+]
+
+
 def enrich_file(filepath: str, content: str, dry_run: bool = True) -> bool:
-    """Append enrichment content to a SKILL.md file if not already present."""
+    """Enrich a SKILL.md file: append if no methodology section, replace if generic."""
     with open(filepath, "r", encoding="utf-8") as f:
         existing = f.read()
 
-    if "## Domain-Specific Methodology" in existing:
-        return False  # Already enriched
+    has_methodology = "## Domain-Specific Methodology" in existing
+    is_generic = any(marker in existing for marker in GENERIC_MARKERS)
 
-    new_content = existing.rstrip() + "\n" + content.strip() + "\n"
+    if has_methodology and not is_generic:
+        return False  # Already has real enrichment — skip
+
+    if has_methodology and is_generic:
+        # Replace: strip from "## Domain-Specific Methodology" to end, append real
+        idx = existing.index("## Domain-Specific Methodology")
+        base = existing[:idx].rstrip()
+        new_content = base + "\n" + content.strip() + "\n"
+    else:
+        # Append (original behavior)
+        new_content = existing.rstrip() + "\n" + content.strip() + "\n"
 
     if dry_run:
         print(f"  [DRY RUN] Would enrich: {filepath}")
