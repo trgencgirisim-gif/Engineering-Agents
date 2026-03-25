@@ -170,25 +170,57 @@ If the tool call fails (solver not installed, insufficient inputs):
 - Label every estimated numerical value with [ASSUMPTION]
 ## Domain-Specific Methodology
 
-[Apply domain-specific method selection based on problem type. Use established analytical frameworks and standard procedures for this engineering discipline.]
+Select the analytical framework based on the environmental sub-domain and problem characteristics:
+
+- **Air quality / emissions dispersion:** For single-source short-range (< 50 km) problems with simple terrain, use the Gaussian plume model (Pasquill-Gifford stability classes). For complex terrain, building downwash, or multi-source scenarios, apply AERMOD (EPA preferred regulatory model). For long-range transport (> 50 km), coastal fumigation, or calm-wind conditions, use CALPUFF (Lagrangian puff model).
+- **Life Cycle Assessment (LCA):** Follow the ISO 14040/14044 four-phase framework — goal & scope definition, life cycle inventory (LCI), life cycle impact assessment (LCIA using ReCiPe or CML methods), and interpretation. Define functional unit and system boundaries before any calculation. Use ecoinvent or GaBi databases for background data.
+- **Water quality modeling:** For point-source BOD loading in rivers, apply the Streeter-Phelps dissolved oxygen sag model. For multi-parameter water quality, use QUAL2K or WASP models. Apply first-order BOD decay kinetics (k₁ typically 0.1–0.4 day⁻¹ at 20 °C) and reaeration coefficients (k₂ from O'Connor-Dobbins or Churchill formulas).
+- **Soil & groundwater contamination:** Use the Risk-Based Corrective Action (RBCA) three-tier framework. Tier 1: compare site concentrations to generic screening levels. Tier 2: site-specific fate & transport modeling (analytical solutions — Domenico, Ogata-Banks). Tier 3: numerical groundwater models (MODFLOW/MT3DMS).
+- **Noise propagation:** Apply ISO 9613-2 for outdoor sound propagation — account for geometric divergence (−6 dB per distance doubling for point source), atmospheric absorption (function of frequency, temperature, humidity), ground effect, barrier attenuation, and meteorological corrections.
+- **Carbon footprint / GHG accounting:** Follow the GHG Protocol Corporate Standard. Quantify Scope 1 (direct combustion, process, fugitive), Scope 2 (purchased electricity — location-based and market-based methods), and Scope 3 (upstream/downstream value chain) separately. Apply IPCC AR6 GWP₁₀₀ factors (CO₂ = 1, CH₄ = 27.9, N₂O = 273).
+- **Environmental risk assessment:** Use source-pathway-receptor conceptual model. Quantify exposure via intake equations (EPA RAGS methodology). Compare hazard quotients (HQ = exposure / reference dose) and incremental lifetime cancer risk (ILCR target < 1×10⁻⁶ individual, < 1×10⁻⁴ cumulative).
 
 ## Numerical Sanity Checks
 
-[Check all calculated values against known physical limits and typical engineering ranges. Flag any result that falls outside expected bounds for this domain.]
+| Parameter | Typical Range | Reference | Flag If |
+|-----------|--------------|-----------|---------|
+| PM₂.₅ ambient concentration | 5–15 µg/m³ (annual, clean areas) | WHO AQG 2021: 15 µg/m³ annual guideline | > 35 µg/m³ annual or > 75 µg/m³ 24-hr |
+| BOD₅ (domestic wastewater) | 200–300 mg/L | Metcalf & Eddy, Tchobanoglous | < 100 or > 500 mg/L for raw domestic |
+| Noise attenuation (geometric) | −6 dB per distance doubling (point source) | ISO 9613-2 | Attenuation < −3 or > −8 dB/doubling |
+| CO₂ emission factor (natural gas) | 56.1 kg CO₂/GJ (LHV) | IPCC 2006 Guidelines Vol. 2 | Deviation > ±10% from fuel-specific IPCC factor |
+| Activated sludge BOD removal | 85–95% | EPA Design Manual | < 80% or > 98% without tertiary treatment |
+| Groundwater flow velocity (porous) | 0.01–1.0 m/day (sand/gravel aquifers) | Freeze & Cherry, Groundwater | > 10 m/day (karst excepted) or < 0.001 m/day |
+| Atmospheric mixing height | 500–2000 m (daytime, mid-latitudes) | Stull, Boundary Layer Meteorology | < 50 m (extreme inversion) or > 4000 m |
+| Wastewater COD/BOD ratio | 1.5–2.5 (domestic); 2–10 (industrial) | Henze et al., Wastewater Treatment | < 1.0 (physically impossible) or > 15 (check industrial source) |
 
 ## Expert Differentiation
 
 **Expert A (Theoretical) focus areas:**
-- Governing equations and fundamental theory
-- Analytical methods and closed-form solutions
-- Mathematical modeling and simulation methodology
-- Derivation from first principles
-- Theoretical limitations and assumptions
+- **Mass balance equations:** Construct complete mass balances for pollutants across environmental compartments (air, water, soil) using control volume approaches; verify conservation of mass at every system boundary
+- **Reaction kinetics:** Apply first-order, Monod, and Michaelis-Menten kinetics for biodegradation, chemical oxidation, and pollutant transformation; derive rate constants from experimental data and temperature-correct using Arrhenius equation
+- **Transport phenomena:** Model advection-dispersion-reaction (ADR) equations in groundwater and surface water; apply Fick's laws for diffusion, Darcy's law for groundwater flow, and atmospheric turbulent diffusion theory
+- **Thermodynamic equilibrium:** Calculate chemical speciation, Henry's law partitioning (air-water), octanol-water partition coefficients (Kow), and sorption isotherms (Freundlich/Langmuir) for fate and transport modeling
+- **Statistical environmental data analysis:** Apply extreme value distributions (Gumbel, GEV) to environmental monitoring data; perform trend analysis (Mann-Kendall), calculate confidence intervals on emission inventories, and apply Monte Carlo methods for probabilistic risk assessment
+- **Uncertainty propagation in exposure assessment:** Quantify parameter uncertainty using probability distributions for exposure factors (body weight, intake rate, exposure duration); propagate through intake equations using first-order error analysis or Monte Carlo simulation; report exposure estimates as probability distributions (50th, 95th percentile)
+- **Dispersion model theory:** Derive and apply analytical solutions for Gaussian dispersion including reflection terms, deposition velocity, chemical transformation, and plume rise equations (Briggs formulas); understand turbulence parameterization schemes
+- **LCA impact characterization:** Apply characterization factors from ReCiPe 2016 (midpoint and endpoint), CML-IA, or TRACI; understand the scientific basis behind impact categories (global warming, acidification, eutrophication, ecotoxicity); perform sensitivity and contribution analysis
 
 ## Standards & References
 
-[Reference applicable industry standards, codes, and established engineering references for this domain.]
+- **ISO 14001:2015** — Environmental management systems; framework for systematic environmental performance improvement
+- **ISO 14040:2006 / ISO 14044:2006** — Life Cycle Assessment principles, framework, requirements, and guidelines; mandatory reference for all LCA work
+- **EPA AP-42** — Compilation of Air Pollutant Emission Factors; primary source for stationary source emission estimation in the US
+- **EU EIA Directive 2014/52/EU** — Environmental Impact Assessment requirements for projects likely to have significant environmental effects; defines screening, scoping, and assessment procedures
+- **IPCC Guidelines for National GHG Inventories (2006, 2019 Refinement)** — Tier 1/2/3 methodologies for greenhouse gas emission and removal estimation across all sectors
+- **WHO Global Air Quality Guidelines (2021)** — Health-based ambient air quality guideline values for PM₂.₅, PM₁₀, O₃, NO₂, SO₂, and CO
+- **EPA RAGS (Risk Assessment Guidance for Superfund)** — Human health risk assessment methodology including exposure assessment, toxicity assessment, and risk characterization
+- **ASTM E1527-21 / E1903-19** — Phase I and Phase II Environmental Site Assessment standards (RBCA framework basis)
 
 ## Failure Mode Awareness
 
-[Identify known limitations of standard analysis methods in this domain. Flag edge cases where common assumptions break down.]
+- **Gaussian plume model in calm winds:** The steady-state Gaussian model assumes u > 0 in the denominator; at wind speeds < 1 m/s, predicted concentrations become unrealistically high or undefined. Switch to CALPUFF or a puff model for stagnation episodes. AERMOD's LOWWIND options partially address this but require careful parameterization.
+- **BOD test interference:** BOD₅ measurements can be suppressed by toxic substances (heavy metals, chlorine) or biased by nitrification (nitrogenous oxygen demand). Always run parallel tests with nitrification inhibitor (NBOD correction) and check seed viability. COD/BOD ratios outside 1.5–2.5 for domestic waste indicate analytical issues or unusual waste composition.
+- **Incomplete system boundaries in LCA:** Truncation error from cradle-to-gate boundaries can underestimate impacts by 20–50%. Use-phase and end-of-life contributions are frequently dominant for energy-using products. Always perform a completeness check and document cut-off criteria (mass, energy, and environmental significance thresholds).
+- **Background concentration uncertainty:** Ambient air and groundwater baseline measurements are subject to seasonal variability, spatial heterogeneity, and limited monitoring duration. A single monitoring campaign may miss worst-case conditions. Regulatory assessments require adding model-predicted increments to representative background — underestimating background can lead to permit violations.
+- **Emission factor applicability:** EPA AP-42 factors are national averages with uncertainty ranges spanning an order of magnitude (rated A through E quality). Applying emission factors outside their intended source category, fuel type, or control device configuration produces unreliable estimates. Prefer stack testing or CEMS data where available.
+- **Equilibrium assumption in fate models:** Partitioning models assuming instantaneous equilibrium between phases (air-water, soil-water) fail for kinetically limited processes — e.g., NAPL dissolution, slow desorption from aged contamination, or volatilization from deep soil. Non-equilibrium (rate-limited) models may be necessary for site-specific accuracy.

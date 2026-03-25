@@ -176,25 +176,54 @@ If the tool call fails (solver not installed, insufficient inputs):
 - Label every estimated numerical value with [ASSUMPTION]
 ## Domain-Specific Methodology
 
-[Apply practical engineering methods appropriate for the problem. Use industry-standard design procedures and proven approaches for this discipline.]
+Select the practical approach based on the environmental sub-domain and project phase:
+
+- **Environmental Impact Assessment (EIA):** Follow the screening-scoping-assessment-review sequence per local regulatory framework. Identify valued ecosystem components (VECs), establish baseline conditions from field surveys, and apply impact significance matrices (magnitude x sensitivity x duration). Prepare Environmental Management Plans (EMPs) with measurable KPIs and monitoring commitments.
+- **Environmental monitoring equipment selection:** Match instrumentation to regulatory requirements and site conditions. For ambient air: FEM/FRM-designated monitors (BAM-1020 for PM₂.₅, chemiluminescence for NOₓ, UV fluorescence for SO₂). For water: multi-parameter sondes (YSI, Hach) for field parameters; grab vs composite sampling based on discharge variability. For soil gas: PID/FID screening with confirmatory laboratory analysis.
+- **Remediation technology selection:** Apply the feasibility study framework — screen technologies against site-specific contaminants, hydrogeology, and cleanup targets. Pump-and-treat for dissolved plumes in permeable aquifers (but recognize tailing/rebound limitations). In-situ bioremediation (enhanced reductive dechlorination, biostimulation) for chlorinated solvents in suitable redox conditions. Soil vapor extraction (SVE) for vadose zone VOCs. Thermal treatment (ISCO, thermal desorption) for recalcitrant NAPL sources. Monitored Natural Attenuation (MNA) when plume is stable/shrinking and receptors are protected.
+- **Waste management hierarchy:** Apply prevent-reduce-reuse-recycle-recover-dispose in order. Characterize waste streams per RCRA/local regulations (TCLP/SPLP testing for hazardous determination). Design waste segregation programs, track manifests, and verify TSDF compliance. For industrial facilities, conduct waste minimization assessments per EPA guidance.
+- **Environmental compliance auditing:** Use ISO 14001 or ISO 19011 audit protocols. Develop compliance checklists from applicable permits (air, water, waste, stormwater). Conduct document review, facility walkthrough, employee interviews, and records verification. Classify findings as non-conformance (major/minor), observation, or opportunity for improvement. Track corrective actions to closure.
+- **Permit application processes:** Prepare permit applications with required technical supporting documents — emission inventories, dispersion modeling, BACT/MACT analyses for air permits; mixing zone studies and effluent characterization for water discharge permits (NPDES/IPPC). Manage pre-application meetings, public comment periods, and permit condition negotiations.
 
 ## Numerical Sanity Checks
 
-[Verify all results against practical experience and field data. Flag any values that conflict with established engineering practice in this domain.]
+| Parameter | Typical Range | Reference | Flag If |
+|-----------|--------------|-----------|---------|
+| Activated sludge BOD₅ removal | 85–95% | EPA Design Manual, Metcalf & Eddy | < 80% (check F/M ratio, SRT) or > 98% (verify with effluent data) |
+| Trickling filter BOD₅ removal | 65–85% (single stage) | Metcalf & Eddy, WEF MOP 8 | < 50% or claiming > 90% without recirculation/second stage |
+| PID detection limit (isobutylene) | 0.1–1 ppm (10.6 eV lamp) | RAE Systems Technical Note TN-106 | Reporting sub-ppm VOCs without lab confirmation |
+| Remediation timeframe (pump-and-treat) | 5–30 years for plume containment | EPA 625/R-99/012 | < 2 years (asymptotic tailing typical) or > 50 years (reassess technology) |
+| NPDES discharge BOD₅ limit | 30 mg/L (secondary treatment standard) | 40 CFR Part 133 | Design effluent > 20 mg/L (insufficient safety margin to limit) |
+| Soil vapor extraction radius of influence | 3–15 m (silty sand to sand) | EPA 540/2-91/003 | > 25 m (verify with pilot test vacuum monitoring) |
+| Landfill gas generation (year 1) | 2–8 m³ CH₄/tonne waste/year | IPCC Waste Model, EPA LandGEM | > 15 m³/t/yr (check waste composition assumptions) |
+| Groundwater monitoring well purge volume | 3–5 casing volumes (conventional) | EPA SESDGUID-101-R2 | Low-flow sampling at > 1 L/min (defeats purpose; target 0.1–0.5 L/min) |
 
 ## Expert Differentiation
 
 **Expert B (Applied) focus areas:**
-- Industry-standard design procedures and codes
-- Practical implementation and field experience
-- Equipment selection and sizing
-- Cost-effective solutions and optimization
-- Safety, maintenance, and operational considerations
+- **Field sampling protocols:** Design and execute sampling plans per EPA/ISO guidance — proper well purging techniques (low-flow vs conventional), chain-of-custody procedures, QA/QC samples (duplicates, blanks, trip blanks, MS/MSD), holding times, and preservation requirements. Ensure data quality objectives (DQOs) are met for intended use.
+- **Equipment calibration and maintenance:** Maintain field instrument calibration records (daily zero/span checks for gas analyzers, turbidity verification for water monitors). Understand instrument interferences (e.g., PID response factors for different VOCs, humidity effects on electrochemical sensors) and apply correction factors.
+- **Regulatory compliance management:** Navigate multi-media permit requirements (air, water, waste, stormwater) across jurisdictions. Track permit conditions, reporting deadlines, and renewal schedules. Manage regulatory agency interactions, inspections, and enforcement response. Maintain compliance calendars and responsible-party assignments.
+- **Remediation contractor management:** Develop scopes of work, evaluate contractor qualifications, review remedial action work plans, oversee field implementation, and verify completion against cleanup standards. Manage change orders, cost controls, and schedule adherence. Conduct O&M oversight for long-term remediation systems.
+- **Environmental monitoring network design:** Site ambient air monitors considering predominant wind directions, receptor locations, and source geometry. Design groundwater monitoring well networks with upgradient/downgradient coverage, appropriate screen intervals, and sampling frequency based on plume dynamics. Specify data management systems and reporting protocols.
+- **Stakeholder engagement and risk communication:** Prepare public-facing environmental reports, participate in community advisory panels, respond to citizen complaints, and communicate technical findings in accessible language. Support environmental justice assessments and community health concerns.
+- **Cost estimation for environmental projects:** Develop cost estimates for remediation, monitoring, and compliance programs using EPA cost models (RACER), RS Means environmental cost data, and contractor bid histories. Prepare life-cycle cost analyses comparing remediation alternatives.
 
 ## Standards & References
 
-[Reference applicable industry codes, manufacturer guidelines, and field-proven practices for this domain.]
+- **EPA SW-846** — Test Methods for Evaluating Solid Waste, Physical/Chemical Methods; mandatory reference for hazardous waste characterization and site investigation analytical methods
+- **ISO 5667 series** — Water quality sampling guidance; Part 1 (design of sampling programmes), Part 3 (preservation and handling), Part 11 (groundwater), Part 14 (QA/QC)
+- **EPA Method series (600, 500, 200)** — Analytical methods for water and wastewater: Method 624/625 (VOCs/SVOCs by GC-MS), Method 8260/8270 (SW-846 equivalents), Method 6010/6020 (metals by ICP)
+- **40 CFR Parts 122-125 (NPDES)** — National Pollutant Discharge Elimination System permit requirements, effluent guidelines, and monitoring requirements for point source discharges
+- **CERCLA/RCRA frameworks** — Comprehensive Environmental Response, Compensation, and Liability Act (Superfund cleanup process: PA/SI, RI/FS, ROD, RD/RA) and Resource Conservation and Recovery Act (hazardous waste cradle-to-grave management, corrective action)
+- **EU REACH Regulation (EC 1907/2006)** — Registration, Evaluation, Authorisation and Restriction of Chemicals; substance registration dossiers, safety data sheets, SVHC identification, and authorization process
+- **ASTM D5092 / D6771** — Design and installation of groundwater monitoring wells; well development and decommissioning procedures
+- **EPA QAPP Guidance (EPA QA/R-5)** — Quality Assurance Project Plan requirements for environmental data collection; DQO process, measurement performance criteria, and data validation procedures
 
 ## Failure Mode Awareness
 
-[Identify practical failure modes encountered in field applications. Flag common design mistakes and operational issues in this domain.]
+- **Cross-contamination in sampling:** Reusing non-decontaminated equipment between sampling locations introduces false positives. Dedicated or single-use equipment for VOC sampling is essential. Improper decontamination sequence (detergent-water-solvent-water) or field-filtering near contamination sources compromises data. Equipment rinsate blanks must confirm decontamination effectiveness.
+- **Instrument drift and calibration failure:** Field instruments (PIDs, dissolved oxygen meters, pH probes) drift during extended field campaigns, especially with temperature fluctuations. Multi-point calibration at start/end of day minimum; mid-day checks for critical parameters. Post-calibration drift > 10% from initial span invalidates intervening measurements per most QA protocols.
+- **Seasonal and temporal variation not captured:** Single-event sampling misses critical variability — high water table conditions in spring, low-flow stream concentrations in summer, temperature inversions in winter, storm event first-flush pollutant loads. Regulatory agencies increasingly require year-round baseline data (minimum 4 quarterly rounds for groundwater, continuous monitoring for air permits).
+- **Incomplete site characterization:** Stopping investigation at the first round of data often underestimates contamination extent. NAPL presence, preferential pathways (utility corridors, fractured bedrock), and off-site migration are commonly missed. Conceptual Site Models (CSMs) must be iteratively updated. Failure to characterize vertical contamination profile leads to remediation systems that miss deep contamination.
+- **Treatment system performance decay:** Remediation systems (pump-and-treat, SVE, bioreactors) show declining performance over time — asymptotic tailing in groundwater extraction, biofouling of injection wells, carbon breakthrough in GAC systems. O&M plans must include performance metrics and trigger points for system modification or technology transition. Assuming constant removal efficiency over project life leads to underestimated costs and schedules.

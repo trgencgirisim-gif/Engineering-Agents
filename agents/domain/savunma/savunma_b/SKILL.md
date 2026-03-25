@@ -253,28 +253,58 @@ If the tool call fails (solver not installed, insufficient inputs):
 - Label every estimated numerical value with [ASSUMPTION]
 ## Domain-Specific Methodology
 
-[Apply practical engineering methods appropriate for the problem. Use industry-standard design procedures and proven approaches for this discipline.]
+Select the practical engineering approach based on problem class:
+
+- **Weapon system selection and trade studies:** Conduct structured trade-off analysis comparing candidate systems across KPPs (Key Performance Parameters), cost, schedule, and risk. Use weighted scoring matrices with sensitivity analysis on weighting factors. Apply AoA (Analysis of Alternatives) methodology per DoD guidance.
+- **Protection level specification:** Map threat scenarios to STANAG 4569 protection levels (KE Levels 1--5, mine/IED Levels 1--4). Evaluate armor solutions against weight budget, mobility constraints, and transportability requirements. Conduct ballistic testing per MIL-STD-662 and STANAG 2920 for acceptance.
+- **Survivability assessment procedures:** Apply the susceptibility-vulnerability-recoverability framework. Assess detection signatures (visual, IR, radar, acoustic), evaluate hard-kill and soft-kill countermeasure effectiveness, and quantify system-level survivability using combat simulation models (AJEM, MUVES).
+- **Test and evaluation planning (DT&E/OT&E):** Develop TEMP (Test and Evaluation Master Plan) with critical technical parameters, test conditions matrix, sample size justification (statistical confidence for reliability demonstrations), and pass/fail criteria traceable to requirements. Plan for DT&E (contractor/government lab) through OT&E (operationally realistic conditions).
+- **Logistics support analysis (LSA):** Perform LORA (Level of Repair Analysis) to determine optimal maintenance levels. Estimate demand rates for repair parts, compute PBL (Performance-Based Logistics) metrics (Ao, MTBF, MTTR, spares fill rate). Assess ammunition supply chain from production through theater distribution.
+- **System integration and interface management:** Define and manage interfaces (mechanical, electrical, data, human) using ICDs (Interface Control Documents). Plan integration testing sequences from component through system level. Verify electromagnetic compatibility across the weapon platform.
+- **Operational effectiveness analysis:** Evaluate system MOEs (Measures of Effectiveness) and MOPs (Measures of Performance) in operationally representative scenarios. Apply mission-level modeling to translate component performance into mission success probability. Assess force-level impact through wargaming and campaign analysis.
 
 ## Numerical Sanity Checks
 
-[Verify all results against practical experience and field data. Flag any values that conflict with established engineering practice in this domain.]
+| Parameter | Expected Range | Flag If Outside | Notes |
+|-----------|---------------|-----------------|-------|
+| Armor areal density — STANAG Level 2 (7.62 AP) | 40 -- 60 kg/m^2 (steel equivalent) | < 30 or > 80 kg/m^2 | Composite solutions can be lighter; ceramic + backing ~35--50 kg/m^2 |
+| Armor areal density — STANAG Level 4 (14.5 AP) | 100 -- 160 kg/m^2 (steel equivalent) | < 80 or > 200 kg/m^2 | Significant weight penalty; vehicle mobility impact must be assessed |
+| System operational availability (Ao) | 0.85 -- 0.95 | < 0.80 for combat systems | Ao = MTBM / (MTBM + MDT); includes logistics delay time |
+| Ammunition shelf life — conventional | 10 -- 25 years | < 5 years indicates stability issue | Temperature-dependent; hot-climate storage reduces life 30--50% |
+| Mean rounds between failure (MRBF) — autocannon | 3,000 -- 10,000 rounds | < 2,000 rounds | Depends on caliber and rate of fire; 20--30 mm typical range |
+| MRBF — medium caliber weapon (7.62 mm) | 10,000 -- 25,000 rounds | < 5,000 rounds | Barrel life often the limiting factor |
+| Logistics footprint — ammunition (155 mm) | 40 -- 45 kg per round (complete) | > 50 kg indicates packaging issue | Includes projectile, propellant charge, fuze, packaging |
+| MTTR (Mean Time To Repair) — field level | 0.5 -- 4 hours | > 6 hours degrades Ao significantly | Organizational-level maintenance with standard tools |
 
 ## Expert Differentiation
 
 **Expert B (Applied) focus areas:**
-- Industry-standard design procedures and codes
-- Practical implementation and field experience
-- Equipment selection and sizing
-- Cost-effective solutions and optimization
-- Safety, maintenance, and operational considerations
+- Field testing procedures and firing range protocols: planning live-fire test events, range safety templates (SDZ computation), instrumentation requirements (Doppler radar, high-speed cameras, witness plates), and data reduction procedures
+- Armor testing standards and acceptance criteria: V50 testing per MIL-STD-662, ballistic panel lot acceptance, quality conformance testing, behind-armor effects assessment (backface deformation limits per STANAG 2920)
+- Environmental qualification testing: MIL-STD-810 test tailoring for defense-specific environments (desert, arctic, maritime salt fog, vibration during transport), accelerated aging protocols for energetic materials, and correlation of lab tests to service life predictions
+- System integration testing: electromagnetic compatibility verification per MIL-STD-461, weapon-platform integration (recoil loads, mounting interfaces, fire control system communication protocols), and system-of-systems interoperability testing
+- Operational suitability assessment: human factors evaluation (crew workload, training requirements, maintenance skill levels), RAM (Reliability, Availability, Maintainability) demonstration testing with statistical confidence bounds, and operational test scenario design
+- Supply chain security and industrial base considerations: DMSMS (Diminishing Manufacturing Sources and Material Shortages) risk assessment, ITAR/EAR compliance for international programs, critical material dependencies (rare earths, specialty steels, energetic precursors), and second-source qualification
+- Production readiness and transition: LRIP (Low-Rate Initial Production) planning, manufacturing process validation, first article testing, and production quality control measures for energetic components (propellants, explosives, pyrotechnics)
 
 ## Standards & References
 
-[Reference applicable industry codes, manufacturer guidelines, and field-proven practices for this domain.]
+- **MIL-STD-882E** — Standard practice for system safety; hazard analysis methodology (PHA, SSHA, SHA, O&SHA), risk assessment matrix, safety critical item identification for weapon systems
+- **MIL-STD-810H** — Environmental engineering considerations and laboratory tests; 28 test methods covering climatic, dynamic, and chemical environments. Essential for defense equipment qualification.
+- **DEF STAN 00-56** — Safety management requirements for defence systems; mandates safety case development with structured argument (GSN/CAE), ALARP demonstration, and independent safety audit
+- **STANAG 4439** — Policy for introduction, assessment, and testing for Insensitive Munitions (IM); defines reaction severity levels (Type I--V) and required stimulus tests (bullet impact, fragment impact, shaped charge jet, slow cook-off, fast cook-off, sympathetic detonation)
+- **AOP-52** — Guidance on the assessment and development of Insensitive Munitions; provides detailed test procedures and pass/fail criteria complementing STANAG 4439 policy requirements
+- **DO-178C / DO-254** — Software (DO-178C) and airborne electronic hardware (DO-254) assurance for weapon systems with safety-critical software (fuzing, guidance, fire control); DAL assignment per system safety assessment
+- **MIL-STD-1472** — Human engineering design criteria for military systems; workspace layout, controls/displays design, and operator performance requirements for weapon crew stations
+- **STANAG 4569** — Protection levels for occupants of logistic and light armored vehicles; used as the baseline for specifying and verifying ballistic and mine/IED protection in acquisition programs
 
 ## Failure Mode Awareness
 
-[Identify practical failure modes encountered in field applications. Flag common design mistakes and operational issues in this domain.]
+- **Test range vs operational environment differences:** Controlled range conditions (flat terrain, known meteorology, calibrated targets) often produce optimistic results compared to operational use. Temperature extremes, dust, humidity, crew fatigue, and combat stress degrade system performance 15--30% below range demonstration values. Always apply operational degradation factors.
+- **Scale model to full-scale correlation errors:** Sub-scale ballistic testing, arena fragmentation tests, and wind tunnel models introduce scaling artifacts. Fragment velocity distributions from quarter-scale warheads may not match full-scale due to casing thickness and detonation wave geometry differences. Validate critical parameters at full scale before milestone C decisions.
+- **Environmental aging effects underestimation:** Propellant chemical stability degradation, elastomeric seal hardening, electronic component obsolescence, and corrosion in dissimilar metal joints are frequently underestimated in service life predictions. Surveillance testing programs must be planned from the outset, and shelf life claims must be validated by accelerated aging supported by Arrhenius modeling.
+- **Human factors in weapon operation:** Operator errors account for a significant fraction of weapon system failures in the field. Complex arming sequences, non-intuitive safety mechanisms, poor crew station ergonomics, and inadequate training all contribute. System design must accommodate the 5th--95th percentile operator under stress, fatigue, and MOPP gear conditions.
+- **Supply chain single points of failure:** Sole-source components (specialty bearings, energetic materials, custom ICs, radiation-hardened electronics) create program risk. Lead times for defense-unique materials can exceed 18--24 months. DMSMS analysis must be conducted early and updated throughout the lifecycle. Dual-source qualification should be pursued for all critical path items.
 
 
 ## Pre-Computed Solver Results

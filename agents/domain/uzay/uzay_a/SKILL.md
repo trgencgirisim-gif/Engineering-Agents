@@ -281,25 +281,55 @@ If the tool call fails (solver not installed, insufficient inputs):
 - Label every estimated numerical value with [ASSUMPTION]
 ## Domain-Specific Methodology
 
-[Apply domain-specific method selection based on problem type. Use established analytical frameworks and standard procedures for this engineering discipline.]
+- **Orbital mechanics**: Solve using Keplerian two-body elements; apply Lambert's problem for transfer arc determination; compare Hohmann vs bi-elliptic transfers based on ΔV budget; compute total mission ΔV including plane changes, station-keeping, and deorbit burns
+- **Attitude dynamics**: Apply Euler's rotational equations of motion with quaternion kinematics to avoid gimbal lock; analyze torque-free motion, gravity-gradient stabilization, and spin stability criteria (major-axis rule)
+- **Structural analysis for launch loads**: Combine quasi-static acceleration loads (axial + lateral) with random vibration spectra (Miles' equation for SDOF response); apply Miner's cumulative damage rule for fatigue life under combined sinusoidal and random environments
+- **Thermal control**: Perform orbital-average and worst-case (hot/cold) heat balance using solar flux, Earth albedo, Earth IR, and eclipse duration; solve nodal thermal network equations (Crank-Nicolson or explicit); size radiators using Stefan-Boltzmann law with effective emissivity
+- **Propulsion sizing**: Apply Tsiolkovsky rocket equation (ΔV = Isp·g₀·ln(m₀/mf)) to determine propellant mass; compare chemical (biprop, solid, monoprop) vs electric (Hall, ion, electrospray) propulsion based on thrust-to-weight, Isp, and mission timeline constraints
+- **Space environment effects**: Calculate total ionizing dose (TID) using AP-9/AE-9 trapped particle models and CREME96 for GCR/solar particle events; assess single-event effects (SEE) via LET spectra; estimate atomic oxygen fluence and erosion rates for LEO materials; perform MMOD risk assessment using ORDEM/MASTER debris models and Ballistic Limit Equations
+- **Link budget and communications**: Apply Friis transmission equation to calculate received power; size antenna gain, transmitter power, and data rate against required Eb/N₀; account for atmospheric attenuation, pointing losses, and rain fade margins
+- **Orbit determination and propagation**: Use SGP4/SDP4 for TLE-based propagation; apply numerical integration (RK7(8) or Cowell's method) with perturbation models including J2-J6 harmonics, atmospheric drag (NRLMSISE-00), solar radiation pressure, and third-body effects (Sun, Moon)
 
 ## Numerical Sanity Checks
 
-[Check all calculated values against known physical limits and typical engineering ranges. Flag any result that falls outside expected bounds for this domain.]
+| Parameter | Expected Range | Flag If Outside |
+|-----------|---------------|-----------------|
+| LEO circular velocity | 7.4 -- 7.9 km/s | < 7.0 or > 8.5 km/s |
+| GEO altitude | 35,786 km (± 50 km for station-keeping box) | Deviates by > 200 km |
+| Launch quasi-static loads (axial) | 3 -- 6 g typical (vehicle-dependent) | < 2 g or > 10 g without justification |
+| Solar constant at 1 AU | 1361 W/m² (± 1 W/m²) | Outside 1320 -- 1420 W/m² |
+| LEO atomic oxygen flux | ~10¹⁵ atoms/cm²·s at 400 km | Order-of-magnitude deviation from altitude model |
+| Van Allen belt dose (LEO, 1 yr, 3 mm Al) | 1 -- 10 krad TID typical | > 50 krad without orbit justification |
+| Satellite power density | 30 -- 100 W/kg (bus-level) | < 10 or > 200 W/kg |
+| Specific impulse — chemical | 200 -- 450 s (monoprop to biprop) | Isp > 470 s for chemical system |
+| Specific impulse — electric | 1000 -- 5000 s (Hall to gridded ion) | Isp < 800 s or > 10,000 s without exotic propellant |
 
 ## Expert Differentiation
 
 **Expert A (Theoretical) focus areas:**
-- Governing equations and fundamental theory
-- Analytical methods and closed-form solutions
-- Mathematical modeling and simulation methodology
-- Derivation from first principles
-- Theoretical limitations and assumptions
+- Astrodynamics calculations: orbit determination, Keplerian propagation, Lambert arcs, and patched-conic interplanetary trajectories
+- Perturbation theory: J2 secular and periodic effects, atmospheric drag modeling, solar radiation pressure coefficients, and third-body gravitational perturbations
+- Structural eigenvalue analysis: natural frequency extraction, modal effective mass computation, coupled loads analysis (CLA) methodology
+- Thermal mathematical models (TMM): nodal network construction, orbital flux calculations (view factors, shadow functions), transient solver validation against ESATAN/Thermal Desktop
+- Mission analysis and trajectory optimization: low-thrust trajectory design (Edelbaum approximation, indirect methods), launch window analysis, gravity-assist flyby design
+- Link budget calculations: Friis equation application, modulation scheme selection (BPSK, QPSK, 8PSK), coding gain estimation, interference analysis
+- Orbit determination and propagation: batch least-squares and sequential (EKF/UKF) orbit determination, covariance realism, maneuver calibration
+- Radiation environment modeling: trapped particle flux integration (AP-9/AE-9), shielding analysis (sector analysis, ray-tracing through 3D geometry), dose-depth curves
 
 ## Standards & References
 
-[Reference applicable industry standards, codes, and established engineering references for this domain.]
+- **ECSS-E-ST-10C** — Space engineering: System engineering general requirements (mission requirements definition, design justification, verification approach)
+- **ECSS-E-ST-32C** — Space engineering: Structural general requirements (factors of safety, load combinations, fracture control)
+- **ECSS-E-ST-31C** — Space engineering: Thermal control general requirements (thermal analysis methodology, test correlation criteria)
+- **NASA-STD-5001B** — Structural Design and Test Factors of Safety for Spaceflight Hardware (ultimate/yield FoS, pressure vessel requirements)
+- **ECSS-Q-ST-30C** — Space product assurance: Dependability (reliability prediction, FMECA, parts derating)
+- **ECSS-E-ST-50C** — Space engineering: Communications (link budget methodology, RF interface requirements)
+- **GEVS (GSFC-STD-7000B)** — General Environmental Verification Standard (proto-flight and qualification test levels for vibration, shock, thermal vacuum)
 
 ## Failure Mode Awareness
 
-[Identify known limitations of standard analysis methods in this domain. Flag edge cases where common assumptions break down.]
+- **Two-body approximation errors**: Keplerian propagation diverges significantly for durations beyond a few orbits in LEO due to J2, drag, and SRP; always quantify propagation error bounds and switch to numerical integration for mission-critical analysis
+- **Simplified thermal model limitations**: Lumped-node models with fewer than 50 nodes may miss local hot/cold spots; orbital geometry simplifications (beta-angle averaging) can underestimate eclipse thermal transients by 10-20 K
+- **Radiation model uncertainties**: AP-8/AE-8 models can differ from AP-9/AE-9 by factors of 2-5x in certain orbit regimes (slot region, high inclination); solar cycle phase assumptions critically affect dose predictions
+- **Launch vehicle coupled loads assumptions**: Using quasi-static load factors alone without coupled loads analysis (CLA) can miss dynamic amplification at structural resonances; payload-to-launch-vehicle interface stiffness assumptions require early coordination
+- **Plume impingement neglect**: Thruster plume interactions with solar arrays, radiators, and optical surfaces cause thermal loading, contamination, and force/torque disturbances that are frequently underestimated in preliminary design

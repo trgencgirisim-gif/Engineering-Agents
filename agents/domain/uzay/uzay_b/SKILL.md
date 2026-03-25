@@ -287,25 +287,54 @@ If the tool call fails (solver not installed, insufficient inputs):
 - Label every estimated numerical value with [ASSUMPTION]
 ## Domain-Specific Methodology
 
-[Apply practical engineering methods appropriate for the problem. Use industry-standard design procedures and proven approaches for this discipline.]
+- **Spacecraft bus design and subsystem sizing**: Apply mass/power/volume budgets using historical scaling laws (SMAD parametric models); size EPS (solar array area, battery capacity), ADCS (reaction wheel torque/momentum), propulsion (tank volume, thruster count), and TT&C subsystems against mission requirements
+- **COTS component selection and qualification**: Evaluate commercial-off-the-shelf parts against mission radiation environment (TID, SEE LET threshold); apply derating per ECSS-Q-ST-30C; define delta-qualification test campaigns for non-space-qualified parts
+- **Assembly, integration, and test (AIT)**: Define model philosophy (STM, EM, QM/PFM); plan integration sequence from unit-level through subsystem to system level; establish test-as-you-fly and fly-as-you-test principles; define test readiness review (TRR) criteria
+- **Launch campaign planning**: Coordinate launch site operations — spacecraft shipment, fueling (hydrazine/xenon), encapsulation, combined operations with launch vehicle provider; manage launch window constraints and countdown timeline
+- **Ground segment design**: Size ground station antenna and RF chain for required contact time and data volume; plan network of stations or relay via TDRSS/EDRS; design mission control center architecture and automation level
+- **Mission operations planning**: Define CONOPS for all mission phases (LEOP, commissioning, routine, disposal); plan autonomous on-board operations vs ground-commanded sequences; establish anomaly response procedures
+- **Space debris mitigation compliance**: Ensure 25-year post-mission deorbit compliance (or 5-year per updated guidelines); size deorbit propulsion or drag augmentation devices; perform collision avoidance (COLA) analysis methodology
+- **Constellation design trades**: Evaluate Walker patterns (T/P/F notation), coverage analysis, inter-satellite links, orbit maintenance ΔV, and replacement strategy for large constellations
 
 ## Numerical Sanity Checks
 
-[Verify all results against practical experience and field data. Flag any values that conflict with established engineering practice in this domain.]
+| Parameter | Expected Range | Flag If Outside |
+|-----------|---------------|-----------------|
+| Structure mass fraction | 15 -- 25% of dry mass | < 10% (unrealistic) or > 35% (inefficient) |
+| Power subsystem mass fraction | 20 -- 30% of dry mass | < 12% or > 40% |
+| Payload mass fraction | 20 -- 40% of dry mass (mission-dependent) | < 10% (poor design efficiency) |
+| Solar panel degradation rate (LEO) | 1 -- 3% per year (radiation + thermal cycling) | < 0.5% or > 5% without justification |
+| Battery cycle life (Li-ion, LEO) | 30,000 -- 60,000 cycles at 20-30% DOD | DOD > 40% with > 5 yr life requirement |
+| Link margin | 3 -- 6 dB typical (higher for critical links) | < 2 dB (insufficient) or > 15 dB (over-designed) |
+| Reaction wheel momentum (small sat) | 0.1 -- 4 N·m·s per wheel | > 20 N·m·s for satellite < 500 kg |
+| Thermal vacuum test duration | 4 -- 8 thermal cycles minimum (PFM) | < 4 cycles without waiver |
 
 ## Expert Differentiation
 
 **Expert B (Applied) focus areas:**
-- Industry-standard design procedures and codes
-- Practical implementation and field experience
-- Equipment selection and sizing
-- Cost-effective solutions and optimization
-- Safety, maintenance, and operational considerations
+- Hardware qualification approach: proto-flight model (PFM) vs dedicated qualification model (QM) trade-offs; test level and duration derivation from launch vehicle environment specifications
+- Cleanroom procedures and contamination control: particulate and molecular contamination budgets (per ECSS-Q-ST-70-01C), bake-out requirements for outgassing-sensitive missions (optics, cryogenic instruments)
+- Harness design and routing: cable mass estimation, EMC/EMI shielding strategy, connector selection (Micro-D, Nano-D, spacewire), bend radius constraints, and redundancy routing separation requirements
+- Thermal vacuum (TVAC) testing: test profile definition (hot/cold operational and survival plateaus, dwell times), heater and shroud configuration, thermocouple placement strategy, and thermal balance test correlation criteria (< 3 degC deviation)
+- Vibration and shock testing: sine sweep, random vibration, and shock response spectrum (SRS) testing per GEVS or launcher user manual; notching strategy to protect flight hardware while maintaining qualification validity
+- Launch vehicle interface requirements: payload adapter design (clamp band, separation system), CG offset and inertia constraints, RF and electrical umbilical interfaces, coupled loads analysis cycle coordination
+- Ground support equipment (GSE): design of mechanical GSE (handling fixtures, transport containers), electrical GSE (EGSE for end-to-end functional testing), and software validation environments (SVF, FLATSAT)
 
 ## Standards & References
 
-[Reference applicable industry codes, manufacturer guidelines, and field-proven practices for this domain.]
+- **NASA-STD-8719.14A** — Process for Limiting Orbital Debris (25-year deorbit rule, passivation requirements, casualty risk assessment for reentry)
+- **ECSS-M-ST-10C** — Space project management: Project planning and implementation (review milestones — MDR, PDR, CDR, QR, AR)
+- **ECSS-Q-ST-70C** — Space product assurance: Materials, mechanical parts and processes (outgassing per ECSS-Q-ST-70-02, process qualification)
+- **MIL-STD-1540E / SMC-S-016** — Test Requirements for Launch, Upper-Stage, and Space Vehicles (proto-flight and qualification test requirements)
+- **CCSDS Standards** — Telemetry (TM) 132.0-B, Telecommand (TC) 231.0-B, Space Packet Protocol, File Delivery Protocol (CFDP) for interoperable ground-space communication
+- **ITU Radio Regulations** — Frequency coordination and filing requirements for space services (S-band, X-band, Ka-band allocations); interference analysis methodology
+- **ITAR / EAR compliance** — Export control awareness for US-origin components, technical data, and defense articles; impact on international collaboration and component sourcing decisions
 
 ## Failure Mode Awareness
 
-[Identify practical failure modes encountered in field applications. Flag common design mistakes and operational issues in this domain.]
+- **Workmanship defects in harness and connectors**: Solder joint cold joints, connector pin push-back, and inadequate strain relief are among the most common spacecraft anomalies; require rigorous IPC-J-STD-001 Space Addendum inspection and pull-test verification
+- **Contamination during AIT**: Particulate contamination on optical surfaces or molecular contamination on thermal coatings can degrade performance irreversibly; failure to maintain cleanroom discipline during integration and transport is a recurring root cause
+- **Launch environment underestimation**: Acoustic and random vibration environments from launcher user manuals represent nominal predictions; actual flight environments can exceed predictions by 3-6 dB at specific frequencies, requiring adequate design margins and test notching strategy review
+- **Thermal vacuum test coverage gaps**: Testing only at system level may miss unit-level thermal issues (e.g., localized hot spots on PCBs); insufficient dwell time at temperature plateaus can miss time-dependent failures such as tin whisker growth or lubricant migration
+- **Single-string design without redundancy**: Cost-driven decisions to eliminate redundancy in non-critical subsystems frequently become mission-critical when unexpected degradation occurs on-orbit; conduct thorough FMECA to justify any single-string path
+- **Inadequate margin management**: Erosion of mass, power, and link margins through the design lifecycle without formal tracking leads to late-stage redesign or mission performance shortfalls; enforce margin policy (e.g., 20% at PDR, 10% at CDR, 5% at delivery) with regular margin status reviews
