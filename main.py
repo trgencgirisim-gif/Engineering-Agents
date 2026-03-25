@@ -114,6 +114,11 @@ except ImportError:
     AGENTS = {}
     DESTEK_AJANLARI = {}
 
+from shared.agent_runner import (
+    resolve_agent, build_system_blocks, build_messages,
+    api_call, api_call_stream, extract_response, _make_error_result, _make_result,
+)
+
 # ─── RAG ──────────────────────────────────────────────────────
 _rag = None
 
@@ -172,50 +177,21 @@ class Session:
     def emit(self, etype: str, data: dict):
         self.queue.put({"type": etype, "data": data})
 
-    # ── Ajan çalıştır ─────────────────────────────────────────
+    # ── Ajan çalıştır (uses shared/agent_runner.py) ──────────
     def ajan_calistir(self, ajan_key: str, mesaj: str,
                       gecmis: list = None, cache_context: str = None) -> str:
         if gecmis is None:
             gecmis = []
 
-        ajan = AGENTS.get(ajan_key) or DESTEK_AJANLARI.get(ajan_key)
+        # ── Resolve agent via shared runner ──
+        ajan = resolve_agent(ajan_key, self.domain_model)
         if not ajan:
             return f"ERROR: Agent '{ajan_key}' not found."
 
-        # Domain model override — app.py sidebar toggle ile uyumlu
-        ajan = dict(ajan)  # shallow copy — orijinali değiştirme
-        _is_domain = ajan_key in AGENTS
-        _protected = ajan_key in ("final_rapor", "sentez")
-        if _is_domain and not _protected:
-            if self.domain_model == "sonnet":
-                ajan["model"] = "claude-sonnet-4-6"
-            else:
-                ajan["model"] = "claude-opus-4-6"
-
-        # 2-block system prompt: CACHE_PREAMBLE cached once across all agents
-        if CACHE_PREAMBLE:
-            system_blocks = [
-                {"type": "text", "text": CACHE_PREAMBLE, "cache_control": {"type": "ephemeral", "ttl": "1h"}},
-                {"type": "text", "text": ajan["sistem_promptu"], "cache_control": {"type": "ephemeral"}},
-            ]
-        else:
-            system_blocks = [
-                {"type": "text", "text": ajan["sistem_promptu"], "cache_control": {"type": "ephemeral"}},
-            ]
-
-        # cache_context büyük bağlamı cache_control block olarak gönder
-        if cache_context and len(cache_context) > 800:
-            user_content = [
-                {"type": "text", "text": cache_context, "cache_control": {"type": "ephemeral"}},
-                {"type": "text", "text": mesaj}
-            ]
-        else:
-            user_content = mesaj
-
-        mesajlar = gecmis + [{"role": "user", "content": user_content}]
+        system_blocks = build_system_blocks(ajan, CACHE_PREAMBLE)
+        mesajlar = build_messages(mesaj, gecmis, cache_context)
         self.emit("agent_start", {"key": ajan_key, "name": ajan["isim"]})
 
-        # Thinking modu — sadece ilgili ajanlarda
         thinking_budget = ajan.get("thinking_budget", 0)
 
         # ── Local result cache check (skip for thinking-mode agents) ──
@@ -250,137 +226,61 @@ class Session:
                     brief=mesaj,
                     thinking_budget=thinking_budget,
                 )
-                cevap   = result["cevap"]
-                dusunce = result.get("dusunce", "")
-                actual_cost = result["cost"]
-                saved       = result["saved"]
-                inp   = result["inp"]
-                out   = result["out"]
-                c_cre = result["c_cre"]
-                c_rd  = result["c_rd"]
+                if result.get("cevap"):
+                    self._record_result(ajan_key, ajan, result, cache_key)
+                    return result["cevap"]
             except Exception as e:
                 self.emit("agent_error", {"key": ajan_key, "name": ajan["isim"],
                                           "error": f"Tool loop failed, falling back: {e}"})
-                # Fall through to standard path below
-                cevap = None
 
-            if cevap is not None:
-                # Skip the standard API call — tool loop already ran
-                with self._cost_lock:
-                    self.total_cost         += actual_cost
-                    self.total_input        += inp
-                    self.total_output       += out
-                    self.cache_write_tokens += c_cre
-                    self.cache_read_tokens  += c_rd
-                    self.cache_saved_usd    += saved
-                    self.agent_log.append({
-                        "key":     ajan_key,
-                        "name":    ajan["isim"],
-                        "model":   ajan["model"],
-                        "cost":    actual_cost,
-                        "output":  cevap[:3000],
-                        "thinking": dusunce[:2000] if dusunce else "",
-                    })
-                if cache_key:
-                    with _result_cache_lock:
-                        if len(_result_cache) >= _RESULT_CACHE_MAX:
-                            _result_cache.popitem(last=False)
-                        _result_cache[cache_key] = cevap
-                self.emit("agent_done", {
-                    "key":        ajan_key,
-                    "name":       ajan["isim"],
-                    "model":      ajan["model"],
-                    "cost":       round(actual_cost, 6),
-                    "total_cost": round(self.total_cost, 4),
-                    "cache_saved": round(self.cache_saved_usd, 4),
-                    "agent_count": len(self.agent_log),
-                })
-                return cevap
-
-        # ── C3: Streaming for sequential agents (observer, sentez, final_rapor) ──
+        # ── Streaming for sequential agents (observer, sentez, final_rapor) ──
         _STREAM_AGENTS = {"gozlemci", "sentez", "final_rapor", "capraz_dogrulama"}
-        _use_stream = ajan_key in _STREAM_AGENTS
+        if ajan_key in _STREAM_AGENTS:
+            def _on_token(text):
+                self.emit("agent_token", {"key": ajan_key, "token": text})
+            def _on_retry(deneme, bekleme):
+                self.emit("agent_wait", {"key": ajan_key, "name": ajan["isim"], "seconds": bekleme})
 
-        # ── Standard API call (no tool_use) ──────────────────────
-        extra_kwargs = {}
-        if thinking_budget:
-            extra_kwargs["thinking"] = {"type": "enabled", "budget_tokens": thinking_budget}
+            yanit, err = api_call_stream(
+                self.client, ajan, system_blocks, mesajlar,
+                on_token=_on_token, on_retry=_on_retry,
+            )
+        else:
+            # ── Standard non-streaming API call ──
+            def _on_retry(deneme, bekleme):
+                self.emit("agent_wait", {"key": ajan_key, "name": ajan["isim"], "seconds": bekleme})
 
-        if _use_stream:
-            # C3: Streaming path — emit token deltas via SSE
-            try:
-                collected_text = []
-                with self.client.messages.stream(
-                    model=ajan["model"],
-                    max_tokens=ajan.get("max_tokens", 2000),
-                    system=system_blocks,
-                    messages=mesajlar,
-                    **extra_kwargs,
-                ) as stream:
-                    for event in stream:
-                        if hasattr(event, 'type') and event.type == 'content_block_delta':
-                            delta = event.delta
-                            if hasattr(delta, 'text'):
-                                collected_text.append(delta.text)
-                                self.emit("agent_token", {"key": ajan_key, "token": delta.text})
-                    yanit = stream.get_final_message()
-            except Exception as e:
-                err_str = str(e)
-                if "stream" in err_str.lower() or "thinking" in err_str.lower():
-                    _use_stream = False  # Fall through to non-streaming below
-                else:
-                    self.emit("agent_error", {"key": ajan_key, "name": ajan["isim"], "error": err_str})
-                    raise
+            yanit, err = api_call(
+                self.client, ajan, system_blocks, mesajlar, on_retry=_on_retry,
+            )
 
-        if not _use_stream:
-            for deneme in range(5):
-                try:
-                    yanit = self.client.messages.create(
-                        model=ajan["model"],
-                        max_tokens=ajan.get("max_tokens", 2000),
-                        system=system_blocks,
-                        messages=mesajlar,
-                        **extra_kwargs,
-                    )
-                    break
-                except Exception as e:
-                    err_str = str(e)
-                    if "thinking" in err_str.lower() and thinking_budget:
-                        extra_kwargs = {}
-                        continue
-                    elif "rate_limit" in err_str.lower() or "429" in err_str:
-                        bekleme = 60 * (deneme + 1)
-                        self.emit("agent_wait", {"key": ajan_key, "name": ajan["isim"], "seconds": bekleme})
-                        time.sleep(bekleme)
-                    else:
-                        self.emit("agent_error", {"key": ajan_key, "name": ajan["isim"], "error": err_str})
-                        raise
-            else:
-                # All 5 retries exhausted
-                self.emit("agent_error", {"key": ajan_key, "name": ajan["isim"], "error": "Rate limit aşıldı"})
-                return "ERROR: Rate limit aşıldı."
+        if err:
+            self.emit("agent_error", {"key": ajan_key, "name": ajan["isim"], "error": err})
+            return f"ERROR: {err}"
 
-        # Thinking + text bloklarını ayır
-        text_blocks     = [b.text     for b in yanit.content if b.type == "text"]
-        thinking_blocks = [b.thinking for b in yanit.content
-                           if hasattr(b, "thinking") and b.type == "thinking"]
-        cevap   = "\n".join(text_blocks).strip()
-        dusunce = "\n".join(thinking_blocks).strip() if thinking_blocks else ""
+        # ── Extract response + cost via shared runner ──
+        result = extract_response(yanit)
+        actual_cost, saved = compute_cost(ajan["model"], result["inp"], result["out"],
+                                           result["c_cre"], result["c_rd"])
+        result["cost"] = actual_cost
+        result["saved"] = saved
 
-        usage = yanit.usage
-        inp   = usage.input_tokens
-        out   = usage.output_tokens
-        c_cre = getattr(usage, "cache_creation_input_tokens", 0) or 0
-        c_rd  = getattr(usage, "cache_read_input_tokens",     0) or 0
+        self._record_result(ajan_key, ajan, result, cache_key)
+        return result["cevap"]
 
-        actual_cost, saved = compute_cost(ajan["model"], inp, out, c_cre, c_rd)
+    def _record_result(self, ajan_key: str, ajan: dict, result: dict, cache_key: str = None):
+        """Thread-safe recording of agent results to session state + local cache."""
+        cevap = result["cevap"]
+        dusunce = result.get("dusunce", "")
+        actual_cost = result.get("cost", 0)
+        saved = result.get("saved", 0)
 
         with self._cost_lock:
             self.total_cost         += actual_cost
-            self.total_input        += inp
-            self.total_output       += out
-            self.cache_write_tokens += c_cre
-            self.cache_read_tokens  += c_rd
+            self.total_input        += result.get("inp", 0)
+            self.total_output       += result.get("out", 0)
+            self.cache_write_tokens += result.get("c_cre", 0)
+            self.cache_read_tokens  += result.get("c_rd", 0)
             self.cache_saved_usd    += saved
             self.agent_log.append({
                 "key":     ajan_key,
@@ -391,11 +291,10 @@ class Session:
                 "thinking": dusunce[:2000] if dusunce else "",
             })
 
-        # Store in local result cache (non-thinking agents only)
         if cache_key:
             with _result_cache_lock:
                 if len(_result_cache) >= _RESULT_CACHE_MAX:
-                    _result_cache.popitem(last=False)  # LRU eviction
+                    _result_cache.popitem(last=False)
                 _result_cache[cache_key] = cevap
 
         self.emit("agent_done", {
@@ -407,7 +306,6 @@ class Session:
             "cache_saved": round(self.cache_saved_usd, 4),
             "agent_count": len(self.agent_log),
         })
-        return cevap
 
     # ── Helpers ───────────────────────────────────────────────
     def kalite_puani_oku(self, metin: str) -> int:

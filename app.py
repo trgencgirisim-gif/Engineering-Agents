@@ -13,6 +13,10 @@ from config.agents_config import AGENTS, DESTEK_AJANLARI
 from rag.store import RAGStore
 from blackboard import Blackboard
 from parser import parse_agent_output
+from shared.agent_runner import (
+    resolve_agent, build_system_blocks, build_messages,
+    api_call, api_call_stream, extract_response, _make_error_result, _make_result,
+)
 try:
     from report_generator import generate_docx_report as generate_pdf_report
     PDF_OK = True
@@ -935,76 +939,27 @@ def _ajan_api(ajan_key: str, mesaj: str,
               domain_model: str = "sonnet") -> dict:
     """
     Sadece API çağrısı yapar, session_state'e dokunmaz.
+    Uses shared/agent_runner.py for resolve, build, call, extract.
     Dönüş: {key, name, model, cevap, dusunce, cost, inp, out, c_cre, c_rd, saved}
     """
     if gecmis is None:
         gecmis = []
-    
+
     if st.session_state.get("stop_requested", False):
-        return {"key": ajan_key, "name": ajan_key, "model": "?",
-                "cevap": "STOPPED", "dusunce": "",
-                "cost": 0, "inp": 0, "out": 0, "c_cre": 0, "c_rd": 0, "saved": 0}
-    
+        return _make_error_result(ajan_key, error_msg="STOPPED")
+
     if st.session_state.get("budget_mode") and st.session_state.get("cost_limit", 0) > 0:
         if st.session_state.get("total_cost", 0) >= st.session_state.cost_limit:
-            return {"key": ajan_key, "name": ajan_key, "model": "?",
-                    "cevap": f"LIMIT_REACHED: ${st.session_state.cost_limit:.2f} limitine ulaşıldı.",
-                    "dusunce": "", "cost": 0, "inp": 0, "out": 0,
-                    "c_cre": 0, "c_rd": 0, "saved": 0}
+            r = _make_error_result(ajan_key, error_msg="LIMIT_REACHED")
+            r["cevap"] = f"LIMIT_REACHED: ${st.session_state.cost_limit:.2f} limitine ulaşıldı."
+            return r
 
-    ajan = AGENTS.get(ajan_key) or DESTEK_AJANLARI.get(ajan_key)
+    ajan = resolve_agent(ajan_key, domain_model)
     if not ajan:
-        return {"key": ajan_key, "name": ajan_key, "model": "?",
-                "cevap": f"ERROR: Agent '{ajan_key}' not found.",
-                "dusunce": "", "cost": 0, "inp": 0, "out": 0,
-                "c_cre": 0, "c_rd": 0, "saved": 0}
+        return _make_error_result(ajan_key, error_msg=f"Agent '{ajan_key}' not found.")
 
-    ajan = dict(ajan)
-    _is_domain  = ajan_key in AGENTS
-    _protected  = ajan_key in ("final_rapor", "sentez")
-    if _is_domain and not _protected:
-        ajan["model"] = "claude-sonnet-4-6" if domain_model == "sonnet" else "claude-opus-4-6"
-
-    # ── System prompt: 2 ayrı cache block ──────────────────────
-    # Block 1: CACHE_PREAMBLE — tüm ajanlar paylaşır → 1hr TTL
-    #   Sonnet: ~4175 tok ≥ 1024 threshold ✅
-    #   Opus:   ~4175 tok ≥ 4096 threshold ✅
-    # Block 2: Ajan sistem promptu — ajan bazında farklı → 5dk TTL
-    if CACHE_PREAMBLE:
-        system_blocks = [
-            {
-                "type": "text",
-                "text": CACHE_PREAMBLE,
-                "cache_control": {"type": "ephemeral", "ttl": "1h"},
-            },
-            {
-                "type": "text",
-                "text": ajan["sistem_promptu"],
-                "cache_control": {"type": "ephemeral"},
-            },
-        ]
-    else:
-        system_blocks = [
-            {
-                "type": "text",
-                "text": ajan["sistem_promptu"],
-                "cache_control": {"type": "ephemeral"},
-            }
-        ]
-
-    # ── User message: cache_context artık KULLANILMIYOR ─────────
-    # tum_ciktilar artık messages dizisinde assistant turn olarak geliyor
-    # (run_* fonksiyonlarından gecmis parametresi ile)
-    # cache_context geriye dönük uyumluluk için <800 char kısa içerikler için tutuldu
-    if cache_context and len(cache_context) > 800:
-        user_content = [
-            {"type": "text", "text": cache_context, "cache_control": {"type": "ephemeral"}},
-            {"type": "text", "text": mesaj}
-        ]
-    else:
-        user_content = mesaj
-
-    mesajlar = gecmis + [{"role": "user", "content": user_content}]
+    system_blocks = build_system_blocks(ajan, CACHE_PREAMBLE)
+    mesajlar = build_messages(mesaj, gecmis, cache_context)
 
     # Bütçe bazlı token override
     _tb = st.session_state.get("agent_token_budget", {})
@@ -1012,12 +967,10 @@ def _ajan_api(ajan_key: str, mesaj: str,
         ajan = dict(ajan)
         ajan["max_tokens"] = _tb[ajan_key]
 
-    thinking_budget = ajan.get("thinking_budget", 0)
-
     # ── Tool-aware path: use core.run_tool_loop for domain agents with solvers
+    _is_domain = ajan_key in AGENTS
     if TOOLS_OK and _is_domain and has_tools_for_agent(ajan_key):
         try:
-            brief = mesaj  # pass the user message as brief for input extraction
             r = run_tool_loop(
                 client_instance=client,
                 agent_key=ajan_key,
@@ -1025,8 +978,8 @@ def _ajan_api(ajan_key: str, mesaj: str,
                 messages=mesajlar,
                 model=ajan["model"],
                 max_tokens=ajan.get("max_tokens", 2000),
-                brief=brief,
-                thinking_budget=thinking_budget,
+                brief=mesaj,
+                thinking_budget=ajan.get("thinking_budget", 0),
             )
             r["key"] = ajan_key
             r["name"] = ajan["isim"]
@@ -1035,61 +988,17 @@ def _ajan_api(ajan_key: str, mesaj: str,
         except Exception as e:
             print(f"[WARN] Tool loop failed for {ajan_key}, falling back: {e}")
 
-    extra_kwargs = {}
-    if thinking_budget:
-        extra_kwargs["thinking"] = {"type": "enabled", "budget_tokens": thinking_budget}
+    # ── Standard API call via shared runner ──
+    yanit, err = api_call(client, ajan, system_blocks, mesajlar)
+    if err:
+        return _make_error_result(ajan_key, ajan.get("isim", ajan_key), ajan["model"], err)
 
-    yanit = None
-    for deneme in range(5):
-        try:
-            yanit = client.messages.create(
-                model=ajan["model"],
-                max_tokens=ajan.get("max_tokens", 2000),
-                system=system_blocks,
-                messages=mesajlar,
-                **extra_kwargs,
-            )
-            break
-        except Exception as e:
-            err = str(e)
-            if "thinking" in err.lower() and thinking_budget:
-                extra_kwargs = {}
-                continue
-            elif "rate_limit" in err.lower() or "429" in err:
-                time.sleep(60 * (deneme + 1))
-            else:
-                return {"key": ajan_key, "name": ajan["isim"], "model": ajan["model"],
-                        "cevap": f"ERROR: {e}", "dusunce": "",
-                        "cost": 0, "inp": 0, "out": 0, "c_cre": 0, "c_rd": 0, "saved": 0}
-    else:
-        return {"key": ajan_key, "name": ajan["isim"], "model": ajan["model"],
-                "cevap": "ERROR: Rate limit aşıldı.", "dusunce": "",
-                "cost": 0, "inp": 0, "out": 0, "c_cre": 0, "c_rd": 0, "saved": 0}
-
-    text_blocks     = [b.text     for b in yanit.content if b.type == "text"]
-    thinking_blocks = [b.thinking for b in yanit.content
-                       if hasattr(b, "thinking") and b.type == "thinking"]
-    cevap   = "\n".join(text_blocks).strip()
-    dusunce = "\n".join(thinking_blocks).strip() if thinking_blocks else ""
-    usage   = yanit.usage
-    inp     = usage.input_tokens
-    out     = usage.output_tokens
-    c_cre   = getattr(usage, "cache_creation_input_tokens", 0) or 0
-    c_rd    = getattr(usage, "cache_read_input_tokens",     0) or 0
-
-    from config.pricing import compute_cost
-    actual_cost, saved = compute_cost(ajan["model"], inp, out, c_cre, c_rd)
-
-    return {
-        "key": ajan_key, "name": ajan["isim"], "model": ajan["model"],
-        "cevap": cevap, "dusunce": dusunce,
-        "cost": actual_cost, "inp": inp, "out": out,
-        "c_cre": c_cre, "c_rd": c_rd, "saved": saved
-    }
+    return _make_result(ajan_key, ajan, yanit)
 
 
 # ═════════════════════════════════════════════════════════════
 # C3: STREAMING API — sequential ajanlar için gerçek zamanlı output
+# Uses shared/agent_runner.py for resolve, build, streaming call, extract.
 # ═════════════════════════════════════════════════════════════
 def _ajan_api_stream(ajan_key: str, mesaj: str,
                      gecmis: list = None, cache_context: str = None,
@@ -1107,121 +1016,34 @@ def _ajan_api_stream(ajan_key: str, mesaj: str,
         gecmis = []
 
     if st.session_state.get("stop_requested", False):
-        return {"key": ajan_key, "name": ajan_key, "model": "?",
-                "cevap": "STOPPED", "dusunce": "",
-                "cost": 0, "inp": 0, "out": 0, "c_cre": 0, "c_rd": 0, "saved": 0}
+        return _make_error_result(ajan_key, error_msg="STOPPED")
 
-    ajan = AGENTS.get(ajan_key) or DESTEK_AJANLARI.get(ajan_key)
+    ajan = resolve_agent(ajan_key, domain_model)
     if not ajan:
-        return {"key": ajan_key, "name": ajan_key, "model": "?",
-                "cevap": f"ERROR: Agent '{ajan_key}' not found.",
-                "dusunce": "", "cost": 0, "inp": 0, "out": 0,
-                "c_cre": 0, "c_rd": 0, "saved": 0}
+        return _make_error_result(ajan_key, error_msg=f"Agent '{ajan_key}' not found.")
 
-    ajan = dict(ajan)
-    _is_domain = ajan_key in AGENTS
-    _protected = ajan_key in ("final_rapor", "sentez")
-    if _is_domain and not _protected:
-        ajan["model"] = "claude-sonnet-4-6" if domain_model == "sonnet" else "claude-opus-4-6"
+    system_blocks = build_system_blocks(ajan, CACHE_PREAMBLE)
+    mesajlar = build_messages(mesaj, gecmis, cache_context)
 
-    # System blocks (same as _ajan_api)
-    if CACHE_PREAMBLE:
-        system_blocks = [
-            {"type": "text", "text": CACHE_PREAMBLE, "cache_control": {"type": "ephemeral", "ttl": "1h"}},
-            {"type": "text", "text": ajan["sistem_promptu"], "cache_control": {"type": "ephemeral"}},
-        ]
-    else:
-        system_blocks = [
-            {"type": "text", "text": ajan["sistem_promptu"], "cache_control": {"type": "ephemeral"}},
-        ]
-
-    if cache_context and len(cache_context) > 800:
-        user_content = [
-            {"type": "text", "text": cache_context, "cache_control": {"type": "ephemeral"}},
-            {"type": "text", "text": mesaj}
-        ]
-    else:
-        user_content = mesaj
-
-    mesajlar = gecmis + [{"role": "user", "content": user_content}]
-
-    thinking_budget = ajan.get("thinking_budget", 0)
-    extra_kwargs = {}
-    if thinking_budget:
-        extra_kwargs["thinking"] = {"type": "enabled", "budget_tokens": thinking_budget}
-
-    # ── Streaming call ──
+    # Streamlit-specific: collect text for placeholder updates
     collected_text = []
-    collected_thinking = []
-    usage_data = None
 
-    for deneme in range(5):
-        try:
-            with client.messages.stream(
-                model=ajan["model"],
-                max_tokens=ajan.get("max_tokens", 2000),
-                system=system_blocks,
-                messages=mesajlar,
-                **extra_kwargs,
-            ) as stream:
-                for event in stream:
-                    if hasattr(event, 'type'):
-                        if event.type == 'content_block_delta':
-                            delta = event.delta
-                            if hasattr(delta, 'text'):
-                                collected_text.append(delta.text)
-                                # Real-time UI update
-                                stream_placeholder.markdown("".join(collected_text) + "▌")
-                            elif hasattr(delta, 'thinking'):
-                                collected_thinking.append(delta.thinking)
+    def _on_token(text):
+        collected_text.append(text)
+        stream_placeholder.markdown("".join(collected_text) + "▌")
 
-                # Final render without cursor
-                final_text = "".join(collected_text)
-                stream_placeholder.markdown(final_text)
+    yanit, err = api_call_stream(
+        client, ajan, system_blocks, mesajlar,
+        on_token=_on_token,
+    )
 
-                # Get usage from final message
-                response = stream.get_final_message()
-                usage_data = response.usage
-            break
-        except Exception as e:
-            err = str(e)
-            if "thinking" in err.lower() and thinking_budget:
-                extra_kwargs = {}
-                continue
-            elif "rate_limit" in err.lower() or "429" in err:
-                time.sleep(60 * (deneme + 1))
-            elif "stream" in err.lower():
-                # Streaming not supported — fallback to non-streaming
-                return _ajan_api(ajan_key, mesaj, gecmis, cache_context, domain_model)
-            else:
-                return {"key": ajan_key, "name": ajan["isim"], "model": ajan["model"],
-                        "cevap": f"ERROR: {e}", "dusunce": "",
-                        "cost": 0, "inp": 0, "out": 0, "c_cre": 0, "c_rd": 0, "saved": 0}
-    else:
-        return {"key": ajan_key, "name": ajan["isim"], "model": ajan["model"],
-                "cevap": "ERROR: Rate limit aşıldı.", "dusunce": "",
-                "cost": 0, "inp": 0, "out": 0, "c_cre": 0, "c_rd": 0, "saved": 0}
+    if err:
+        return _make_error_result(ajan_key, ajan.get("isim", ajan_key), ajan["model"], err)
 
-    cevap = "".join(collected_text).strip()
-    dusunce = "".join(collected_thinking).strip()
+    # Final render without cursor
+    stream_placeholder.markdown("".join(collected_text))
 
-    if usage_data:
-        inp = usage_data.input_tokens
-        out = usage_data.output_tokens
-        c_cre = getattr(usage_data, "cache_creation_input_tokens", 0) or 0
-        c_rd = getattr(usage_data, "cache_read_input_tokens", 0) or 0
-    else:
-        inp = out = c_cre = c_rd = 0
-
-    from config.pricing import compute_cost
-    actual_cost, saved = compute_cost(ajan["model"], inp, out, c_cre, c_rd)
-
-    return {
-        "key": ajan_key, "name": ajan["isim"], "model": ajan["model"],
-        "cevap": cevap, "dusunce": dusunce,
-        "cost": actual_cost, "inp": inp, "out": out,
-        "c_cre": c_cre, "c_rd": c_rd, "saved": saved
-    }
+    return _make_result(ajan_key, ajan, yanit)
 
 
 def ajan_calistir_stream(ajan_key, mesaj, gecmis=None, cache_context=None, stream_placeholder=None):
@@ -1305,11 +1127,7 @@ def ajan_calistir_paralel(gorevler: List[Tuple], max_workers: int = 6) -> List[s
                         f2.cancel()
             except Exception as e:
                 idx = futures[fut]
-                results_map[idx] = {
-                    "key": gorevler[idx][0], "name": gorevler[idx][0], "model": "?",
-                    "cevap": f"ERROR: {e}", "dusunce": "",
-                    "cost": 0, "inp": 0, "out": 0, "c_cre": 0, "c_rd": 0, "saved": 0
-                }
+                results_map[idx] = _make_error_result(gorevler[idx][0], error_msg=str(e))
 
     # ANA THREAD: session_state'i sırayla güncelle
     for idx in range(n):
