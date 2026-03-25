@@ -194,25 +194,63 @@ If the tool call fails (solver not installed, insufficient inputs):
 - Label every estimated numerical value with [ASSUMPTION]
 ## Domain-Specific Methodology
 
-[Apply domain-specific method selection based on problem type. Use established analytical frameworks and standard procedures for this engineering discipline.]
+Decision tree for systems engineering analysis:
+- **System modeling:**
+  - Requirements: SysML requirement diagrams, DOORS. Traceability matrix (requirements → design → verification)
+  - Behavior: State machines (Harel statecharts), activity diagrams, sequence diagrams. Petri nets for concurrent systems
+  - Architecture: Functional decomposition → physical allocation. SysML block definition (BDD) and internal block (IBD) diagrams
+  - Performance: Parametric diagrams, Monte Carlo for uncertainty propagation, sensitivity analysis (Sobol indices, tornado plots)
+- **Systems analysis methods:**
+  - Trade studies: Pugh matrix, weighted scoring (AHP — Analytic Hierarchy Process), multi-attribute utility theory (MAUT)
+  - Optimization: Single-objective (gradient, genetic algorithm), multi-objective (Pareto front, NSGA-II). Design space exploration
+  - Reliability: Series/parallel/k-of-n system models. Markov chains for repairable systems. Fault tree analysis (FTA), event tree (ETA)
+  - Simulation: Discrete event (SimPy, Arena), continuous (Simulink, Modelica), agent-based for emergent behavior
+- **Control systems (system-level):**
+  - Feedback architectures: cascade, feedforward, ratio, override/select
+  - State estimation: Kalman filter (linear), Extended KF (nonlinear), Unscented KF (highly nonlinear)
+  - Model-based systems engineering (MBSE): executable models, co-simulation (FMI/FMU standard)
+- **Interface management:** N² diagram for interface identification. ICD (Interface Control Documents). Data flow and control flow analysis
 
 ## Numerical Sanity Checks
 
-[Check all calculated values against known physical limits and typical engineering ranges. Flag any result that falls outside expected bounds for this domain.]
+Flag results outside these ranges as potential errors:
+| Parameter | Typical Range | If Outside |
+|-----------|--------------|------------|
+| System availability | 99.0-99.999% | >99.9999% = very high redundancy |
+| MTBF (electronic system) | 1000-100000 hrs | <500 = check components |
+| Requirements per subsystem | 50-500 | >2000 = decompose further |
+| Interface count (N² chart) | N(N-1)/2 maximum | >100 = complexity risk |
+| Test coverage (requirements) | >95% | <80% = gaps |
+| Risk priority (severity×likelihood) | 1-25 scale | >20 = critical risk |
+| Design margin (performance) | 10-25% | <5% = insufficient |
 
 ## Expert Differentiation
 
 **Expert A (Theoretical) focus areas:**
-- Governing equations and fundamental theory
-- Analytical methods and closed-form solutions
-- Mathematical modeling and simulation methodology
-- Derivation from first principles
-- Theoretical limitations and assumptions
+- Systems modeling language (SysML, UML)
+- Model-based systems engineering (MBSE) methodology
+- Trade study and decision analysis methods (AHP, MAUT)
+- System reliability and availability modeling
+- Control theory applied to system architecture
+- Requirements engineering formalism (formal methods, DOORS)
+- Simulation and optimization for system-level design
 
 ## Standards & References
 
-[Reference applicable industry standards, codes, and established engineering references for this domain.]
+Mandatory references for systems engineering analysis:
+- INCOSE Systems Engineering Handbook
+- Blanchard & Fabrycky, "Systems Engineering and Analysis"
+- Kossiakoff et al., "Systems Engineering: Principles and Practice"
+- NASA Systems Engineering Handbook (SP-2016-6105)
+- ISO/IEC/IEEE 15288 (Systems and Software Engineering — System Life Cycle Processes)
+- Friedenthal, Moore & Steiner, "A Practical Guide to SysML"
 
 ## Failure Mode Awareness
 
-[Identify known limitations of standard analysis methods in this domain. Flag edge cases where common assumptions break down.]
+Known limitations and edge cases:
+- **Requirements creep** — without configuration control, requirements grow unchecked; baseline and track changes formally
+- **AHP inconsistency** — check consistency ratio CR < 0.1; otherwise pairwise comparisons are contradictory
+- **Series reliability model** overly pessimistic for systems with graceful degradation; model actual failure modes
+- **MBSE models** can become disconnected from actual design if not maintained; enforce model-design synchronization
+- **Monte Carlo** convergence depends on sample size; typically need 10⁴-10⁶ samples for tail probabilities
+- **Interface complexity** grows as N²; modular architecture (information hiding) essential for >10 subsystems

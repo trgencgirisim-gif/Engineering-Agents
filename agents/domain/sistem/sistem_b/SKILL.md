@@ -200,25 +200,56 @@ If the tool call fails (solver not installed, insufficient inputs):
 - Label every estimated numerical value with [ASSUMPTION]
 ## Domain-Specific Methodology
 
-[Apply practical engineering methods appropriate for the problem. Use industry-standard design procedures and proven approaches for this discipline.]
+Practical systems engineering approach:
+- **SE lifecycle (Vee model):** Concept → requirements → architecture → detailed design ↓ integration → verification → validation → deployment. Left side decomposes, right side integrates
+- **Requirements management:** Capture stakeholder needs → derive system requirements → allocate to subsystems. SMART criteria (Specific, Measurable, Achievable, Relevant, Traceable). Bidirectional traceability matrix
+- **Architecture development:** Concept of operations (ConOps) first. Functional analysis → physical allocation. Interface identification (N² diagram). Buy/build/reuse decision for each element
+- **Verification and validation:** Four methods — inspection, analysis, demonstration, test. V&V matrix maps requirements to verification methods. Test procedure development, witness testing, test reports
+- **Risk management:** Risk = probability × consequence. Risk register with mitigation actions. Risk burn-down tracking. Technical performance measures (TPMs) as early warning indicators
+- **Configuration management:** Configuration identification (CI tree), change control board (CCB), status accounting, audit. Version control for all technical baselines (functional, allocated, product)
+- **Technical reviews:** SRR → SDR → PDR → CDR → TRR → FCA/PCA. Entry/exit criteria. Action item tracking and closure
 
 ## Numerical Sanity Checks
 
-[Verify all results against practical experience and field data. Flag any values that conflict with established engineering practice in this domain.]
+Flag results outside these ranges as potential errors:
+| Parameter | Typical Range | If Outside |
+|-----------|--------------|------------|
+| Requirements stability (post-PDR) | <5% change rate | >10% = scope creep |
+| Verification coverage at CDR | >80% planned | <60% = schedule risk |
+| TRL at PDR | TRL 4-5 | <3 = insufficient maturity |
+| TRL at CDR | TRL 6-7 | <5 = technology risk |
+| Mass margin (spacecraft) | 15-30% at PDR | <10% = growth risk |
+| Power margin | 15-25% at PDR | <10% = growth risk |
+| Schedule reserve | 10-20% of duration | <5% = high risk |
 
 ## Expert Differentiation
 
 **Expert B (Applied) focus areas:**
-- Industry-standard design procedures and codes
-- Practical implementation and field experience
-- Equipment selection and sizing
-- Cost-effective solutions and optimization
-- Safety, maintenance, and operational considerations
+- SE lifecycle execution (Vee model, agile hybrid)
+- Requirements capture, management, and traceability
+- Technical reviews (SRR/PDR/CDR) preparation and execution
+- Verification and validation planning
+- Risk management and TPM tracking
+- Configuration and change management
+- Integration, test, and evaluation (IT&E)
 
 ## Standards & References
 
-[Reference applicable industry codes, manufacturer guidelines, and field-proven practices for this domain.]
+Industry standards for applied systems engineering:
+- ISO/IEC/IEEE 15288 (System Life Cycle Processes)
+- ISO/IEC/IEEE 29148 (Requirements Engineering)
+- MIL-STD-881 (Work Breakdown Structure for Defense Materiel)
+- SAE EIA-632 (Processes for Engineering a System)
+- AS9100 (Quality Management — Aerospace)
+- NASA NPR 7123.1 (Systems Engineering Processes and Requirements)
+- DoD Acquisition Guidebook (Defense Acquisition University)
 
 ## Failure Mode Awareness
 
-[Identify practical failure modes encountered in field applications. Flag common design mistakes and operational issues in this domain.]
+Practical failure modes to check:
+- **Requirements ambiguity** causes rework at integration; use "shall" for mandatory, formal review for completeness
+- **Interface mismatches** discovered late in integration; lock ICDs early and test interfaces incrementally
+- **Technology maturation** risk — immature technology (TRL < 6) at CDR leads to schedule delays
+- **Test infrastructure** not ready when needed; plan test facilities and equipment as part of system design
+- **Scope creep** without impact analysis; all changes through CCB with cost/schedule/risk assessment
+- **Integration sequence** planning missed — assemble in wrong order and discover physical access issues

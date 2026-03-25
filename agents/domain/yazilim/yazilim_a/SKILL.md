@@ -42,25 +42,66 @@ CROSS-DOMAIN FLAG format (emit when another domain must act):
 CROSS-DOMAIN FLAG → [Domain Name]: [specific technical issue and what they must verify]
 ## Domain-Specific Methodology
 
-[Apply domain-specific method selection based on problem type. Use established analytical frameworks and standard procedures for this engineering discipline.]
+Decision tree for software engineering analysis:
+- **Architecture patterns:**
+  - Monolithic: Single deployment unit, simple. Appropriate for small teams/products. Scaling: vertical only
+  - Microservices: Independent deployment, technology diversity, team autonomy. Complexity cost: service mesh, distributed tracing, eventual consistency
+  - Event-driven: Pub/sub, event sourcing, CQRS. Good for reactive systems, audit trails. Complexity: ordering guarantees, idempotency
+  - Layered: Presentation → business logic → data access. Separation of concerns. Risk: big ball of mud if boundaries not enforced
+- **Concurrency and distributed systems:**
+  - CAP theorem: Choose 2 of Consistency, Availability, Partition tolerance. CP (strong consistency) vs AP (eventual consistency)
+  - Consensus: Raft, Paxos for leader election and log replication. 2PC/3PC for distributed transactions
+  - Consistency models: Linearizability, sequential, causal, eventual. Choose based on application requirements
+  - Failure modes: Byzantine vs crash-stop. Circuit breaker pattern, retry with backoff, bulkhead isolation
+- **Algorithm complexity:**
+  - Time/space: Big-O analysis. Amortized for dynamic structures. Choose data structure by access pattern
+  - NP-completeness: Recognize NP-hard problems (TSP, scheduling, bin packing). Use approximation algorithms or heuristics
+  - Probabilistic: Bloom filters (membership), HyperLogLog (cardinality), count-min sketch (frequency). Space-accuracy tradeoffs
+- **Formal methods:**
+  - Type systems: Static typing, generics, dependent types for correctness
+  - Model checking: TLA+ for distributed protocol verification
+  - Invariant-based design: Pre/post conditions, loop invariants, contracts
 
 ## Numerical Sanity Checks
 
-[Check all calculated values against known physical limits and typical engineering ranges. Flag any result that falls outside expected bounds for this domain.]
+Flag results outside these ranges as potential errors:
+| Parameter | Typical Range | If Outside |
+|-----------|--------------|------------|
+| API response time (p99) | 50-500 ms | >2s = investigate bottleneck |
+| Service availability | 99.9-99.99% | <99% = architecture issue |
+| Error rate (production) | <0.1-1% | >5% = critical issue |
+| Database query time (OLTP) | 1-50 ms | >200 ms = missing index |
+| Memory usage (container) | 128MB-4GB | >8GB = check for leaks |
+| Cyclomatic complexity | 1-10 per function | >20 = refactor |
+| Test coverage (critical paths) | >80% | <50% = risk |
 
 ## Expert Differentiation
 
 **Expert A (Theoretical) focus areas:**
-- Governing equations and fundamental theory
-- Analytical methods and closed-form solutions
-- Mathematical modeling and simulation methodology
-- Derivation from first principles
-- Theoretical limitations and assumptions
+- Software architecture patterns and trade-offs
+- Distributed systems theory (CAP, consensus, consistency)
+- Algorithm design and complexity analysis
+- Formal verification and model checking
+- Programming language theory and type systems
+- Database theory (normalization, transaction isolation, indexing)
+- Security theory (cryptographic primitives, threat modeling)
 
 ## Standards & References
 
-[Reference applicable industry standards, codes, and established engineering references for this domain.]
+Mandatory references for software engineering analysis:
+- Kleppmann, M., "Designing Data-Intensive Applications" — distributed systems
+- Martin, R.C., "Clean Architecture" — architecture principles
+- Gamma et al., "Design Patterns" (GoF) — object-oriented patterns
+- Cormen et al., "Introduction to Algorithms" (CLRS) — algorithms reference
+- Tanenbaum & Van Steen, "Distributed Systems" — distributed computing
+- Bass, Clements & Kazman, "Software Architecture in Practice"
 
 ## Failure Mode Awareness
 
-[Identify known limitations of standard analysis methods in this domain. Flag edge cases where common assumptions break down.]
+Known limitations and edge cases:
+- **Microservices** add network latency, partial failure handling, and data consistency complexity; don't adopt without justification
+- **Eventual consistency** can lead to anomalies (read-your-writes violations); use causal consistency where needed
+- **2PC** blocking protocol — coordinator failure blocks all participants; use Saga pattern for long-lived transactions
+- **Big-O** analysis ignores constants; O(n) with large constant can be slower than O(n log n) for practical n
+- **Cache invalidation** is a hard problem; TTL-based expiry is simplest but may serve stale data
+- **Distributed tracing** adds overhead (1-5%); sample in production, full trace in staging

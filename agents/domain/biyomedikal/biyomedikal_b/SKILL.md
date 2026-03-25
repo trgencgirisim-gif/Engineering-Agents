@@ -274,25 +274,58 @@ If the tool call fails (solver not installed, insufficient inputs):
 - Label every estimated numerical value with [ASSUMPTION]
 ## Domain-Specific Methodology
 
-[Apply practical engineering methods appropriate for the problem. Use industry-standard design procedures and proven approaches for this discipline.]
+Practical biomedical engineering approach:
+- **Medical device design:** Follow design controls (FDA 21 CFR 820.30, ISO 13485). User needs → design inputs → design outputs → verification → validation. Risk management per ISO 14971 throughout
+- **Implant design:** Material selection per ASTM/ISO standards (ASTM F136 for Ti-6Al-4V ELI, ASTM F75 for CoCrMo). Fatigue testing per ASTM F2477 (hip stems), ASTM F1717 (spinal). Finite element verification against mechanical testing
+- **Device classification and regulatory:**
+  - FDA: Class I (exempt), Class II (510(k) — substantial equivalence), Class III (PMA — clinical trials)
+  - EU MDR: Class I, IIa, IIb, III (rule-based classification per Annex VIII)
+  - Predicate device identification, indications for use matching
+- **Biocompatibility testing:** ISO 10993-1 risk assessment flowchart → select tests by device category (surface, external communicating, implant) and contact duration (<24h, 1-30 days, >30 days). Common tests: cytotoxicity (10993-5), sensitization (10993-10), irritation (10993-23)
+- **Sterilization validation:** EtO (ISO 11135), radiation (ISO 11137, 25 kGy typical), steam (ISO 17665). Material compatibility check. Sterility assurance level SAL 10⁻⁶
+- **Usability engineering:** IEC 62366 — formative and summative usability testing. Use error risk analysis. Task analysis and use scenarios. Simulated use validation
 
 ## Numerical Sanity Checks
 
-[Verify all results against practical experience and field data. Flag any values that conflict with established engineering practice in this domain.]
+Flag results outside these ranges as potential errors:
+| Parameter | Typical Range | If Outside |
+|-----------|--------------|------------|
+| Hip implant fatigue test | 10⁷ cycles at body load | <5×10⁶ = insufficient |
+| Spinal cage subsidence stress | <5 MPa on bone | >10 = stress concentration |
+| Sterilization dose (gamma) | 25-40 kGy | >50 = material degradation |
+| Bioburden (pre-sterilization) | <100 CFU/device typical | >1000 = cleaning issue |
+| Catheter burst pressure | 3-10× working pressure | <2× = insufficient margin |
+| Battery life (implantable) | 5-12 years (pacemaker) | <3 = patient burden |
+| Software IEC 62304 class | A, B, or C | Class C = highest rigor required |
 
 ## Expert Differentiation
 
 **Expert B (Applied) focus areas:**
-- Industry-standard design procedures and codes
-- Practical implementation and field experience
-- Equipment selection and sizing
-- Cost-effective solutions and optimization
-- Safety, maintenance, and operational considerations
+- Medical device design controls (FDA/EU MDR)
+- Implant design and mechanical testing
+- Biocompatibility testing strategy (ISO 10993)
+- Sterilization validation and packaging
+- Quality management systems (ISO 13485)
+- Regulatory submission preparation (510(k), CE marking, MDR)
+- Clinical study design and post-market surveillance
 
 ## Standards & References
 
-[Reference applicable industry codes, manufacturer guidelines, and field-proven practices for this domain.]
+Industry standards for applied biomedical engineering:
+- ISO 13485 (Medical Devices — Quality Management Systems)
+- ISO 14971 (Medical Devices — Risk Management)
+- IEC 60601 (Medical Electrical Equipment — Safety)
+- IEC 62304 (Medical Device Software — Life Cycle Processes)
+- IEC 62366 (Medical Devices — Usability Engineering)
+- FDA 21 CFR 820 (Quality System Regulation)
+- EU MDR 2017/745 (Medical Devices Regulation)
 
 ## Failure Mode Awareness
 
-[Identify practical failure modes encountered in field applications. Flag common design mistakes and operational issues in this domain.]
+Practical failure modes to check:
+- **Design control gaps** between user needs and design inputs cause late-stage rework; verify traceability before design transfer
+- **Biocompatibility test failures** from extractables/leachables; characterize all materials in contact path early
+- **Sterilization compatibility** — EtO residuals (ethylene chlorohydrin) may exceed limits; validate aeration cycle
+- **Software of unknown provenance (SOUP)** must be risk-assessed per IEC 62304; open-source libraries need evaluation
+- **Post-market complaints** may trigger corrective action (CAPA); design complaint handling system per ISO 13485
+- **Shelf life** — accelerated aging (ASTM F1980, Q10 = 2) must demonstrate sterile barrier and device performance over claimed shelf life

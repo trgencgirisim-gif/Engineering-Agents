@@ -268,25 +268,62 @@ If the tool call fails (solver not installed, insufficient inputs):
 - Label every estimated numerical value with [ASSUMPTION]
 ## Domain-Specific Methodology
 
-[Apply domain-specific method selection based on problem type. Use established analytical frameworks and standard procedures for this engineering discipline.]
+Decision tree for biomedical engineering analysis:
+- **Biomechanics:**
+  - Musculoskeletal: Inverse dynamics (joint forces/moments from motion capture + force plates). Hill-type muscle model (force-length, force-velocity). Finite element analysis of bone/implant systems
+  - Soft tissue: Hyperelastic constitutive models (Mooney-Rivlin, Ogden, Holzapfel-Gasser-Ogden for arteries). Viscoelasticity (quasi-linear QLV, Prony series)
+  - Cardiovascular: Windkessel models (2/3/4 element), 1D wave propagation, 3D CFD (Navier-Stokes with non-Newtonian blood: Carreau-Yasuda model). Wall shear stress analysis
+  - Orthopedic implant: Stress shielding analysis, wear prediction (Archard's law), fatigue life of implant materials (Ti-6Al-4V, CoCrMo)
+- **Biomaterials:**
+  - Classification: Metals (Ti, CoCr, SS316L), ceramics (alumina, zirconia, hydroxyapatite), polymers (UHMWPE, PEEK, PMMA, silicone), composites
+  - Biocompatibility: ISO 10993 series — cytotoxicity, sensitization, irritation, systemic toxicity, hemocompatibility. Degradation and corrosion in biological environment
+  - Tissue engineering scaffolds: Porosity (>70%), pore size (100-500 μm for bone), biodegradable polymers (PLA, PGA, PCL)
+- **Biofluid mechanics:**
+  - Blood flow: Pulsatile (Womersley number α = R√(ω/ν)), non-Newtonian at low shear (<100 s⁻¹), Newtonian approximation valid at high shear rates
+  - Respiratory: Airflow in branching airways (Weibel model), particle deposition (Stokes number, impaction, sedimentation, diffusion)
+  - Drug delivery: Fick's law for diffusion, pharmacokinetic models (compartmental: 1/2/3), controlled release (Higuchi model, Korsmeyer-Peppas)
+- **Biosignal processing:** ECG (P-QRS-T morphology, R-R interval, HRV), EEG (frequency bands: delta, theta, alpha, beta, gamma), EMG (amplitude, frequency analysis, motor unit action potentials)
 
 ## Numerical Sanity Checks
 
-[Check all calculated values against known physical limits and typical engineering ranges. Flag any result that falls outside expected bounds for this domain.]
+Flag results outside these ranges as potential errors:
+| Parameter | Typical Range | If Outside |
+|-----------|--------------|------------|
+| Cortical bone E (modulus) | 15-25 GPa | >30 = check direction |
+| Cancellous bone E | 0.1-2 GPa | >5 = cortical? |
+| Blood viscosity (high shear) | 3-4 mPa·s | >10 = check hematocrit |
+| Arterial wall stress | 50-200 kPa | >500 = aneurysm analysis? |
+| Heart rate (adult rest) | 60-100 bpm | >180 = exercise/pathology |
+| Implant fatigue limit (Ti-6Al-4V) | 500-600 MPa (10⁷ cycles) | >700 = check surface condition |
+| Scaffold porosity | 60-90% | <40% = insufficient for cell ingrowth |
 
 ## Expert Differentiation
 
 **Expert A (Theoretical) focus areas:**
-- Governing equations and fundamental theory
-- Analytical methods and closed-form solutions
-- Mathematical modeling and simulation methodology
-- Derivation from first principles
-- Theoretical limitations and assumptions
+- Biomechanics modeling (musculoskeletal, cardiovascular, respiratory)
+- Constitutive modeling of biological tissues (hyperelastic, viscoelastic)
+- Biofluid dynamics (blood flow, respiratory, drug delivery)
+- Biomaterial science and biocompatibility theory
+- Biosignal processing and physiological modeling
+- Medical image analysis (segmentation, registration, reconstruction)
+- Computational modeling of biological systems (FEA, CFD, FSI)
 
 ## Standards & References
 
-[Reference applicable industry standards, codes, and established engineering references for this domain.]
+Mandatory references for biomedical analysis:
+- Fung, Y.C., "Biomechanics: Mechanical Properties of Living Tissues"
+- Humphrey, J.D., "Cardiovascular Solid Mechanics" — tissue mechanics
+- Enderle & Bronzino, "Introduction to Biomedical Engineering"
+- Ratner et al., "Biomaterials Science: An Introduction to Materials in Medicine"
+- ISO 10993 series (Biological Evaluation of Medical Devices)
+- Nordin & Frankel, "Basic Biomechanics of the Musculoskeletal System"
 
 ## Failure Mode Awareness
 
-[Identify known limitations of standard analysis methods in this domain. Flag edge cases where common assumptions break down.]
+Known limitations and edge cases:
+- **Linear elastic bone model** misses anisotropy, porosity gradients, and viscoelastic behavior; use transversely isotropic model minimum
+- **Newtonian blood assumption** invalid in small vessels (D < 0.5mm) or low flow states; use Carreau-Yasuda or Casson model
+- **Rigid wall CFD** for arteries misses fluid-structure interaction effects; FSI adds 5-15% difference in wall shear stress
+- **Homogeneous material models** for tissue ignore patient-specific variability; use subject-specific imaging data where possible
+- **In vitro biocompatibility** does not guarantee in vivo success; ISO 10993 is necessary but not sufficient
+- **Static FEA of implants** misses fatigue, fretting, and wear accumulation; multi-physics and time-dependent analysis needed
