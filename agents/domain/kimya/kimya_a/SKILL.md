@@ -281,28 +281,67 @@ If the tool call fails (solver not installed, insufficient inputs):
 - Label every estimated numerical value with [ASSUMPTION]
 ## Domain-Specific Methodology
 
-[Apply domain-specific method selection based on problem type. Use established analytical frameworks and standard procedures for this engineering discipline.]
+Decision tree for chemical engineering analysis:
+- **Reaction engineering:**
+  - Reactor type: CSTR (well-mixed, isothermal control), PFR (high conversion per volume), batch (small scale, flexible), fluidized bed (catalytic, good heat transfer)
+  - Kinetics: Determine rate law (power law, Langmuir-Hinshelwood, Michaelis-Menten). Arrhenius parameters k = A·exp(-Ea/RT)
+  - Design equations: CSTR: V = F_A0·X/(-r_A); PFR: V = F_A0·∫dx/(-r_A). Space time τ = V/v₀
+  - Multiple reactions: Selectivity analysis, yield optimization, temperature/concentration strategies
+- **Transport phenomena:**
+  - Mass transfer: Fick's law, film theory (k_c = D/δ), penetration theory, surface renewal. Sherwood correlations Sh = f(Re, Sc)
+  - Heat transfer: Conduction + convection in reactors, jacket/coil design, runaway analysis (Semenov/Frank-Kamenetskii)
+  - Momentum: Pressure drop through packed beds (Ergun equation), fluidization (minimum fluidization velocity)
+- **Separation processes:**
+  - Distillation: McCabe-Thiele (binary), Fenske-Underwood-Gilliland (shortcut multicomponent), rigorous (MESH equations)
+  - Absorption/stripping: Kremser equation (dilute), HTU-NTU method, equilibrium stage
+  - Extraction: Liquid-liquid equilibrium, Hunter-Nash graphical method, number of stages
+  - Membrane: Solution-diffusion model, selectivity-permeability tradeoff (Robeson plot)
+- **Thermodynamic models:** Ideal (Raoult's law), activity coefficient (Margules, Wilson, NRTL, UNIQUAC), equation of state (SRK, Peng-Robinson, GERG-2008 for gases)
+- **Process simulation:** Sequential modular vs equation-oriented. Convergence of recycle loops (Wegstein, Broyden). Sensitivity analysis and optimization (SQP, genetic algorithms)
 
 ## Numerical Sanity Checks
 
-[Check all calculated values against known physical limits and typical engineering ranges. Flag any result that falls outside expected bounds for this domain.]
+Flag results outside these ranges as potential errors:
+| Parameter | Typical Range | If Outside |
+|-----------|--------------|------------|
+| Activation energy Ea (gas phase) | 40-300 kJ/mol | >400 = check units |
+| CSTR conversion (single) | 50-85% | >95% = check kinetics |
+| PFR conversion | 70-99% | >99.9% = equilibrium limit? |
+| Distillation reflux ratio | 1.1-2.0 × R_min | <1.0 = below minimum |
+| Column pressure drop | 3-8 mbar/tray | >15 = flooding |
+| Packed bed ΔP/L | 100-1000 Pa/m | >5000 = check velocity |
+| Heat of reaction | -50 to -200 kJ/mol (exothermic) | >-500 = verify mechanism |
 
 ## Expert Differentiation
 
 **Expert A (Theoretical) focus areas:**
-- Governing equations and fundamental theory
-- Analytical methods and closed-form solutions
-- Mathematical modeling and simulation methodology
-- Derivation from first principles
-- Theoretical limitations and assumptions
+- Chemical reaction kinetics and reactor design equations
+- Transport phenomena (mass, heat, momentum transfer)
+- Thermodynamic modeling (VLE, LLE, activity coefficients, EOS)
+- Separation process theory (distillation, absorption, extraction, membrane)
+- Process modeling and simulation methodology
+- Catalysis theory (heterogeneous, enzymatic, photocatalysis)
+- Reaction pathway analysis and mechanism elucidation
 
 ## Standards & References
 
-[Reference applicable industry standards, codes, and established engineering references for this domain.]
+Mandatory references for chemical engineering analysis:
+- Fogler, H.S., "Elements of Chemical Reaction Engineering" — reactor design
+- Bird, Stewart & Lightfoot, "Transport Phenomena" — definitive transport text
+- Seader, Henley & Roper, "Separation Process Principles" — separations
+- Smith, Van Ness & Abbott, "Introduction to Chemical Engineering Thermodynamics"
+- Perry's Chemical Engineers' Handbook — comprehensive data
+- Levenspiel, O., "Chemical Reaction Engineering" — reactor design classic
 
 ## Failure Mode Awareness
 
-[Identify known limitations of standard analysis methods in this domain. Flag edge cases where common assumptions break down.]
+Known limitations and edge cases:
+- **Ideal mixture assumption** (Raoult's law) fails for polar/associating molecules; use NRTL or UNIQUAC with fitted parameters
+- **Plug flow assumption** in PFR invalid for low L/D ratio or high Re dispersion; check Peclet number Pe > 100
+- **Isothermal CSTR assumption** fails for highly exothermic reactions; check adiabatic temperature rise ΔT_ad = (-ΔH_r)C_A0/ρc_p
+- **McCabe-Thiele** assumes constant molar overflow (CMO); invalid for wide-boiling systems or high heat of mixing
+- **Film theory mass transfer** underestimates rates for short-contact-time systems; use penetration theory instead
+- **Equilibrium stage model** overpredicts separation; apply Murphree efficiency (50-80% typical for trays)
 
 
 ## Pre-Computed Solver Results

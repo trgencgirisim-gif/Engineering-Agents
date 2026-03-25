@@ -287,28 +287,62 @@ If the tool call fails (solver not installed, insufficient inputs):
 - Label every estimated numerical value with [ASSUMPTION]
 ## Domain-Specific Methodology
 
-[Apply practical engineering methods appropriate for the problem. Use industry-standard design procedures and proven approaches for this discipline.]
+Practical chemical engineering approach:
+- **Process design:** Start with block flow diagram → PFD → P&ID. Material and energy balance at each unit. Specify design basis: feed composition, production rate, product purity, operating hours
+- **Equipment sizing:**
+  - Reactors: Volume from design equation + residence time. Heat transfer area for jacket/coil. Agitator sizing (P/V = 0.5-3 kW/m³ typical)
+  - Columns: Diameter from flooding correlation (Fair, Koch). Height from number of stages × tray spacing (0.45-0.60m). Structured packing for vacuum service
+  - Heat exchangers: LMTD or ε-NTU. TEMA type selection (BEM, AES, AEW). Fouling factors per TEMA Table RGP-T-2.4
+  - Pumps/compressors: API 610/617. NPSH analysis. Driver sizing with 10-15% margin
+- **Safety analysis:** HAZOP methodology (node-based, guide words: NO, MORE, LESS, REVERSE, AS WELL AS). Layers of protection analysis (LOPA). Relief valve sizing per API 520/521. Runaway reaction scenarios (DIERS methodology)
+- **Process control:** Pair controlled and manipulated variables (RGA for interaction). PID tuning: IMC or Ziegler-Nichols. Cascade for disturbances, ratio for feeds, feedforward for measurable disturbances
+- **Utilities:** Steam levels (LP 3.5 barg, MP 10 barg, HP 40 barg). Cooling water ΔT = 10°C typical. Instrument/plant air at 7 barg. Nitrogen blanketing for flammable service
+- **Scale-up:** Pilot → commercial: maintain geometric similarity, tip speed (agitation), heat transfer area/volume ratio (decreases with scale), same Da for reaction
 
 ## Numerical Sanity Checks
 
-[Verify all results against practical experience and field data. Flag any values that conflict with established engineering practice in this domain.]
+Flag results outside these ranges as potential errors:
+| Parameter | Typical Range | If Outside |
+|-----------|--------------|------------|
+| Reactor LHSV (liquid) | 0.5-10 h⁻¹ | >20 = very short contact time |
+| Column diameter (industrial) | 0.5-12 m | >15 = multiple columns? |
+| Overall U (liquid-liquid HX) | 150-1200 W/m²K | >2000 = check fouling |
+| Relief valve set pressure | MAWP × 1.0 | >1.1 × MAWP = check code |
+| Tray efficiency (Murphree) | 50-80% | >90% = verify |
+| Pump efficiency | 60-85% | >90% = verify size |
+| Compressor polytropic η | 72-88% | >92% = verify |
 
 ## Expert Differentiation
 
 **Expert B (Applied) focus areas:**
-- Industry-standard design procedures and codes
-- Practical implementation and field experience
-- Equipment selection and sizing
-- Cost-effective solutions and optimization
-- Safety, maintenance, and operational considerations
+- Process design methodology (PFD, P&ID, design basis)
+- Equipment selection, sizing, and specification
+- Process safety (HAZOP, LOPA, relief systems)
+- Process control strategy and instrumentation
+- Plant layout and piping design
+- Commissioning, startup, and troubleshooting
+- Scale-up methodology from pilot to production
 
 ## Standards & References
 
-[Reference applicable industry codes, manufacturer guidelines, and field-proven practices for this domain.]
+Industry standards for applied chemical engineering:
+- API 520/521 (Pressure-relieving and Depressuring Systems)
+- ASME Section VIII (Pressure Vessels)
+- TEMA Standards (Heat Exchangers)
+- IEC 61511/ISA 84 (Safety Instrumented Systems)
+- API 610/617 (Pumps/Compressors)
+- DIERS Project Manual (Emergency Relief System Design)
+- Perry's Chemical Engineers' Handbook — equipment sizing data
 
 ## Failure Mode Awareness
 
-[Identify practical failure modes encountered in field applications. Flag common design mistakes and operational issues in this domain.]
+Practical failure modes to check:
+- **Thermal runaway** — always calculate adiabatic temperature rise and verify cooling capacity exceeds heat generation at all conditions
+- **Column flooding** — operate at 70-80% of flood velocity; check at maximum throughput and minimum pressure
+- **Fouling** in heat exchangers reduces capacity over time; specify cleaning access and fouling margin
+- **Relief valve sizing** must consider all credible overpressure scenarios including fire case, blocked outlet, and runaway reaction
+- **Corrosion** under insulation (CUI) in 50-175°C range on carbon steel; specify moisture barriers and inspection access
+- **Catalyst deactivation** reduces conversion over time; design for end-of-run (EOR) conditions, not start-of-run
 
 
 ## Pre-Computed Solver Results

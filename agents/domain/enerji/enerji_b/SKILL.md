@@ -180,25 +180,55 @@ If the tool call fails (solver not installed, insufficient inputs):
 - Label every estimated numerical value with [ASSUMPTION]
 ## Domain-Specific Methodology
 
-[Apply practical engineering methods appropriate for the problem. Use industry-standard design procedures and proven approaches for this discipline.]
+Practical energy systems engineering approach:
+- **Power plant design:** Heat balance diagram first. Select steam conditions (subcritical/supercritical). Specify major equipment: boiler (ASME I), turbine-generator (API 612), condenser (HEI). Auxiliary power 5-10%
+- **Solar PV project:** Resource assessment (TMY data, GHI/DNI). Module selection (mono-Si 20-22% SHJ, bifacial +5-15%). String sizing (Voc × modules < inverter Vdc,max at T_min). Inverter sizing (DC:AC ratio 1.1-1.3). Energy yield: PVsyst or SAM simulation
+- **Wind project:** Site assessment (met mast 1+ year, lidar). Turbine selection for wind class (IEC 61400-1: Class I >10 m/s, Class III <7.5 m/s). Micrositing: minimize wake losses (<5%), optimize AEP. Foundation: gravity, monopile, or jacket (offshore)
+- **Energy audit:** ASHRAE Level 1/2/3 methodology. Establish baseline (12-month utility data). Identify ECMs: lighting, HVAC, envelope, process. Simple payback, NPV, IRR analysis
+- **Cogeneration (CHP):** Match thermal-to-electric ratio to site loads. Prime mover selection: reciprocating (< 5MW, η_e 35-45%), gas turbine (5-50MW, η_e 25-35%), steam turbine (any size, η_e 20-35%). Overall CHP efficiency 70-85%
+- **Grid connection:** Interconnection study (IEEE 1547). Power quality requirements. Protection coordination with utility. Islanding detection
 
 ## Numerical Sanity Checks
 
-[Verify all results against practical experience and field data. Flag any values that conflict with established engineering practice in this domain.]
+Flag results outside these ranges as potential errors:
+| Parameter | Typical Range | If Outside |
+|-----------|--------------|------------|
+| Solar PV specific yield | 1000-2200 kWh/kWp/yr | >2500 = verify resource |
+| Wind AEP (onshore) | 2000-4000 MWh/MW/yr | >5000 = verify capacity factor |
+| CHP overall efficiency | 70-85% | >90% = check boundary |
+| Boiler efficiency (gas) | 80-95% | >98% = check condensing? |
+| T&D losses | 5-12% | >15% = aging infrastructure |
+| Plant availability | 85-95% | >98% = check maintenance plan |
+| LCOE calculation discount rate | 5-10% | >15% = high risk premium |
 
 ## Expert Differentiation
 
 **Expert B (Applied) focus areas:**
-- Industry-standard design procedures and codes
-- Practical implementation and field experience
-- Equipment selection and sizing
-- Cost-effective solutions and optimization
-- Safety, maintenance, and operational considerations
+- Power plant design and equipment specification
+- Solar PV and wind project development
+- Energy auditing and efficiency improvement (ASHRAE methods)
+- Cogeneration and district energy system design
+- Grid interconnection and power quality
+- Energy storage system sizing and integration
+- Project economics (LCOE, NPV, IRR, payback)
 
 ## Standards & References
 
-[Reference applicable industry codes, manufacturer guidelines, and field-proven practices for this domain.]
+Industry standards for applied energy systems:
+- ASME PTC 46 (Overall Plant Performance)
+- IEEE 1547 (Interconnection of Distributed Resources)
+- IEC 61724 (PV System Performance Monitoring)
+- IEC 61400 series (Wind Energy Generation Systems)
+- ASHRAE Standard 211 (Commercial Building Energy Audits)
+- ISO 50001 (Energy Management Systems)
+- API 616 (Gas Turbines for Petroleum, Chemical, and Gas Industry)
 
 ## Failure Mode Awareness
 
-[Identify practical failure modes encountered in field applications. Flag common design mistakes and operational issues in this domain.]
+Practical failure modes to check:
+- **PV soiling losses** can reach 25% in arid regions without regular cleaning; include O&M plan
+- **Wind turbine availability** drops in extreme cold (icing) or heat; specify cold climate package where needed
+- **Steam turbine solid particle erosion** from boiler carryover; specify steam purity per ASME TDP-1
+- **Grid curtailment** in renewable-heavy grids can reduce AEP 5-15%; model curtailment risk in financials
+- **Battery thermal runaway** — specify BMS with cell-level monitoring, thermal management, and fire suppression
+- **Fuel flexibility** — gas turbine derating with lower-BTU fuels; verify Wobbe index compatibility
