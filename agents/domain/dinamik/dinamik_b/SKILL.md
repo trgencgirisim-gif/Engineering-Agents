@@ -323,28 +323,58 @@ If the tool call fails (solver not installed, insufficient inputs):
 - Label every estimated numerical value with [ASSUMPTION]
 ## Domain-Specific Methodology
 
-[Apply practical engineering methods appropriate for the problem. Use industry-standard design procedures and proven approaches for this discipline.]
+Practical dynamics and vibration engineering approach:
+- **Vibration diagnostics:** Measure acceleration (accelerometers), velocity, or displacement. FFT for frequency identification. Waterfall/spectrogram for transient events. ISO 10816/20816 for severity classification
+- **Isolation design:** Select isolator stiffness for f_n = (1/2π)√(k/m) < 0.3 × f_excitation. Verify static deflection. Check for rocking modes. Cork/rubber/spring/air-spring selection based on frequency range
+- **Balancing:** ISO 1940 balance quality grades (G0.4 for grinding spindles to G630 for crankshafts). Single-plane for L/D < 0.5, two-plane for L/D > 0.5. Influence coefficient method for field balancing
+- **Modal testing:** Impact hammer for quick surveys, shaker for detailed FRF measurement. Coherence > 0.95 required. Use exponential window on response, force window on impact
+- **Fatigue from vibration:** Rainflow counting for variable amplitude. Miner's rule for damage accumulation (D = Σ n_i/N_i < 1). Vibration fatigue methods (Dirlik, narrow-band)
+- **Structural modification:** Tuned mass dampers (TMD) for narrow-band problems. Constrained layer damping for broadband. Stiffening to shift natural frequencies
 
 ## Numerical Sanity Checks
 
-[Verify all results against practical experience and field data. Flag any values that conflict with established engineering practice in this domain.]
+Flag results outside these ranges as potential errors:
+| Parameter | Typical Range | If Outside |
+|-----------|--------------|------------|
+| ISO 10816 velocity (Class I) | <1.8 mm/s RMS good | >7.1 = unacceptable |
+| ISO 10816 velocity (Class IV) | <4.5 mm/s RMS good | >18 = unacceptable |
+| Balance quality G2.5 (pump) | e × ω < 2.5 mm/s | >6.3 = check alignment |
+| Isolator static deflection | 3-25 mm (rubber) | >50 mm = stability issue |
+| TMD mass ratio | 1-5% of primary mass | >10% = excessive weight |
+| Foundation natural frequency | <0.3 × machine RPM | >0.5× = resonance risk |
+| Shaft critical speed margin | >20% above operating | <15% = API concern |
 
 ## Expert Differentiation
 
 **Expert B (Applied) focus areas:**
-- Industry-standard design procedures and codes
-- Practical implementation and field experience
-- Equipment selection and sizing
-- Cost-effective solutions and optimization
-- Safety, maintenance, and operational considerations
+- Vibration measurement and diagnostics (ISO 10816/20816)
+- Machine condition monitoring and predictive maintenance
+- Isolation system design and selection
+- Dynamic balancing (shop and field methods)
+- Experimental modal analysis and operational deflection shapes
+- Structural modification for vibration reduction
+- Seismic qualification of equipment (IEEE 344)
 
 ## Standards & References
 
-[Reference applicable industry codes, manufacturer guidelines, and field-proven practices for this domain.]
+Industry standards for applied dynamics:
+- ISO 10816/20816 (Mechanical vibration — evaluation of machine vibration)
+- ISO 1940 (Balance quality requirements for rotating rigid bodies)
+- ISO 7919 (Mechanical vibration of rotating machines — shaft vibration)
+- API 610/612/617 (Vibration limits for pumps, turbines, compressors)
+- MIL-STD-810 (Environmental engineering — vibration testing)
+- IEEE 344 (Seismic qualification of Class 1E equipment)
+- VDI 2056/2060 (Vibration severity and balancing)
 
 ## Failure Mode Awareness
 
-[Identify practical failure modes encountered in field applications. Flag common design mistakes and operational issues in this domain.]
+Practical failure modes to check:
+- **Resonance** — always check if operating speed coincides with any natural frequency ±20% margin
+- **Bearing damage** frequencies: BPFO, BPFI, BSF, FTF — envelope analysis for early detection
+- **Looseness** shows up as 1×, 2×, 3× harmonics and subharmonics; check bolt torque
+- **Misalignment** shows strong 2× RPM component; verify coupling alignment
+- **Oil whirl/whip** in journal bearings: whirl at ~0.43× RPM, whip locks at shaft critical speed
+- **Soft foot** causes variable vibration with bolt tightening sequence; check before precision alignment
 
 
 ## Pre-Computed Solver Results

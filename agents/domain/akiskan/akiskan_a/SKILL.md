@@ -279,28 +279,65 @@ If the tool call fails (solver not installed, insufficient inputs):
 - Label every estimated numerical value with [ASSUMPTION]
 ## Domain-Specific Methodology
 
-[Apply domain-specific method selection based on problem type. Use established analytical frameworks and standard procedures for this engineering discipline.]
+Decision tree for fluid dynamics analysis approach:
+- **Flow classification:** Determine Re (laminar/turbulent), Ma (incompressible/compressible), steady/unsteady, internal/external
+- **Governing equations selection:**
+  - Potential flow: irrotational, inviscid, incompressible → Laplace equation
+  - Euler equations: inviscid, compressible → shock capturing needed
+  - Navier-Stokes: viscous flows → full physics, expensive
+  - Stokes equations: Re ≪ 1 (creeping flow, microfluidics)
+- **Turbulence modeling hierarchy:**
+  - RANS: k-ε (free shear), k-ω SST (wall-bounded, separation), RSM (anisotropic)
+  - LES: resolved large eddies, modeled subgrid; need fine grid near walls
+  - DNS: all scales resolved; Re_τ < 5000 practical limit
+  - Hybrid RANS-LES (DES, DDES, WMLES): best for massive separation
+- **Multiphase:** VOF (free surface), Eulerian-Eulerian (dispersed), Lagrangian particle tracking (dilute)
+- **Non-Newtonian:** Power-law, Carreau, Bingham, Herschel-Bulkley models. Match rheology data
+- **Heat transfer coupling:** Forced convection (Re, Pr), natural convection (Ra, Gr), mixed (Ri = Gr/Re²)
 
 ## Numerical Sanity Checks
 
-[Check all calculated values against known physical limits and typical engineering ranges. Flag any result that falls outside expected bounds for this domain.]
+Flag results outside these ranges as potential errors:
+| Parameter | Typical Range | If Outside |
+|-----------|--------------|------------|
+| Pipe friction factor f (turbulent) | 0.008-0.05 | >0.1 = check roughness/Re |
+| Drag coefficient Cd (sphere) | 0.07-0.5 (10³<Re<10⁵) | >2.0 = check Re regime |
+| Nusselt number (turbulent pipe) | 20-500 | >1000 = verify correlation |
+| Boundary layer δ (flat plate turb) | ~0.37x/Re_x^(1/5) | Off by >2× = check |
+| Pressure drop ΔP/L (pipe) | 10-10⁵ Pa/m | >10⁶ = check velocity |
+| Strouhal number (cylinder) | 0.18-0.22 (Re 300-10⁵) | >0.3 = check Re |
+| Turbulence intensity (pipe) | 3-10% | >20% = high swirl or obstruction |
 
 ## Expert Differentiation
 
 **Expert A (Theoretical) focus areas:**
-- Governing equations and fundamental theory
-- Analytical methods and closed-form solutions
-- Mathematical modeling and simulation methodology
-- Derivation from first principles
-- Theoretical limitations and assumptions
+- Navier-Stokes formulation and exact solutions (Couette, Poiseuille, Stokes)
+- Boundary layer theory and similarity solutions
+- Turbulence theory (Kolmogorov cascade, energy spectrum, Reynolds stress)
+- Stability analysis (Rayleigh, Orr-Sommerfeld, absolute/convective instability)
+- Vortex dynamics and vorticity transport
+- Potential flow theory (conformal mapping, complex potential)
+- Asymptotic methods and perturbation analysis
 
 ## Standards & References
 
-[Reference applicable industry standards, codes, and established engineering references for this domain.]
+Mandatory references for fluid dynamics analysis:
+- Batchelor, G.K., "An Introduction to Fluid Dynamics" — foundational theory
+- Kundu, Cohen & Dowling, "Fluid Mechanics" — comprehensive graduate text
+- Pope, S.B., "Turbulent Flows" — turbulence modeling standard
+- White, F.M., "Viscous Fluid Flow" — boundary layers and viscous effects
+- Schlichting & Gersten, "Boundary-Layer Theory" — definitive BL reference
+- Tennekes & Lumley, "A First Course in Turbulence"
 
 ## Failure Mode Awareness
 
-[Identify known limitations of standard analysis methods in this domain. Flag edge cases where common assumptions break down.]
+Known limitations and edge cases:
+- **k-ε model** overpredicts turbulent kinetic energy in stagnation regions; use realizability correction or k-ω SST
+- **Wall functions** invalid for y+ < 30 or > 300; check first cell height
+- **Boussinesq approximation** for natural convection invalid when ΔT/T > 0.1
+- **Incompressible assumption** breaks down at Ma > 0.3 (density changes > 5%)
+- **Steady RANS** cannot capture vortex shedding; need URANS or LES
+- **Grid independence** must be demonstrated; Richardson extrapolation with 3 grids minimum
 
 
 ## Pre-Computed Solver Results

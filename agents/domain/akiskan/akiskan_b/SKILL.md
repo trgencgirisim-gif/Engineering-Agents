@@ -286,28 +286,58 @@ If the tool call fails (solver not installed, insufficient inputs):
 - Label every estimated numerical value with [ASSUMPTION]
 ## Domain-Specific Methodology
 
-[Apply practical engineering methods appropriate for the problem. Use industry-standard design procedures and proven approaches for this discipline.]
+Practical fluid dynamics engineering approach:
+- **Pipe flow design:** Moody chart / Colebrook-White for friction factor. Darcy-Weisbach for head loss. Minor losses via K-factors (Crane TP-410). Target velocity: 1-3 m/s water, 15-30 m/s gas
+- **Pump/fan selection:** System curve (ΔH vs Q) intersection with pump curve. NPSH_available > NPSH_required + margin (0.5-1m). Affinity laws for speed/impeller changes
+- **Heat exchanger hydraulics:** Shell-side (Kern/Bell-Delaware methods), tube-side (Dittus-Boelter/Gnielinski). Fouling factors from TEMA standards. Pressure drop limits: tube 0.5-1 bar, shell 0.3-0.7 bar
+- **Open channel flow:** Manning's equation for uniform flow. Froude number classification (subcritical Fr<1, supercritical Fr>1). Hydraulic jump analysis
+- **CFD workflow:** Geometry cleanup → mesh (structured preferred) → boundary conditions → turbulence model selection → convergence monitoring → validation against data
+- **Two-phase flow:** Baker/Taitel-Dukler flow regime maps. Lockhart-Martinelli for pressure drop. Drift-flux for void fraction
 
 ## Numerical Sanity Checks
 
-[Verify all results against practical experience and field data. Flag any values that conflict with established engineering practice in this domain.]
+Flag results outside these ranges as potential errors:
+| Parameter | Typical Range | If Outside |
+|-----------|--------------|------------|
+| Pipe velocity (water) | 1-3 m/s | >5 m/s = erosion risk |
+| Pipe velocity (steam) | 20-40 m/s | >60 m/s = noise/erosion |
+| Pump efficiency | 60-88% | >92% = verify size |
+| Heat exchanger ΔP (tube) | 0.3-1.0 bar | >2 bar = check velocity |
+| Valve Cv sizing margin | 1.2-1.5× calculated | >2× = oversized |
+| Manning's n (concrete) | 0.012-0.016 | >0.025 = check roughness |
+| NPSH margin ratio | 1.1-2.0 | <1.0 = cavitation |
 
 ## Expert Differentiation
 
 **Expert B (Applied) focus areas:**
-- Industry-standard design procedures and codes
-- Practical implementation and field experience
-- Equipment selection and sizing
-- Cost-effective solutions and optimization
-- Safety, maintenance, and operational considerations
+- Piping system design and pressure drop calculations
+- Pump and fan selection, sizing, and system matching
+- Heat exchanger thermal-hydraulic design
+- Industrial CFD best practices and validation
+- Two-phase and multiphase flow in industrial systems
+- Valve sizing and flow control
+- Water/wastewater hydraulics and open channel design
 
 ## Standards & References
 
-[Reference applicable industry codes, manufacturer guidelines, and field-proven practices for this domain.]
+Industry standards for applied fluid dynamics:
+- ASME B31.1/B31.3 (Power/Process Piping)
+- HI Standards (Hydraulic Institute — pump testing and NPSH)
+- TEMA Standards (Heat exchanger mechanical and thermal design)
+- Crane TP-410 (Flow of Fluids Through Valves, Fittings, and Pipe)
+- API 610/674/675 (Pumps — centrifugal, reciprocating, controlled volume)
+- ISA-75.01 (Control Valve Sizing — Cv calculations)
+- AWWA standards (Water system design)
 
 ## Failure Mode Awareness
 
-[Identify practical failure modes encountered in field applications. Flag common design mistakes and operational issues in this domain.]
+Practical failure modes to check:
+- **Cavitation** in pumps/valves when local P drops below vapor pressure; check NPSH margin at all operating points
+- **Water hammer** from rapid valve closure; pressure surge = ρcV (Joukowsky equation); check if ΔP > pipe rating
+- **Erosion** in bends and restrictions at V > 3 m/s (water) or with entrained solids
+- **Vibration** from vortex shedding when Strouhal lock-in matches pipe natural frequency
+- **Thermal expansion** of trapped liquid between two closed valves can overpressure pipe
+- **Air entrainment** at pump suction reduces performance; check submergence requirements
 
 
 ## Pre-Computed Solver Results

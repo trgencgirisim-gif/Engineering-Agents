@@ -315,28 +315,63 @@ If the tool call fails (solver not installed, insufficient inputs):
 - Label every estimated numerical value with [ASSUMPTION]
 ## Domain-Specific Methodology
 
-[Apply domain-specific method selection based on problem type. Use established analytical frameworks and standard procedures for this engineering discipline.]
+Decision tree for dynamics and vibration analysis:
+- **System classification:** SDOF vs MDOF vs continuous systems. Linear vs nonlinear. Determine degrees of freedom from constraint analysis
+- **Free vibration analysis:**
+  - SDOF: ω_n = √(k/m), ζ = c/(2√(km)). Underdamped (ζ<1), critically damped (ζ=1), overdamped (ζ>1)
+  - MDOF: Eigenvalue problem [K - ω²M]{φ} = 0. Mass-normalize mode shapes. Modal orthogonality verification
+  - Continuous: Beam (Euler-Bernoulli for slender, Timoshenko for thick), plate (Kirchhoff/Mindlin), shell theories
+- **Forced vibration:**
+  - Harmonic: frequency response function H(ω), resonance at ω = ω_n√(1-2ζ²), amplification factor Q = 1/(2ζ)
+  - Transient: Duhamel integral, modal superposition, direct integration (Newmark-β, HHT-α)
+  - Random: PSD input → PSD response via |H(ω)|². RMS = √∫S(ω)dω. Miles' equation for SDOF
+- **Rotordynamics:** Campbell diagram, critical speeds, unbalance response, stability (log decrement > 0.1 per API)
+- **Nonlinear dynamics:** Phase plane analysis, Poincaré sections, Lyapunov exponents, bifurcation diagrams
+- **Wave propagation:** Dispersion relations, group vs phase velocity, waveguide modes
 
 ## Numerical Sanity Checks
 
-[Check all calculated values against known physical limits and typical engineering ranges. Flag any result that falls outside expected bounds for this domain.]
+Flag results outside these ranges as potential errors:
+| Parameter | Typical Range | If Outside |
+|-----------|--------------|------------|
+| Structural damping ratio ζ | 0.01-0.05 (steel) | >0.10 = check if composite/bolted |
+| Modal damping (rubber mounts) | 0.05-0.30 | >0.50 = check material |
+| First natural freq (building) | 0.2-2.0 Hz | >5 Hz = very stiff/small |
+| First natural freq (machinery) | 20-500 Hz | <5 Hz = check foundation |
+| Transmissibility at resonance | 5-50 (Q factor) | >100 = very low damping |
+| Frequency ratio r = ω/ω_n isolation | r > 1.41 for isolation | r < 1 = amplification region |
+| Critical speed margin | >20% separation | <10% = API violation |
 
 ## Expert Differentiation
 
 **Expert A (Theoretical) focus areas:**
-- Governing equations and fundamental theory
-- Analytical methods and closed-form solutions
-- Mathematical modeling and simulation methodology
-- Derivation from first principles
-- Theoretical limitations and assumptions
+- Lagrangian and Hamiltonian mechanics
+- Modal analysis theory and eigenvalue problems
+- Continuous system vibration (beams, plates, shells)
+- Nonlinear dynamics and chaos theory
+- Rotordynamics (Jeffcott rotor, gyroscopic effects)
+- Random vibration and stochastic processes
+- Structural dynamics FEM formulation
 
 ## Standards & References
 
-[Reference applicable industry standards, codes, and established engineering references for this domain.]
+Mandatory references for dynamics analysis:
+- Meirovitch, L., "Fundamentals of Vibrations" — graduate dynamics text
+- Rao, S.S., "Mechanical Vibrations" — standard undergraduate text
+- Inman, D.J., "Engineering Vibration" — theory and applications
+- Den Hartog, J.P., "Mechanical Vibrations" — classical reference
+- Newland, D.E., "An Introduction to Random Vibrations" — stochastic analysis
+- Childs, D., "Turbomachinery Rotordynamics" — rotor systems
 
 ## Failure Mode Awareness
 
-[Identify known limitations of standard analysis methods in this domain. Flag edge cases where common assumptions break down.]
+Known limitations and edge cases:
+- **Euler-Bernoulli** beam theory inaccurate for L/h < 10; use Timoshenko for thick beams
+- **Linear modal superposition** invalid for large deformations, contact, or material nonlinearity
+- **Proportional (Rayleigh) damping** assumption often poor for assembled structures with joints
+- **Lumped mass models** miss modes above the discretization frequency; verify with refined models
+- **Steady-state assumption** invalid for transient events shorter than ~10 periods
+- **Gyroscopic effects** neglected in simple rotor models can miss backward whirl modes
 
 
 ## Pre-Computed Solver Results

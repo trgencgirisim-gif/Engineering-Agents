@@ -267,25 +267,55 @@ If the tool call fails (solver not installed, insufficient inputs):
 - Label every estimated numerical value with [ASSUMPTION]
 ## Domain-Specific Methodology
 
-[Apply practical engineering methods appropriate for the problem. Use industry-standard design procedures and proven approaches for this discipline.]
+Practical aerodynamic engineering approach:
+- **Airfoil selection:** Use NACA 4/5-digit or supercritical profiles based on application. Match design CL, thickness ratio, and moment constraints. Use XFOIL/JavaFoil for rapid screening
+- **Wing design:** Aspect ratio drives L/D (higher AR = lower induced drag but higher weight). Sweep for transonic delay. Taper ratio 0.3-0.5 typical. Dihedral 3-7° for lateral stability
+- **Drag estimation:** Component buildup method (skin friction + form factor + interference). Use Raymer/Roskam methods for conceptual design. Drag polar: CD = CD0 + CL²/(πeAR)
+- **High-lift systems:** Leading-edge slats (+0.4 CL), single-slotted flaps (+0.9 CL), double-slotted (+1.3 CL), triple-slotted (+1.6 CL). Verify gap/overlap/deflection
+- **Wind tunnel to flight:** Apply corrections for Reynolds number scaling, blockage, wall interference, support interference
+- **CFD validation:** Always compare with experimental data when available. Grid convergence study mandatory (3 grids, Richardson extrapolation)
 
 ## Numerical Sanity Checks
 
-[Verify all results against practical experience and field data. Flag any values that conflict with established engineering practice in this domain.]
+Flag results outside these ranges as potential errors:
+| Parameter | Typical Range | If Outside |
+|-----------|--------------|------------|
+| Wing loading (transport) | 400-700 kg/m² | >800 = check MTOW |
+| Wing loading (GA) | 50-150 kg/m² | >200 = check performance |
+| Cruise CL (transport) | 0.4-0.6 | >0.8 = check altitude/speed |
+| Takeoff CL_max (flaps) | 2.0-3.2 | >3.5 = verify high-lift config |
+| Zero-lift drag area CDA₀ | 1-5 m² (transport) | >8 = check wetted area |
+| Stall speed Vs (GA) | 50-70 kt | <40 kt = verify weight |
+| Aspect ratio (transport) | 8-12 | >15 = structural penalty check |
 
 ## Expert Differentiation
 
 **Expert B (Applied) focus areas:**
-- Industry-standard design procedures and codes
-- Practical implementation and field experience
-- Equipment selection and sizing
-- Cost-effective solutions and optimization
-- Safety, maintenance, and operational considerations
+- Airfoil/wing selection and design for specific mission profiles
+- Drag estimation and component buildup methods (Raymer/Roskam)
+- High-lift system design and performance prediction
+- Wind tunnel testing methodology and flight test correlation
+- CFD setup, grid generation, and results validation
+- Aircraft performance (takeoff, climb, cruise, landing)
+- Stability and control derivatives estimation
 
 ## Standards & References
 
-[Reference applicable industry codes, manufacturer guidelines, and field-proven practices for this domain.]
+Industry standards for applied aerodynamics:
+- FAR/CS Part 25 (Transport airplane airworthiness)
+- FAR/CS Part 23 (Normal category airplanes)
+- MIL-STD-1797 (Flying qualities of piloted aircraft)
+- ESDU data items (aerodynamic estimation methods)
+- Raymer, D., "Aircraft Design: A Conceptual Approach" — industry standard
+- Roskam, J., "Airplane Design" (8 volumes) — detailed methods
+- Torenbeek, E., "Synthesis of Subsonic Airplane Design"
 
 ## Failure Mode Awareness
 
-[Identify practical failure modes encountered in field applications. Flag common design mistakes and operational issues in this domain.]
+Practical failure modes to check:
+- **Reynolds number scaling** from wind tunnel to flight can shift transition location and change CL_max by 10-15%
+- **Compressibility drag rise** often underestimated; check Mdd (drag divergence Mach) with Korn equation
+- **Tip stall** on swept wings can cause pitch-up; check spanwise CL distribution at high alpha
+- **Flutter speed** must include aerodynamic corrections; Vf > 1.15 × VD required (FAR 25.629)
+- **Ground effect** increases lift and reduces induced drag below h/b < 1; affects landing/takeoff estimates
+- **Ice accretion** can reduce CL_max by 30-50% and increase CD dramatically
