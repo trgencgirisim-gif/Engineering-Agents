@@ -105,6 +105,16 @@ def _make_cache_key(ajan_key: str, mesaj: str, gecmis: list) -> str:
 # ─── Session Yönetimi ─────────────────────────────────────────
 sessions: dict = {}   # sid → Session
 
+# ─── Session Persistence ─────────────────────────────────────
+_session_store = None
+
+def _get_session_store():
+    global _session_store
+    if _session_store is None:
+        from shared.session_store import SessionStore
+        _session_store = SessionStore()
+    return _session_store
+
 # ─── Ajan İçe Aktarımı ────────────────────────────────────────
 try:
     from config.agents_config import AGENTS, DESTEK_AJANLARI
@@ -176,6 +186,14 @@ class Session:
     # ── SSE event gönder ──────────────────────────────────────
     def emit(self, etype: str, data: dict):
         self.queue.put({"type": etype, "data": data})
+
+    # ── Checkpoint: persist state to SQLite ──────────────────
+    def _checkpoint(self):
+        """Save current state to SQLite. Best-effort, never kills analysis."""
+        try:
+            _get_session_store().save(self)
+        except Exception:
+            pass
 
     # ── Ajan çalıştır (uses shared/agent_runner.py) ──────────
     def ajan_calistir(self, ajan_key: str, mesaj: str,
@@ -694,6 +712,7 @@ class Session:
             tur_ozeti.append({"tur": tur, "puan": puan})
             self.round_scores = tur_ozeti[:]
             self.emit("round_score", {"tur": tur, "puan": puan})
+            self._checkpoint()  # CP3: round complete with score
 
             # A4: Smart Group C skip — score >= 90
             if puan < 90:
@@ -798,6 +817,7 @@ class Session:
                     result = self.ajan_calistir("prompt_muhendisi", msg)
                     if "GÜÇLENDİRİLMİŞ BRIEF:" in result:
                         self.enhanced_brief = result.split("GÜÇLENDİRİLMİŞ BRIEF:")[-1].strip()
+                    self._checkpoint()  # CP2: QA answers received, brief enhanced
             else:
                 # Mod 1/2/4: Prompt Engineer → Domain Selector
                 rag_ctx = rag.benzer_getir(self.brief, n=2) if rag else ""
@@ -823,6 +843,7 @@ class Session:
             # ── ANALYSIS ──
             self.status = "running"
             self.emit("step_running", {"mode": self.mode})
+            self._checkpoint()  # CP1: domains confirmed, analysis starting
 
             if self.mode == 1:
                 final = self.run_tekli()
@@ -883,14 +904,88 @@ class Session:
                 "round_scores": self.round_scores,
                 "domains":      [{"key": k, "name": n} for k, n in self.domains],
             })
+            self._checkpoint()  # CP4: analysis complete
 
         except Exception as e:
             self.status = "error"
             self.error  = str(e)
             self.emit("step_error", {"error": str(e)})
+            self._checkpoint()  # CP5: error state persisted
 
         finally:
             self.emit("__end__", {})
+
+
+# ══════════════════════════════════════════════════════════════
+# SESSION PERSISTENCE — HYDRATION & STARTUP RESTORE
+# ══════════════════════════════════════════════════════════════
+
+def _hydrate_session(data: dict) -> Session:
+    """Reconstruct a completed Session from persisted data (read-only)."""
+    s = object.__new__(Session)  # Skip __init__ — no client/queue/locks needed
+    s.sid             = data["sid"]
+    s.brief           = data.get("brief", "")
+    s.enhanced_brief  = data.get("enhanced_brief", "")
+    s.domains         = [tuple(d) for d in data.get("domains", [])]
+    s.mode            = data.get("mode", 4)
+    s.max_rounds      = data.get("max_rounds", 3)
+    s.domain_model    = data.get("domain_model", "sonnet")
+    s.status          = data.get("status", "done")
+    s.error           = data.get("error", "")
+    s.total_cost      = data.get("total_cost", 0.0)
+    s.total_input     = data.get("total_input", 0)
+    s.total_output    = data.get("total_output", 0)
+    s.cache_write_tokens = data.get("cache_write_tokens", 0)
+    s.cache_read_tokens  = data.get("cache_read_tokens", 0)
+    s.cache_saved_usd    = data.get("cache_saved_usd", 0.0)
+    s.qa_questions    = data.get("qa_questions", [])
+    s.qa_answers      = data.get("qa_answers", {})
+    s.agent_log       = data.get("agent_log", [])
+    s.round_scores    = data.get("round_scores", [])
+    s.final_report    = data.get("final_report", "")
+    s.txt_output      = data.get("txt_output", "")
+    # Reconstruct blackboard from snapshot
+    bb_data = data.get("blackboard_json", {})
+    s.blackboard = Blackboard.from_dict(bb_data) if bb_data else Blackboard()
+    # Non-serializable stubs (not needed for completed sessions)
+    s.queue        = None
+    s.domain_event = None
+    s.qa_event     = None
+    s._cost_lock   = None
+    s.client       = None
+    return s
+
+
+def _session_to_api(sess) -> dict:
+    """Convert a live or hydrated Session to API response dict."""
+    return {
+        "sid":            sess.sid,
+        "brief":          sess.brief,
+        "enhanced_brief": sess.enhanced_brief,
+        "domains":        [{"key": k, "name": n} for k, n in sess.domains],
+        "mode":           sess.mode,
+        "status":         sess.status,
+        "total_cost":     round(sess.total_cost, 4),
+        "agent_log":      sess.agent_log,
+        "round_scores":   sess.round_scores,
+        "final_report":   sess.final_report,
+        "error":          sess.error,
+        "domain_model":   sess.domain_model,
+    }
+
+
+@app.on_event("startup")
+async def _restore_sessions():
+    """Load completed sessions from SQLite on server start."""
+    try:
+        store = _get_session_store()
+        store.cleanup(days=30)
+        for row in store.list_sessions(limit=200, status="done"):
+            full = store.load(row["sid"])
+            if full and full["sid"] not in sessions:
+                sessions[full["sid"]] = _hydrate_session(full)
+    except Exception:
+        pass  # Don't block startup if DB is unavailable
 
 
 # ══════════════════════════════════════════════════════════════
@@ -1013,6 +1108,12 @@ async def submit_qa(req: SubmitQARequest):
 @app.get("/api/download/{sid}")
 async def download(sid: str):
     sess = sessions.get(sid)
+    if not sess:
+        # Try loading from SQLite
+        data = _get_session_store().load(sid)
+        if data:
+            sess = _hydrate_session(data)
+            sessions[sid] = sess
     if not sess or not sess.txt_output:
         raise HTTPException(404, "Rapor henüz hazır değil.")
 
@@ -1030,6 +1131,11 @@ async def download(sid: str):
 @app.get("/api/download_docx/{sid}")
 async def download_docx(sid: str):
     sess = sessions.get(sid)
+    if not sess:
+        data = _get_session_store().load(sid)
+        if data:
+            sess = _hydrate_session(data)
+            sessions[sid] = sess
     if not sess or not sess.final_report:
         raise HTTPException(404, "Rapor henüz hazır değil.")
     if not PDF_OK:
@@ -1059,6 +1165,42 @@ async def download_docx(sid: str):
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         headers={"Content-Disposition": f'attachment; filename="{fname}"'}
     )
+
+
+# ── Session Persistence Endpoints ─────────────────────────────
+@app.get("/api/sessions")
+async def list_sessions(limit: int = 50, offset: int = 0, status: str = None):
+    """List past sessions, newest first."""
+    store = _get_session_store()
+    items = store.list_sessions(limit=limit, offset=offset, status=status)
+    total = store.count(status=status)
+    return {"sessions": items, "total": total}
+
+
+@app.get("/api/sessions/{sid}")
+async def get_session(sid: str):
+    """Get full session detail."""
+    # Check in-memory first (for active sessions)
+    sess = sessions.get(sid)
+    if sess:
+        return _session_to_api(sess)
+    # Fall back to SQLite
+    store = _get_session_store()
+    data = store.load(sid)
+    if not data:
+        raise HTTPException(404, "Session not found.")
+    return data
+
+
+@app.delete("/api/sessions/{sid}")
+async def delete_session(sid: str):
+    """Delete a persisted session."""
+    store = _get_session_store()
+    deleted = store.delete(sid)
+    sessions.pop(sid, None)
+    if not deleted:
+        raise HTTPException(404, "Session not found.")
+    return {"ok": True, "message": f"Session {sid} deleted."}
 
 
 # ── KB İstatistik ─────────────────────────────────────────────
