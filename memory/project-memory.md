@@ -25,8 +25,31 @@
 - **Layer 4:** TOOL_REMINDER_PREFIX in core.py prepends tool-check to user messages
 
 ### System Integrity Fixes
-- **Status:** In progress
+- **Status:** Complete
 - **Fixes:** parser.py VERIFIED tags, app.py tool integration, core.py list-content handling, pricing.py soru_uretici_pm, CLAUDE.md agent counts
+
+### Shared Agent Runner (DEBT-1)
+- **Status:** Complete
+- **Location:** `shared/agent_runner.py`
+- **Impact:** main.py and app.py now use shared runner — eliminated ~231 lines of duplication
+
+### SKILL.md Domain Enrichment
+- **Status:** Complete (56/56 files)
+- **All 28 domains enriched** with real methodology, sanity checks, expert differentiation, standards, failure modes
+- **Packages:** 5 batches committed (aerodinamik→termal, elektrik→optik, mekanik_tasarim→denizcilik, robotik→biyomedikal, cevre→uzay)
+
+### Session Persistence (DEBT-6)
+- **Status:** Complete
+- **Location:** `shared/session_store.py`, `data/sessions.db`
+- **Architecture:** SQLite-based (stdlib, zero deps), WAL mode, thread-safe
+- **Features:**
+  - Completed sessions survive server restarts (auto-restored on startup)
+  - 5 checkpoint points during analysis (domain confirm, QA, each round, done, error)
+  - API endpoints: GET/DELETE /api/sessions, GET /api/sessions/{sid}
+  - Download endpoints fall back to SQLite when session not in memory
+  - Streamlit sidebar shows past analyses, clickable to reload
+  - Auto-cleanup of sessions older than 30 days
+- **Blackboard serialization:** `to_dict()`/`from_dict()` added to `blackboard.py`
 
 ### Persistent Memory Layer
 - **Status:** Complete
@@ -35,6 +58,9 @@
 
 ## Recent Changes
 
+- [2026-03-26] DEBT-6: Session persistence layer (SQLite, checkpoints, API endpoints, Streamlit sidebar)
+- [2026-03-26] SKILL.md enrichment completed for all 56 files (28 domains × 2 experts)
+- [2026-03-26] Shared agent_runner integration into main.py and app.py
 - [2026-03-18] System integrity audit and fixes (parser, app.py tools, core.py, pricing, CLAUDE.md)
 - [2026-03-18] Plan 2 Patch: 4-layer LLM tool calling quality improvements
 - [2026-03-18] Tier 1 tool wrappers completed (25 tools)
@@ -50,3 +76,6 @@
 - 76 agents total: 56 domain (28 × 2) + 20 support
 - Tool integration: core.py shared by orchestrator.py, main.py, and app.py
 - All entry points now support solver tools via run_tool_loop()
+- Agent execution: shared/agent_runner.py used by all 3 entry points
+- Session persistence: shared/session_store.py → data/sessions.db (SQLite, WAL mode)
+- Blackboard: fully serializable via to_dict()/from_dict() for session persistence
