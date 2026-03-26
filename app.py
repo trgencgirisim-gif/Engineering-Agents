@@ -2,6 +2,7 @@ import streamlit as st
 import os
 import re
 import time
+import uuid
 import datetime
 import threading
 import anthropic
@@ -740,6 +741,50 @@ def init_state():
             st.session_state[k] = v
 
 init_state()
+
+
+# ═════════════════════════════════════════════════════════════
+# SESSION PERSISTENCE
+# ═════════════════════════════════════════════════════════════
+
+@st.cache_resource
+def _get_session_store():
+    from shared.session_store import SessionStore
+    return SessionStore()
+
+
+def _save_session_to_store():
+    """Persist current Streamlit session to SQLite."""
+    try:
+        from types import SimpleNamespace
+        s = st.session_state
+        obj = SimpleNamespace(
+            sid=s.get("_analysis_sid", str(uuid.uuid4())[:8]),
+            brief=s.get("brief", ""),
+            enhanced_brief=s.get("enhanced_brief", ""),
+            domains=s.get("active_domains", []),
+            mode=s.get("mode", 4),
+            max_rounds=s.get("max_rounds", 3),
+            domain_model=s.get("domain_model", "sonnet"),
+            status="done" if not s.get("error") else "error",
+            error=s.get("error", ""),
+            total_cost=s.get("total_cost", 0.0),
+            total_input=s.get("total_input", 0),
+            total_output=s.get("total_output", 0),
+            cache_write_tokens=s.get("cache_write_tokens", 0),
+            cache_read_tokens=s.get("cache_read_tokens", 0),
+            cache_saved_usd=s.get("cache_saved_usd", 0.0),
+            qa_questions=s.get("qa_questions", []),
+            qa_answers=s.get("qa_answers", {}),
+            agent_log=s.get("agent_log", []),
+            round_scores=s.get("round_scores_done", s.get("round_scores", [])),
+            final_report=s.get("final_report", ""),
+            txt_output="",
+            blackboard=s.get("blackboard"),
+        )
+        _get_session_store().save(obj)
+    except Exception:
+        pass
 
 
 # ═════════════════════════════════════════════════════════════
@@ -2251,8 +2296,43 @@ with st.sidebar:
     except Exception:
         pass
 
-    # KB popup — step değişkeni yokken de çalışsın
-    # Popup state sidebar butonu ile tetikleniyor, içerik ana alanda gösteriliyor
+    # ── Past Analyses (from session persistence) ─────────────
+    st.markdown("---")
+    st.markdown('<div class="section-label">Past Analyses</div>', unsafe_allow_html=True)
+    try:
+        _store = _get_session_store()
+        _past = _store.list_sessions(limit=10, status="done")
+        if _past:
+            for _p in _past:
+                _brief_short = (_p.get("brief") or "")[:50].rstrip(".")
+                _score = _p.get("final_score")
+                _cost = _p.get("total_cost", 0)
+                _score_txt = f" · {_score}/100" if _score else ""
+                _label = f"{_brief_short}... (${_cost:.3f}{_score_txt})"
+                if st.button(_label, key=f"past_{_p['sid']}", use_container_width=True):
+                    _full = _store.load(_p["sid"])
+                    if _full:
+                        st.session_state.final_report = _full.get("final_report", "")
+                        st.session_state.agent_log = _full.get("agent_log", [])
+                        st.session_state.round_scores = _full.get("round_scores", [])
+                        st.session_state.round_scores_done = _full.get("round_scores", [])
+                        st.session_state.total_cost = _full.get("total_cost", 0.0)
+                        st.session_state.total_input = _full.get("total_input", 0)
+                        st.session_state.total_output = _full.get("total_output", 0)
+                        st.session_state.brief = _full.get("brief", "")
+                        st.session_state.enhanced_brief = _full.get("enhanced_brief", "")
+                        st.session_state.active_domains = [
+                            tuple(d) for d in _full.get("domains", [])
+                        ]
+                        st.session_state.step = "done"
+                        st.rerun()
+        else:
+            st.markdown(
+                '<div style="font-size:0.7rem;color:#5A5A65">No past analyses yet.</div>',
+                unsafe_allow_html=True,
+            )
+    except Exception:
+        pass
 
 
 # ═════════════════════════════════════════════════════════════
@@ -2614,10 +2694,12 @@ elif st.session_state.step == "running":
         st.session_state.final_report = final
         st.session_state.round_scores_done = tur_ozeti
         st.session_state.step = "done"
+        _save_session_to_store()
 
     except Exception as e:
         st.session_state.error = str(e)
         st.session_state.step = "done"
+        _save_session_to_store()
 
     update_ui()
     st.rerun()
