@@ -784,6 +784,32 @@ class Blackboard:
             "round_history": list(self.round_history),
         }
 
+    def export_parameters(self) -> list:
+        """Export latest parameters as a JSON-safe list for RAG storage.
+
+        Returns a list of dicts, each containing:
+            name, value, source_agent, confidence, round_num
+        Only the most recent entry per parameter is included.
+        """
+        result = []
+        for name, entries in self.parameters.items():
+            if not entries:
+                continue
+            latest = entries[-1]
+            # Extract raw value — handle both str and numeric
+            val = latest.value
+            if isinstance(val, str):
+                # Try to extract numeric portion for cleaner storage
+                val = val.strip()
+            result.append({
+                "name": name,
+                "value": val,
+                "source_agent": latest.source_agent,
+                "confidence": latest.confidence,
+                "round_num": latest.round_num,
+            })
+        return result
+
     @classmethod
     def from_dict(cls, data: dict) -> "Blackboard":
         """Reconstruct a Blackboard from a dict produced by to_dict().
