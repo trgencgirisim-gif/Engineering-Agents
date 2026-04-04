@@ -17,6 +17,11 @@ from pathlib import Path
 
 import hashlib
 from collections import OrderedDict
+from shared.rag_context import (
+    build_domain_message,
+    build_final_report_context,
+    build_prompt_engineer_message,
+)
 import anthropic
 import requests as req_lib
 from dotenv import load_dotenv
@@ -460,7 +465,11 @@ class Session:
         bb = self.blackboard
 
         # ── GRUP A: Domain ajanları paralel ─────────────────
-        gorev_a = [(f"{key}_a", self.enhanced_brief, None, None) for key, _ in self.domains]
+        _rag = get_rag()
+        gorev_a = []
+        for key, name in self.domains:
+            _msg = build_domain_message(self.enhanced_brief, key, name, _rag) if _rag else self.enhanced_brief
+            gorev_a.append((f"{key}_a", _msg, None, None))
         sonuc_a = self._ajan_paralel(gorev_a, max_workers=6)
         parts = [f"{name.upper()} EXPERT:\n{sonuc_a[i]}" for i, (_, name) in enumerate(self.domains)]
         tum = "\n\n".join(parts)
@@ -487,10 +496,12 @@ class Session:
         self._update_blackboard("gozlemci", gozlemci, 1)
 
         _bb_summary = bb.to_summary()
+        _rag_final = build_final_report_context(self.enhanced_brief, _rag) if _rag else ""
+        _rag_final_note = f"\n\n{_rag_final}" if _rag_final else ""
         final = self.ajan_calistir("final_rapor",
             f"Single-agent analysis. Domains: {', '.join(alan_isimleri)}\n"
             f"PROBLEM: {self.enhanced_brief}\nOBSERVER: {gozlemci}\nQUESTIONS: {sorular}\n\n"
-            f"STRUCTURED ANALYSIS SUMMARY:\n{_bb_summary}\n\n"
+            f"STRUCTURED ANALYSIS SUMMARY:\n{_bb_summary}{_rag_final_note}\n\n"
             f"Domain findings are in the conversation history above. "
             f"Report: 70% technical (preserve numbers), 15% cross-domain, 15% recommendations.",
             gecmis=shared_ctx)
@@ -501,10 +512,12 @@ class Session:
         bb = self.blackboard
 
         # ── GRUP A: Domain A+B ajanları paralel ─────────────
+        _rag = get_rag()
         gorev_a = []
-        for key, _ in self.domains:
-            gorev_a.append((f"{key}_a", self.enhanced_brief, None, None))
-            gorev_a.append((f"{key}_b", self.enhanced_brief, None, None))
+        for key, name in self.domains:
+            _msg = build_domain_message(self.enhanced_brief, key, name, _rag) if _rag else self.enhanced_brief
+            gorev_a.append((f"{key}_a", _msg, None, None))
+            gorev_a.append((f"{key}_b", _msg, None, None))
         sonuc_a = self._ajan_paralel(gorev_a, max_workers=6)
         parts = []
         for i, (key, name) in enumerate(self.domains):
@@ -544,11 +557,13 @@ class Session:
         self._update_blackboard("celisiki_cozum", celiski, 1)
 
         _bb_summary = bb.to_summary()
+        _rag_final = build_final_report_context(self.enhanced_brief, _rag) if _rag else ""
+        _rag_final_note = f"\n\n{_rag_final}" if _rag_final else ""
         final = self.ajan_calistir("final_rapor",
             f"Dual-agent. Domains: {', '.join(alan_isimleri)}\n"
             f"PROBLEM: {self.enhanced_brief}\nOBSERVER: {gozlemci}\n"
             f"CONFLICTS: {celiski}\nQUESTIONS: {sorular}\nALTERNATIVES: {alternatif}\n\n"
-            f"STRUCTURED ANALYSIS SUMMARY:\n{_bb_summary}\n\n"
+            f"STRUCTURED ANALYSIS SUMMARY:\n{_bb_summary}{_rag_final_note}\n\n"
             f"Produce professional engineering report.",
             gecmis=shared_ctx)
         return final
@@ -563,6 +578,7 @@ class Session:
         gozlemci_cevabi = ""
         shared_ctx = []
         bb = self.blackboard
+        _rag = get_rag()
 
         # C1: Adaptive model selection — round 1 Sonnet, round 2+ low-scoring agents promoted to Opus
         _adaptive_model_enabled = (self.domain_model == "sonnet")
@@ -611,7 +627,8 @@ class Session:
                         bb_ctx = bb.get_context_for(ak, tur)
                         _msg = f"{mesaj}\n\n{bb_ctx}" if bb_ctx else mesaj
                     else:
-                        _msg = mesaj
+                        # Round 1: inject RAG domain context + parameters
+                        _msg = build_domain_message(mesaj, key, name, _rag) if _rag else mesaj
                     gorev_a.append((ak, _msg, gecmis[ak], None))
                     _gorev_keys.append(ak)
 
@@ -762,11 +779,13 @@ class Session:
         if _convergence.get("oscillating"):
             _conv_note = f"\nWARNING: Oscillating parameters: {', '.join(_convergence['oscillating'][:5])}"
 
+        _rag_final = build_final_report_context(self.enhanced_brief, _rag) if _rag else ""
+        _rag_final_note = f"\n\n{_rag_final}" if _rag_final else ""
         final = self.ajan_calistir("final_rapor",
             f"Analysis in {len(tur_ozeti)} round(s). Domains: {', '.join(alan_isimleri)}\n"
             f"PROBLEM: {self.enhanced_brief}\nOBSERVER: {gozlemci_cevabi}\n"
             f"QUESTIONS: {soru}\nALTERNATIVES: {alt}\nSYNTHESIS: {sentez}\n\n"
-            f"STRUCTURED ANALYSIS SUMMARY:\n{_bb_final}{_conv_note}\n\n"
+            f"STRUCTURED ANALYSIS SUMMARY:\n{_bb_final}{_conv_note}{_rag_final_note}\n\n"
             f"Report: full technical findings per domain, conflicts, observer, recommendations. English only.",
             gecmis=shared_ctx)
 
@@ -820,14 +839,7 @@ class Session:
                     self._checkpoint()  # CP2: QA answers received, brief enhanced
             else:
                 # Mod 1/2/4: Prompt Engineer → Domain Selector
-                rag_ctx = rag.benzer_getir(self.brief, n=2) if rag else ""
-                if rag_ctx:
-                    words = rag_ctx.split()
-                    if len(words) > 375:
-                        rag_ctx = " ".join(words[:375]) + "\n[RAG context truncated]"
-                    msg = f"{self.brief}\n\nRELEVANT PAST ANALYSES:\n{rag_ctx}"
-                else:
-                    msg = self.brief
+                msg = build_prompt_engineer_message(self.brief, rag) if rag else self.brief
                 result = self.ajan_calistir("prompt_muhendisi", msg)
                 if "GÜÇLENDİRİLMİŞ BRIEF:" in result:
                     self.enhanced_brief = result.split("GÜÇLENDİRİLMİŞ BRIEF:")[-1].strip()
@@ -875,6 +887,7 @@ class Session:
                                 if getattr(self, "round_scores", []) else None)
                     _bb_summary = self.blackboard.to_summary() if self.blackboard else ""
                     _bb_params = self.blackboard.get_parameter_table() if hasattr(self.blackboard, 'get_parameter_table') else ""
+                    _bb_export_params = self.blackboard.export_parameters() if self.blackboard else []
                     rag.save(
                         brief=self.brief,
                         domains=[n for _, n in self.domains],
@@ -889,6 +902,7 @@ class Session:
                         round_scores=getattr(self, "round_scores", []),
                         blackboard_summary=_bb_summary,
                         parameter_table=_bb_params,
+                        parameters_json=_bb_export_params,
                     )
                 except Exception:
                     pass
