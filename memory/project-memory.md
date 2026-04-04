@@ -56,6 +56,15 @@
 - **Location:** `memory/`, `skills/consolidate-memory/`
 - **Files:** recent-memory.md, long-term-memory.md, project-memory.md
 
+### Token Efficiency — 3 Improvements
+- **Status:** In Progress
+- **Branch:** `claude/add-skills-improve-caching-Yu7GY`
+- **Goal:** Reduce token usage 15-40% on repeat/similar analyses
+- **Improvement 1:** Unified RAG injection → `shared/rag_context.py` (NEW)
+- **Improvement 2:** Structured parameter persistence → `blackboard.py` + `rag/store.py`
+- **Improvement 3:** Template-based guidance → `rag/store.py` + final report injection
+- **Files:** blackboard.py, rag/store.py, shared/rag_context.py (new), main.py, app.py, orchestrator.py
+
 ## Recent Changes
 
 - [2026-03-26] DEBT-6: Session persistence layer (SQLite, checkpoints, API endpoints, Streamlit sidebar)

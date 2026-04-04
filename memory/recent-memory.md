@@ -19,6 +19,11 @@ Each entry follows:
 
 ## Entries
 
+### [2026-04-04 10:00] Token Efficiency Plan — 3 Improvements
+- **Decision/Action:** Designed and approved plan for 3 token efficiency improvements: (1) Unified RAG injection via shared/rag_context.py, (2) Structured parameter persistence in RAG store, (3) Template-based response guidance from high-quality past analyses
+- **Context:** main.py/orchestrator.py waste tokens re-deriving calculations that exist in RAG. Structured params from parser are discarded. No structural learning from past analyses.
+- **Status:** active — implementation starting
+
 ### [2026-03-18 19:50] Caching System Improvements
 - **Decision/Action:** Fixed 4 caching issues: (1) cache key now hashes full history content instead of just length, (2) upgraded from FIFO to LRU eviction via OrderedDict, (3) standardized prompt cache TTL to 1h across all entry points, (4) corrected Opus threshold comment (4096 not 2048)
 - **Context:** Audit revealed cache key collisions when same message sent with different history of equal length; FIFO eviction was suboptimal; TTL was inconsistent (5min default vs 1h in app.py)
