@@ -57,13 +57,14 @@
 - **Files:** recent-memory.md, long-term-memory.md, project-memory.md
 
 ### Token Efficiency — 3 Improvements
-- **Status:** In Progress
+- **Status:** COMPLETE
 - **Branch:** `claude/add-skills-improve-caching-Yu7GY`
 - **Goal:** Reduce token usage 15-40% on repeat/similar analyses
-- **Improvement 1:** Unified RAG injection → `shared/rag_context.py` (NEW)
-- **Improvement 2:** Structured parameter persistence → `blackboard.py` + `rag/store.py`
-- **Improvement 3:** Template-based guidance → `rag/store.py` + final report injection
-- **Files:** blackboard.py, rag/store.py, shared/rag_context.py (new), main.py, app.py, orchestrator.py
+- **Improvement 1:** Unified RAG injection → `shared/rag_context.py` (NEW) — all 3 entry points now use shared functions
+- **Improvement 2:** Structured parameter persistence → `blackboard.py` export_parameters() + `rag/store.py` parameters_json storage + retrieval
+- **Improvement 3:** Template-based guidance → `rag/store.py` get_analysis_template() + final report injection via build_final_report_context()
+- **Files modified:** blackboard.py, rag/store.py, shared/rag_context.py (new), main.py, app.py, orchestrator.py
+- **Commits:** e6ad5e7, 428f76c, 86d2efe, 410b214, 7035e01, a6fdac9
 
 ## Recent Changes
 
