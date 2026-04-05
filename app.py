@@ -12,6 +12,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Tuple, Optional
 from config.agents_config import AGENTS, DESTEK_AJANLARI
 from rag.store import RAGStore
+from shared.rag_context import (
+    build_domain_message,
+    build_final_report_context,
+    build_prompt_engineer_message,
+)
 from blackboard import Blackboard
 from parser import parse_agent_output
 from shared.agent_runner import (
@@ -1324,19 +1329,7 @@ def kalite_puani_oku(metin):
 
 
 def prompt_engineer_auto(brief):
-    # Benzer geçmiş analizleri getir — açık sorular ve öğrenimler dahil
-    # max_tokens=600: brief güçlendirme için yeterli, fazla token harcamamak için
-    rag_context = get_rag().get_similar(brief, n=2, max_tokens=600)
-    if rag_context:
-        mesaj = (
-            f"{brief}\n\n"
-            f"{rag_context}\n\n"
-            f"Using the past analyses above as reference, strengthen the brief. "
-            f"Pay special attention to previously unresolved questions — "
-            f"address them explicitly in the strengthened brief if applicable."
-        )
-    else:
-        mesaj = brief
+    mesaj = build_prompt_engineer_message(brief, get_rag())
     sonuc = ajan_calistir("prompt_muhendisi", mesaj)
     if "GÜÇLENDİRİLMİŞ BRIEF:" in sonuc:
         return sonuc.split("GÜÇLENDİRİLMİŞ BRIEF:")[-1].strip()
@@ -1429,16 +1422,7 @@ def run_tekli(brief, aktif_alanlar, agent_runner=None):
     rag_inst = get_rag()
     gorev_a = []
     for key, domain_name in aktif_alanlar:
-        domain_ctx = rag_inst.get_similar_for_domain(brief, domain_name, max_tokens=250)
-        if domain_ctx:
-            domain_brief = (
-                f"{brief}\n\n"
-                f"PAST {domain_name.upper()} ANALYSIS CONTEXT:\n"
-                f"{domain_ctx}\n\n"
-                f"Build on confirmed past findings. Address previously unresolved questions."
-            )
-        else:
-            domain_brief = brief
+        domain_brief = build_domain_message(brief, key, domain_name, rag_inst)
         gorev_a.append((f"{key}_a", domain_brief, None, None))
     sonuc_a  = ajan_calistir_paralel(gorev_a, max_workers=6)
     tum_ciktilar_parts = [
@@ -1477,11 +1461,8 @@ def run_tekli(brief, aktif_alanlar, agent_runner=None):
     _update_blackboard(bb, "gozlemci", gozlemci, 1)
 
     # ── Final rapor ──────────────────────────────────────────────
-    rag_final_ctx = get_rag().get_similar(brief, n=2, max_tokens=400)
-    final_rag_note = (
-        f"\n\nKNOWLEDGE BASE CONTEXT:\n{rag_final_ctx}"
-        if rag_final_ctx else ""
-    )
+    _rag_final = build_final_report_context(brief, rag_inst)
+    _rag_final_note = f"\n\n{_rag_final}" if _rag_final else ""
     _bb_summary = bb.to_summary()
     final = _runner("final_rapor",
         f"Single-agent analysis. Domains: {', '.join(alan_isimleri)}\n"
@@ -1489,7 +1470,7 @@ def run_tekli(brief, aktif_alanlar, agent_runner=None):
         f"OBSERVER: {gozlemci}\n"
         f"QUESTIONS: {sorular}\n\n"
         f"STRUCTURED ANALYSIS SUMMARY:\n{_bb_summary}"
-        f"{final_rag_note}\n\n"
+        f"{_rag_final_note}\n\n"
         f"Domain agent technical findings are in the conversation history above.\n"
         f"Write a professional engineering report: lead with each domain's technical "
         f"findings (preserve all numbers and calculations), then observer evaluation, "
@@ -1512,16 +1493,7 @@ def run_cift(brief, aktif_alanlar, agent_runner=None):
     rag_inst = get_rag()
     gorev_a = []
     for key, domain_name in aktif_alanlar:
-        domain_ctx = rag_inst.get_similar_for_domain(brief, domain_name, max_tokens=250)
-        if domain_ctx:
-            domain_brief = (
-                f"{brief}\n\n"
-                f"PAST {domain_name.upper()} ANALYSIS CONTEXT:\n"
-                f"{domain_ctx}\n\n"
-                f"Build on confirmed past findings. Address previously unresolved questions."
-            )
-        else:
-            domain_brief = brief
+        domain_brief = build_domain_message(brief, key, domain_name, rag_inst)
         gorev_a.append((f"{key}_a", domain_brief, None, None))
         gorev_a.append((f"{key}_b", domain_brief, None, None))
     sonuc_a = ajan_calistir_paralel(gorev_a, max_workers=6)
@@ -1581,11 +1553,8 @@ def run_cift(brief, aktif_alanlar, agent_runner=None):
     celiski, sorular, alternatif = c_sonuc
     _update_blackboard(bb, "celisiki_cozum", celiski, 1)
 
-    rag_final_ctx_cift = get_rag().get_similar(brief, n=2, max_tokens=400)
-    final_rag_note_cift = (
-        f"\n\nKNOWLEDGE BASE CONTEXT:\n{rag_final_ctx_cift}"
-        if rag_final_ctx_cift else ""
-    )
+    _rag_final = build_final_report_context(brief, rag_inst)
+    _rag_final_note = f"\n\n{_rag_final}" if _rag_final else ""
     _bb_summary = bb.to_summary()
     final = _runner("final_rapor",
         f"Dual-agent analysis. Domains: {', '.join(alan_isimleri)}\n"
@@ -1595,7 +1564,7 @@ def run_cift(brief, aktif_alanlar, agent_runner=None):
         f"QUESTIONS: {sorular}\n"
         f"ALTERNATIVES: {alternatif}\n\n"
         f"STRUCTURED ANALYSIS SUMMARY:\n{_bb_summary}"
-        f"{final_rag_note_cift}\n\n"
+        f"{_rag_final_note}\n\n"
         f"Domain agent technical findings are in the conversation history above.\n"
         f"Write a professional engineering report: lead with each domain's technical "
         f"findings (preserve all numbers), then conflicts, then recommendations "
@@ -1681,14 +1650,7 @@ def run_full_loop(brief, aktif_alanlar, max_tur, agent_runner=None):
 
         for key, domain_name in aktif_alanlar:
             if tur == 1:
-                domain_ctx = rag_inst.get_similar_for_domain(brief, domain_name, max_tokens=200)
-                if domain_ctx:
-                    domain_mesaj = (
-                        f"{mesaj}\n\n"
-                        f"PAST {domain_name.upper()} CONTEXT:\n{domain_ctx}"
-                    )
-                else:
-                    domain_mesaj = mesaj
+                domain_mesaj = build_domain_message(brief, key, domain_name, rag_inst, base_message=mesaj, max_tokens=200)
                 gorev_a.append((f"{key}_a", domain_mesaj, gecmis[f"{key}_a"], None))
                 _gorev_idx_to_agent.append(f"{key}_a")
                 gorev_a.append((f"{key}_b", domain_mesaj, gecmis[f"{key}_b"], None))
@@ -1957,11 +1919,8 @@ def run_full_loop(brief, aktif_alanlar, max_tur, agent_runner=None):
         f"Synthesize all findings. Resolve conflicts. Produce clean summary for Final Report Writer.",
         gecmis=shared_ctx)
 
-    rag_final_ctx_loop = get_rag().get_similar(brief, n=2, max_tokens=400)
-    final_rag_note_loop = (
-        f"\n\nKNOWLEDGE BASE CONTEXT:\n{rag_final_ctx_loop}"
-        if rag_final_ctx_loop else ""
-    )
+    _rag_final_loop = build_final_report_context(brief, rag_inst)
+    final_rag_note_loop = f"\n\n{_rag_final_loop}" if _rag_final_loop else ""
 
     # Convergence note for final report
     _convergence_note = ""
@@ -2824,6 +2783,7 @@ elif st.session_state.step == "done":
             _bb = st.session_state.get("blackboard")
             _bb_summary = _bb.to_summary() if _bb else ""
             _bb_params = _bb.get_parameter_table() if _bb else ""
+            _bb_export_params = _bb.export_parameters() if _bb else []
 
             get_rag().save(
                 brief=st.session_state.brief,
@@ -2839,6 +2799,7 @@ elif st.session_state.step == "done":
                 round_scores=_scores,
                 blackboard_summary=_bb_summary,
                 parameter_table=_bb_params,
+                parameters_json=_bb_export_params,
             )
             st.session_state.rag_saved = True
 
