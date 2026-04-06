@@ -17,6 +17,11 @@ from shared.rag_context import (
     build_final_report_context,
     build_prompt_engineer_message,
 )
+from shared.analysis_helpers import (
+    build_context_history,
+    update_blackboard as _update_blackboard_shared,
+    extract_quality_score,
+)
 from blackboard import Blackboard
 from parser import parse_agent_output
 from shared.agent_runner import (
@@ -1201,62 +1206,7 @@ def _get_or_create_blackboard() -> Blackboard:
 
 def _update_blackboard(bb: Blackboard, agent_key: str, output: str, round_num: int):
     """Parse agent output and write structured data to blackboard."""
-    if not output or output.startswith("ERROR") or output.startswith("STOPPED"):
-        return
-
-    try:
-        parsed = parse_agent_output(output, agent_key, client=None)
-    except Exception:
-        return
-
-    if not parsed:
-        return
-
-    # Domain agents → parameters, flags, assumptions
-    if agent_key.endswith("_a") or agent_key.endswith("_b"):
-        if agent_key not in DESTEK_AJANLARI:
-            for param in parsed.get("parameters", []):
-                bb.write("parameters", param, agent_key, round_num)
-            for flag in parsed.get("cross_domain_flags", []):
-                bb.write("cross_domain_flags", flag, agent_key, round_num)
-            for assumption in parsed.get("assumptions", []):
-                bb.write("assumptions", assumption, agent_key, round_num)
-            return
-
-    # Cross-validator → conflicts
-    if agent_key == "capraz_dogrulama":
-        for error in parsed.get("errors", []):
-            bb.write("conflicts", error, agent_key, round_num)
-        return
-
-    # Assumption inspector → assumptions, uncertainties
-    if agent_key == "varsayim_belirsizlik":
-        for a in parsed.get("assumptions", []):
-            bb.write("assumptions", a, agent_key, round_num)
-        return
-
-    # Observer → directives, round history, score
-    if agent_key == "gozlemci":
-        for directive in parsed.get("directives", []):
-            bb.write("observer_directives", directive, agent_key, round_num)
-        score = parsed.get("score", 0)
-        bb.write("round_history", {"round": round_num, "score": score}, agent_key, round_num)
-        return
-
-    # Risk agent → risk register
-    if agent_key == "risk_guvenilirlik":
-        for risk in parsed.get("risks", []):
-            bb.write("risk_register", risk, agent_key, round_num)
-        return
-
-    # Conflict resolution → resolve open conflicts
-    if agent_key == "celisiki_cozum":
-        resolutions = parsed.get("resolutions", [])
-        if resolutions:
-            bb.resolve_conflicts([
-                {"conflict_id": i + 1, "resolution": r.get("resolution", "")}
-                for i, r in enumerate(resolutions)
-            ])
+    _update_blackboard_shared(bb, agent_key, output, round_num)
 
 
 def _update_blackboard_batch(bb: Blackboard, agent_keys: list, outputs: list, round_num: int):
@@ -1320,12 +1270,7 @@ def model_etiketi(model: str) -> str:
     return model.split("-")[1].capitalize() if "-" in model else model
 
 def kalite_puani_oku(metin):
-    eslesme = re.search(r'(\d{1,3})\s*/\s*100', metin)
-    if eslesme:
-        puan = int(eslesme.group(1))
-        if 0 <= puan <= 100:
-            return puan
-    return 70
+    return extract_quality_score(metin)
 
 
 def prompt_engineer_auto(brief):
@@ -1402,16 +1347,8 @@ def kaydet_txt(brief, mod, final, alan_isimleri, tur_ozeti):
 # ═════════════════════════════════════════════════════════════
 
 def _build_ctx_history(brief_msg: str, tum_ciktilar: str) -> list:
-    """
-    tum_ciktilar'ı conversation history formatına dönüştür.
-    user: domain analizini iste
-    assistant: tum_ciktilar (domain çıktıları)
-    Bu şekilde validasyon ajanları context'i cache HIT ile okur.
-    """
-    return [
-        {"role": "user",      "content": f"Domain analysis request:\n{brief_msg}"},
-        {"role": "assistant", "content": tum_ciktilar},
-    ]
+    """Convert accumulated outputs to conversation history format."""
+    return build_context_history(brief_msg, tum_ciktilar)
 
 def run_tekli(brief, aktif_alanlar, agent_runner=None):
     _runner = agent_runner or ajan_calistir

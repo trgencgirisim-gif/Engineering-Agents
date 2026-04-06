@@ -18,6 +18,11 @@ from shared.rag_context import (
     build_final_report_context,
     build_prompt_engineer_message,
 )
+from shared.analysis_helpers import (
+    build_context_history,
+    update_blackboard as _update_blackboard_shared,
+    extract_quality_score,
+)
 from blackboard import Blackboard
 from parser import parse_agent_output
 from shared.agent_runner import (
@@ -611,13 +616,7 @@ def ajan_calistir(ajan_key, mesaj, gecmis=None, cache_context: Optional[str] = N
 # HELPERS
 # ═════════════════════════════════════════════════════════════
 def kalite_puani_oku(metin):
-    eslesme = re.search(r'(\d{1,3})\s*/\s*100', metin)
-    if eslesme:
-        puan = int(eslesme.group(1))
-        if 0 <= puan <= 100:
-            return puan
-    print("⚠️  Quality score not found, default: 70")
-    return 70
+    return extract_quality_score(metin)
 
 
 def kaydet(brief, mod, sonuc, aktif_alanlar=[], tur_ozeti=[],
@@ -906,52 +905,12 @@ def _ajan_paralel(gorevler: List[Tuple], max_workers: int = 6) -> List[str]:
 # ── Blackboard helper (module-level) ──────────────────────────
 def _update_blackboard(bb, agent_key, output, round_num):
     """Parse agent output and write structured data to blackboard."""
-    if not output or output.startswith("ERROR"):
-        return
-    try:
-        parsed = parse_agent_output(output, agent_key, client=None)
-    except Exception:
-        return
-    if not parsed:
-        return
-
-    if agent_key.endswith("_a") or agent_key.endswith("_b"):
-        if agent_key not in DESTEK_AJANLARI:
-            for p in parsed.get("parameters", []):
-                bb.write("parameters", p, agent_key, round_num)
-            for f in parsed.get("cross_domain_flags", []):
-                bb.write("cross_domain_flags", f, agent_key, round_num)
-            for a in parsed.get("assumptions", []):
-                bb.write("assumptions", a, agent_key, round_num)
-    elif agent_key == "capraz_dogrulama":
-        for e in parsed.get("errors", []):
-            bb.write("conflicts", e, agent_key, round_num)
-    elif agent_key == "varsayim_belirsizlik":
-        for a in parsed.get("assumptions", []):
-            bb.write("assumptions", a, agent_key, round_num)
-    elif agent_key == "gozlemci":
-        for d in parsed.get("directives", []):
-            bb.write("observer_directives", d, agent_key, round_num)
-        score = parsed.get("score", 0)
-        bb.write("round_history", {"round": round_num, "score": score}, agent_key, round_num)
-    elif agent_key == "risk_guvenilirlik":
-        for r in parsed.get("risks", []):
-            bb.write("risk_register", r, agent_key, round_num)
-    elif agent_key == "celisiki_cozum":
-        resolutions = parsed.get("resolutions", [])
-        if resolutions:
-            bb.resolve_conflicts([
-                {"conflict_id": i + 1, "resolution": r.get("resolution", "")}
-                for i, r in enumerate(resolutions)
-            ])
+    _update_blackboard_shared(bb, agent_key, output, round_num)
 
 
 def _build_ctx_history(brief_msg, tum_ciktilar):
     """Convert accumulated outputs to conversation history format."""
-    return [
-        {"role": "user", "content": f"Domain analysis request:\n{brief_msg}"},
-        {"role": "assistant", "content": tum_ciktilar},
-    ]
+    return build_context_history(brief_msg, tum_ciktilar)
 
 
 # ── Paylaşılan: Tam döngü çekirdeği (Mod 3 ve Mod 4) ─────────

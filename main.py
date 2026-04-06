@@ -22,6 +22,11 @@ from shared.rag_context import (
     build_final_report_context,
     build_prompt_engineer_message,
 )
+from shared.analysis_helpers import (
+    build_context_history,
+    update_blackboard,
+    extract_quality_score,
+)
 import anthropic
 import requests as req_lib
 from dotenv import load_dotenv
@@ -332,12 +337,7 @@ class Session:
 
     # ── Helpers ───────────────────────────────────────────────
     def kalite_puani_oku(self, metin: str) -> int:
-        m = re.search(r'(\d{1,3})\s*/\s*100', metin)
-        if m:
-            p = int(m.group(1))
-            if 0 <= p <= 100:
-                return p
-        return 70
+        return extract_quality_score(metin)
 
     def domain_sec_ai(self, brief: str) -> list:
         sonuc = self.ajan_calistir("domain_selector", brief)
@@ -413,52 +413,11 @@ class Session:
     # ── Blackboard helpers ─────────────────────────────────────
     def _update_blackboard(self, agent_key: str, output: str, round_num: int):
         """Parse agent output and write structured data to blackboard."""
-        if not output or output.startswith("ERROR"):
-            return
-        try:
-            parsed = parse_agent_output(output, agent_key, client=None)
-        except Exception:
-            return
-        if not parsed:
-            return
-
-        bb = self.blackboard
-        if agent_key.endswith("_a") or agent_key.endswith("_b"):
-            if agent_key not in DESTEK_AJANLARI:
-                for p in parsed.get("parameters", []):
-                    bb.write("parameters", p, agent_key, round_num)
-                for f in parsed.get("cross_domain_flags", []):
-                    bb.write("cross_domain_flags", f, agent_key, round_num)
-                for a in parsed.get("assumptions", []):
-                    bb.write("assumptions", a, agent_key, round_num)
-        elif agent_key == "capraz_dogrulama":
-            for e in parsed.get("errors", []):
-                bb.write("conflicts", e, agent_key, round_num)
-        elif agent_key == "varsayim_belirsizlik":
-            for a in parsed.get("assumptions", []):
-                bb.write("assumptions", a, agent_key, round_num)
-        elif agent_key == "gozlemci":
-            for d in parsed.get("directives", []):
-                bb.write("observer_directives", d, agent_key, round_num)
-            score = parsed.get("score", 0)
-            bb.write("round_history", {"round": round_num, "score": score}, agent_key, round_num)
-        elif agent_key == "risk_guvenilirlik":
-            for r in parsed.get("risks", []):
-                bb.write("risk_register", r, agent_key, round_num)
-        elif agent_key == "celisiki_cozum":
-            resolutions = parsed.get("resolutions", [])
-            if resolutions:
-                bb.resolve_conflicts([
-                    {"conflict_id": i + 1, "resolution": r.get("resolution", "")}
-                    for i, r in enumerate(resolutions)
-                ])
+        update_blackboard(self.blackboard, agent_key, output, round_num)
 
     def _build_ctx_history(self, brief_msg: str, tum_ciktilar: str) -> list:
         """Convert accumulated outputs to conversation history format."""
-        return [
-            {"role": "user", "content": f"Domain analysis request:\n{brief_msg}"},
-            {"role": "assistant", "content": tum_ciktilar},
-        ]
+        return build_context_history(brief_msg, tum_ciktilar)
 
     def run_tekli(self):
         alan_isimleri = [n for _, n in self.domains]
