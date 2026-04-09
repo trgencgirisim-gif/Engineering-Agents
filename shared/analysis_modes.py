@@ -332,6 +332,17 @@ def run_full_loop_analysis(brief, domains, bb, io, max_rounds=3, hooks=None):
         if restore_fn:
             restore_fn()
 
+        # C5: Quality gate (round 1 only, app.py hook)
+        if tur == 1 and hooks.quality_gate:
+            for ak in _gorev_keys:
+                output = _sonuc_map.get(ak, "")
+                if output:
+                    qg_result = hooks.quality_gate(ak, output)
+                    if not qg_result.get("pass", True) and hooks.quality_gate_retry:
+                        retry = hooks.quality_gate_retry(ak, mesaj, gecmis[ak], output)
+                        if retry and not retry.startswith("ERROR"):
+                            _sonuc_map[ak] = retry
+
         for key, name in domains:
             for ab in ("a", "b"):
                 ak = f"{key}_{ab}"
