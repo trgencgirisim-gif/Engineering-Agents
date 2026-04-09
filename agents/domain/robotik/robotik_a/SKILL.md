@@ -146,25 +146,67 @@ If the tool call fails (solver not installed, insufficient inputs):
 - Label every estimated numerical value with [ASSUMPTION]
 ## Domain-Specific Methodology
 
-[Apply domain-specific method selection based on problem type. Use established analytical frameworks and standard procedures for this engineering discipline.]
+Decision tree for robotics analysis:
+- **Kinematics:**
+  - Forward: DH (Denavit-Hartenberg) convention → T₀ₙ = ∏Aᵢ. Position/orientation of end-effector
+  - Inverse: Geometric (closed-form for 6-DOF with spherical wrist), numerical (Newton-Raphson, damped least squares for redundant)
+  - Velocity: Jacobian J(q) — v = J·q̇. Singularity when det(J) = 0 or rank(J) drops. Manipulability measure w = √det(JJᵀ)
+  - Workspace: Reachable vs dexterous workspace. Boundary computation via inverse kinematics
+- **Dynamics:**
+  - Euler-Lagrange formulation: τ = M(q)q̈ + C(q,q̇)q̇ + g(q). Recursive Newton-Euler for efficient computation
+  - Inertia tensor computation, parallel axis theorem for link CoM
+  - Contact dynamics: Coulomb friction, Hunt-Crossley contact model, impedance/admittance control
+- **Motion planning:**
+  - Configuration space: C-space obstacles, collision checking (GJK, FCL)
+  - Sampling-based: RRT, RRT*, PRM for high-DOF. Resolution-complete guarantees
+  - Optimization-based: Trajectory optimization (CHOMP, TrajOpt), minimum jerk/snap for smooth paths
+  - Path parameterization: Time-optimal (TOPP), trapezoidal velocity profile, S-curve for jerk-limited motion
+- **Control:**
+  - Joint space: PD + gravity compensation, computed torque (inverse dynamics), adaptive control
+  - Task space: Operational space control (Khatib). Resolved motion rate control
+  - Force control: Impedance control Z(s) = Ms² + Bs + K. Hybrid position/force control. Admittance control
+  - Visual servoing: IBVS (image-based), PBVS (position-based). Interaction matrix (image Jacobian)
 
 ## Numerical Sanity Checks
 
-[Check all calculated values against known physical limits and typical engineering ranges. Flag any result that falls outside expected bounds for this domain.]
+Flag results outside these ranges as potential errors:
+| Parameter | Typical Range | If Outside |
+|-----------|--------------|------------|
+| Industrial robot repeatability | ±0.02-0.1 mm | <±0.005 = verify spec |
+| Joint velocity (industrial) | 100-250 °/s | >400 = check limits |
+| Payload/weight ratio | 0.05-0.15 (industrial) | >0.3 = check structural |
+| Cycle time (pick-place) | 0.5-3.0 s | <0.3 = delta robot? |
+| Jacobian condition number | 1-50 (away from singularity) | >100 = near singular |
+| Control loop rate | 1-10 kHz (joint) | <500 Hz = may be unstable |
+| Servo bandwidth | 5-50 Hz | >100 = check sensor noise |
 
 ## Expert Differentiation
 
 **Expert A (Theoretical) focus areas:**
-- Governing equations and fundamental theory
-- Analytical methods and closed-form solutions
-- Mathematical modeling and simulation methodology
-- Derivation from first principles
-- Theoretical limitations and assumptions
+- Robot kinematics (DH parameters, Jacobian, singularity analysis)
+- Dynamics formulation (Lagrangian, Newton-Euler, Kane's method)
+- Motion planning algorithms (RRT, PRM, trajectory optimization)
+- Control theory (computed torque, impedance, adaptive, visual servoing)
+- Localization and mapping (SLAM, Kalman filtering, particle filters)
+- Grasping theory (force closure, form closure, grasp quality metrics)
+- Mobile robot kinematics (differential drive, Ackermann, omnidirectional)
 
 ## Standards & References
 
-[Reference applicable industry standards, codes, and established engineering references for this domain.]
+Mandatory references for robotics analysis:
+- Siciliano, Sciavicco, Villani & Oriolo, "Robotics: Modelling, Planning and Control"
+- Craig, J.J., "Introduction to Robotics: Mechanics and Control"
+- Lynch & Park, "Modern Robotics: Mechanics, Planning, and Control"
+- Corke, P., "Robotics, Vision and Control"
+- Thrun, Burgard & Fox, "Probabilistic Robotics" — SLAM and localization
+- LaValle, S., "Planning Algorithms" — motion planning
 
 ## Failure Mode Awareness
 
-[Identify known limitations of standard analysis methods in this domain. Flag edge cases where common assumptions break down.]
+Known limitations and edge cases:
+- **DH convention** has ambiguity for parallel axes; use modified DH (Craig) or product of exponentials (PoE) formulation
+- **Jacobian singularities** cause infinite joint velocities; implement damped least squares (DLS) with adaptive damping
+- **Euler-Lagrange** computationally expensive for real-time; use recursive Newton-Euler for >6 DOF
+- **RRT** may produce jerky paths; post-process with shortcutting and smoothing
+- **PD control** with gravity compensation assumes perfect model; add integral term or adaptive for payload changes
+- **SLAM drift** accumulates over time; require loop closure for consistent maps

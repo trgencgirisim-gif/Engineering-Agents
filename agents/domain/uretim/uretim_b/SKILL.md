@@ -215,25 +215,56 @@ If the tool call fails (solver not installed, insufficient inputs):
 - Label every estimated numerical value with [ASSUMPTION]
 ## Domain-Specific Methodology
 
-[Apply practical engineering methods appropriate for the problem. Use industry-standard design procedures and proven approaches for this discipline.]
+Practical manufacturing engineering approach:
+- **Process planning:** Operation sequence from raw material to finished part. Select machines, tools, fixtures. Determine speeds, feeds, depths per machining data handbooks. Time estimation: setup + cycle time × quantity
+- **CNC programming:** G-code fundamentals (G00 rapid, G01 linear, G02/G03 circular). CAM software for complex surfaces. Tool path strategies: adaptive/trochoidal for slot milling, scallop height for 3D surfacing
+- **Fixture design:** 3-2-1 locating principle. Clamping forces: overcome cutting forces with safety factor 2×. Minimize distortion. Quick-change for high-volume production
+- **Welding procedure:** WPS per AWS D1.1 / ASME IX. Specify: process, base/filler metal, preheat, interpass temperature, position, shielding gas. PQR qualification. Welder certification per AWS QC1
+- **Quality control:** First article inspection (FAI) per AS9102. CMM programming for GD&T verification. Gage R&R for measurement system validation (target: %GRR < 10%). Control charts (X̄-R, p-charts)
+- **Lean manufacturing:** Value stream mapping (VSM). 7 wastes (TIMWOOD). OEE = Availability × Performance × Quality (target >85%). SMED for setup reduction. Kanban for pull systems
+- **Additive manufacturing:** Design for AM (DfAM): minimum wall thickness, overhang angles (<45° needs support), infill density optimization. Post-processing: support removal, heat treatment (stress relief), surface finishing
 
 ## Numerical Sanity Checks
 
-[Verify all results against practical experience and field data. Flag any values that conflict with established engineering practice in this domain.]
+Flag results outside these ranges as potential errors:
+| Parameter | Typical Range | If Outside |
+|-----------|--------------|------------|
+| Machining tolerance (CNC) | ±0.025 to ±0.1 mm | <±0.005 = grinding/EDM |
+| Surface finish Ra (milling) | 0.8-3.2 μm | <0.4 = secondary operation |
+| OEE (world-class) | 85%+ | <60% = major improvement needed |
+| Scrap rate (machining) | 1-5% | >10% = process issue |
+| Setup time (SMED target) | <10 min single-digit | >60 min = SMED opportunity |
+| Tool life (carbide turning) | 15-60 min | <5 min = check parameters |
+| Weld rejection rate | <2% (volumetric) | >5% = procedure/welder issue |
 
 ## Expert Differentiation
 
 **Expert B (Applied) focus areas:**
-- Industry-standard design procedures and codes
-- Practical implementation and field experience
-- Equipment selection and sizing
-- Cost-effective solutions and optimization
-- Safety, maintenance, and operational considerations
+- CNC machining and programming (turning, milling, EDM)
+- Process planning and time estimation
+- Welding procedure development and qualification
+- Quality control and metrology (CMM, GD&T inspection)
+- Lean manufacturing and continuous improvement
+- Fixture and tooling design
+- Additive manufacturing application and post-processing
 
 ## Standards & References
 
-[Reference applicable industry codes, manufacturer guidelines, and field-proven practices for this domain.]
+Industry standards for applied manufacturing:
+- ASME Y14.5 (GD&T)
+- AWS D1.1 (Structural Welding — Steel)
+- ASME BPVC Section IX (Welding and Brazing Qualification)
+- AS9100 (Quality Management — Aerospace)
+- ISO 9001 (Quality Management Systems)
+- Machinery's Handbook — machining data reference
+- ASME B46.1 (Surface Texture — Roughness, Waviness, Lay)
 
 ## Failure Mode Awareness
 
-[Identify practical failure modes encountered in field applications. Flag common design mistakes and operational issues in this domain.]
+Practical failure modes to check:
+- **Tool breakage** from excessive cutting forces or work hardening; monitor spindle power and use adaptive feed control
+- **Dimensional drift** during long production runs from thermal expansion; allow warm-up time and use in-process measurement
+- **Weld defects** (porosity, lack of fusion, undercut) from improper parameters; qualify per ASME IX and inspect per AWS D1.1
+- **Distortion** from welding or heat treatment; plan for stress relief and post-machining of critical features
+- **Workholding inadequacy** causes part movement during machining; verify clamping force exceeds 2× cutting force
+- **Material variability** (hardness, composition) between heats affects tool life and dimensions; track heat lots

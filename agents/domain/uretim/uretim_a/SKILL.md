@@ -209,25 +209,64 @@ If the tool call fails (solver not installed, insufficient inputs):
 - Label every estimated numerical value with [ASSUMPTION]
 ## Domain-Specific Methodology
 
-[Apply domain-specific method selection based on problem type. Use established analytical frameworks and standard procedures for this engineering discipline.]
+Decision tree for manufacturing analysis:
+- **Process selection:**
+  - Casting: Sand (large, low volume), investment (complex, precision), die casting (high volume, Al/Zn). Solidification: Chvorinov's rule t_s = B(V/A)²
+  - Metal forming: Forging (closed/open die), rolling, extrusion, drawing, sheet forming (deep drawing, bending, stamping). Flow stress σ_f = Kε^n·ε̇^m
+  - Machining: Turning (cylindrical), milling (prismatic), drilling. Taylor tool life VT^n = C. Merchant's circle for cutting forces
+  - Welding: Arc (SMAW, GMAW, GTAW, SAW), resistance, friction stir, laser/electron beam. Heat input H = ηVI/v (J/mm)
+  - Additive manufacturing: FDM, SLA, SLS, SLM/DMLS, EBM. Build orientation, support structures, process parameters
+- **Material removal mechanics:**
+  - Orthogonal cutting model: Merchant's theory, shear plane angle φ = π/4 - β/2 + α/2
+  - Specific cutting energy: u = Fc/(b·t₀). Unit power for process planning
+  - Surface integrity: Residual stress (tensile in machining, compressive in shot peening), white layer, microstructural changes
+  - Chip formation: Continuous, built-up edge, segmented (serrated), discontinuous. Ernst-Merchant classification
+- **Forming mechanics:**
+  - Yield criteria: von Mises (ductile metals), Tresca (conservative). Effective strain/stress for multiaxial states
+  - Workability: Forming limit diagram (FLD) for sheet metal. Cockcroft-Latham fracture criterion for bulk forming
+  - Friction: Coulomb (μ = 0.05-0.15 lubricated) vs constant shear (m = 0.3-0.7). Stribeck curve for lubrication regimes
+- **Dimensional analysis:** Process capability Cp = (USL-LSL)/(6σ). Cpk includes centering. Cp > 1.33 minimum, > 1.67 for critical
 
 ## Numerical Sanity Checks
 
-[Check all calculated values against known physical limits and typical engineering ranges. Flag any result that falls outside expected bounds for this domain.]
+Flag results outside these ranges as potential errors:
+| Parameter | Typical Range | If Outside |
+|-----------|--------------|------------|
+| Cutting speed (HSS, steel) | 20-50 m/min | >100 = carbide? |
+| Cutting speed (carbide, steel) | 100-300 m/min | >500 = verify coating |
+| Feed rate (turning) | 0.1-0.5 mm/rev | >1.0 = roughing only |
+| Surface roughness Ra (turned) | 0.4-6.3 μm | <0.1 = grinding/lapping |
+| Welding heat input | 0.5-5.0 kJ/mm | >8 = excessive distortion |
+| Casting shrinkage (steel) | 1.5-2.5% | >4% = check alloy |
+| Process capability Cpk | >1.33 (capable) | <1.0 = not capable |
 
 ## Expert Differentiation
 
 **Expert A (Theoretical) focus areas:**
-- Governing equations and fundamental theory
-- Analytical methods and closed-form solutions
-- Mathematical modeling and simulation methodology
-- Derivation from first principles
-- Theoretical limitations and assumptions
+- Metal cutting mechanics (Merchant theory, chip formation)
+- Metal forming theory (plasticity, yield criteria, workability)
+- Casting solidification and fluid flow (Chvorinov, Niyama)
+- Welding metallurgy and heat-affected zone analysis
+- Manufacturing process simulation (FEM for forming, CFD for casting)
+- Surface integrity and residual stress analysis
+- Statistical process control theory (SPC, DOE, Taguchi)
 
 ## Standards & References
 
-[Reference applicable industry standards, codes, and established engineering references for this domain.]
+Mandatory references for manufacturing analysis:
+- Kalpakjian & Schmid, "Manufacturing Engineering and Technology"
+- Groover, M.P., "Fundamentals of Modern Manufacturing"
+- DeGarmo, Black & Kohser, "Materials and Processes in Manufacturing"
+- Shaw, M.C., "Metal Cutting Principles" — cutting mechanics
+- Hosford & Caddell, "Metal Forming: Mechanics and Metallurgy"
+- ASM Handbook Vol. 6 (Welding), Vol. 14 (Forming), Vol. 15 (Casting)
 
 ## Failure Mode Awareness
 
-[Identify known limitations of standard analysis methods in this domain. Flag edge cases where common assumptions break down.]
+Known limitations and edge cases:
+- **Merchant's theory** assumes no BUE, continuous chip, single shear plane; inaccurate for interrupted cutting or hard materials
+- **Taylor tool life** constants highly dependent on workpiece material, tool geometry, and cooling; always use matched data
+- **FLD (forming limit diagram)** is strain-path dependent; linear strain paths only. Edge cracking not captured
+- **Chvorinov's rule** gives total solidification time but not directional solidification or shrinkage porosity location
+- **Welding residual stress** near yield in HAZ; must consider for fatigue and fracture analysis
+- **AM surface roughness** (SLM: Ra 5-20 μm) often requires post-processing for functional surfaces

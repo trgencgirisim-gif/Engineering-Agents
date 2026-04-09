@@ -168,25 +168,64 @@ If the tool call fails (solver not installed, insufficient inputs):
 - Label every estimated numerical value with [ASSUMPTION]
 ## Domain-Specific Methodology
 
-[Apply domain-specific method selection based on problem type. Use established analytical frameworks and standard procedures for this engineering discipline.]
+Decision tree for nuclear engineering analysis:
+- **Neutronics:**
+  - Criticality: k_eff = 1 (steady state). Four-factor formula: k_∞ = η·ε·p·f. Six-factor with leakage: k_eff = k_∞·P_NL
+  - Diffusion theory: ∇²φ + B²φ = 0 (one-group). Multi-group diffusion for energy spectrum. Transport theory (Boltzmann) for strongly absorbing media
+  - Burnup analysis: Bateman equations for isotope evolution. Conversion ratio CR = fissile produced/consumed. Breeding ratio BR > 1 for breeder reactors
+  - Reactivity control: Control rod worth (ρ = 1 - 1/k), temperature coefficients (Doppler, moderator), xenon/samarium poisoning, soluble boron (PWR)
+- **Reactor thermal-hydraulics:**
+  - Heat generation: q'''(r,z) = q₀·J₀(2.405r/R)·cos(πz/H) for cylindrical core
+  - Fuel temperature: T_centerline from q''' through fuel, gap, clad, coolant resistances. DNBR > 1.3 (W-3 correlation)
+  - Two-phase: Void fraction correlations (drift-flux, Chexal-Lellouche). CHF correlations (Bowring, Groeneveld look-up tables)
+  - Transient analysis: Point kinetics equations with delayed neutron groups (β_eff ≈ 0.0065 for U-235)
+- **Radiation transport:**
+  - Shielding: Exponential attenuation I = I₀·B·e^(-μx) with buildup factor B. Monte Carlo (MCNP) for complex geometries
+  - Dose: Absorbed dose (Gy), equivalent dose (Sv), effective dose. ICRP 103 tissue weighting factors
+  - Activation: σ_a·φ·t for activation products. Decay chains and secular/transient equilibrium
+- **Nuclear fuel cycle:** Enrichment (SWU calculations), fuel fabrication, in-core management (loading patterns, cycle length), spent fuel storage (decay heat), reprocessing (PUREX)
 
 ## Numerical Sanity Checks
 
-[Check all calculated values against known physical limits and typical engineering ranges. Flag any result that falls outside expected bounds for this domain.]
+Flag results outside these ranges as potential errors:
+| Parameter | Typical Range | If Outside |
+|-----------|--------------|------------|
+| k_eff (operating reactor) | 1.000 ± 0.005 | >1.02 = uncontrolled |
+| Fuel centerline temperature | 800-2000°C | >2800°C = fuel melting (UO₂) |
+| DNBR (PWR) | >1.3 (design limit) | <1.0 = CHF exceeded |
+| Linear heat rate (PWR) | 150-440 W/cm | >590 = fuel damage |
+| Neutron flux (thermal) | 10¹³-10¹⁴ n/cm²s | >10¹⁵ = research/test reactor |
+| Delayed neutron fraction β_eff | 0.0065 (U-235) | 0.0021 (Pu-239) = faster kinetics |
+| Reactor period (s) at 1$ reactivity | ~80s (U-235) | <1s = prompt supercritical |
 
 ## Expert Differentiation
 
 **Expert A (Theoretical) focus areas:**
-- Governing equations and fundamental theory
-- Analytical methods and closed-form solutions
-- Mathematical modeling and simulation methodology
-- Derivation from first principles
-- Theoretical limitations and assumptions
+- Neutron transport and diffusion theory
+- Reactor kinetics and control theory (point kinetics, stability)
+- Nuclear thermal-hydraulics (single and two-phase)
+- Radiation shielding and dosimetry calculations
+- Fuel burnup and isotope evolution (Bateman equations)
+- Criticality safety analysis
+- Nuclear cross-section physics and resonance theory
 
 ## Standards & References
 
-[Reference applicable industry standards, codes, and established engineering references for this domain.]
+Mandatory references for nuclear analysis:
+- Duderstadt & Hamilton, "Nuclear Reactor Analysis" — comprehensive theory
+- Lamarsh & Baratta, "Introduction to Nuclear Engineering"
+- Todreas & Kazimi, "Nuclear Systems" (2 vols) — thermal-hydraulics
+- Bell & Glasstone, "Nuclear Reactor Theory" — advanced neutronics
+- Lewis, E.E., "Fundamentals of Nuclear Reactor Physics"
+- Shultis & Faw, "Radiation Shielding" — shielding calculations
+- ICRP Publication 103 — radiation protection framework
 
 ## Failure Mode Awareness
 
-[Identify known limitations of standard analysis methods in this domain. Flag edge cases where common assumptions break down.]
+Known limitations and edge cases:
+- **Diffusion theory** inaccurate near strong absorbers, boundaries, and in small reactors; use transport theory (Sn or Monte Carlo)
+- **Point kinetics** invalid for large reactor spatial effects; requires space-time kinetics for xenon oscillations
+- **One-group approximation** misses spectral effects; minimum two groups (fast + thermal) for LWR analysis
+- **Homogeneous fuel model** inadequate for self-shielding; use heterogeneous cell calculations (WIMS, CASMO)
+- **Steady-state thermal analysis** misses transient peaks; Loss of Coolant Accident (LOCA) requires time-dependent analysis
+- **Burnup-credit** criticality analysis requires validated depletion codes; conservative without burnup credit

@@ -13,6 +13,11 @@ from config.agents_config import AGENTS, DESTEK_AJANLARI
 from config.domains import DOMAINS
 from config.pricing import get_rates, compute_cost
 from rag.store import RAGStore
+from shared.rag_context import (
+    build_domain_message,
+    build_final_report_context,
+    build_prompt_engineer_message,
+)
 from blackboard import Blackboard
 from parser import parse_agent_output
 from shared.agent_runner import (
@@ -617,7 +622,8 @@ def kalite_puani_oku(metin):
 
 def kaydet(brief, mod, sonuc, aktif_alanlar=[], tur_ozeti=[],
            quality_score=None, gozlemci_full="", capraz_full="",
-           blackboard_summary="", parameter_table="", agent_log=None):
+           blackboard_summary="", parameter_table="", agent_log=None,
+           parameters_json=None):
     """Save analysis output to outputs/ and RAG knowledge base."""
     zaman = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     mod_etiket = {1: "single", 2: "dual", 3: "semi_auto", 4: "full_auto"}
@@ -687,6 +693,7 @@ def kaydet(brief, mod, sonuc, aktif_alanlar=[], tur_ozeti=[],
         blackboard_summary=blackboard_summary,
         parameter_table=parameter_table,
         agent_log=agent_log,
+        parameters_json=parameters_json or [],
     )
     print(f"🧠 Knowledge base'e kaydedildi.")
 
@@ -758,17 +765,7 @@ def _prompt_engineer_auto(brief):
     print("PROMPT ENGINEER: Brief güçlendiriliyor...")
     print(f"{'#'*60}")
 
-    # RAG: geçmiş benzer analizleri getir
-    # RAG: en fazla 500 token (~375 kelime) — bağlam şişmesini önler
-    rag_context = rag.benzer_getir(brief, n=2)
-    if rag_context:
-        words = rag_context.split()
-        if len(words) > 375:
-            rag_context = " ".join(words[:375]) + "\n[RAG context truncated to 500 tokens]"
-        mesaj = f"{brief}\n\nRELEVANT PAST ANALYSES:\n{rag_context}"
-    else:
-        mesaj = brief
-
+    mesaj = build_prompt_engineer_message(brief, rag, max_tokens=600)
     guclendirilmis = ajan_calistir("prompt_muhendisi", mesaj)
     if "GÜÇLENDİRİLMİŞ BRIEF:" in guclendirilmis:
         return guclendirilmis.split("GÜÇLENDİRİLMİŞ BRIEF:")[-1].strip()
@@ -1038,7 +1035,7 @@ def _feedback_loop_core(brief, guclendirilmis_brief, aktif_alanlar, max_tur, mod
                     bb_ctx = bb.get_context_for(ak, tur)
                     _msg = f"{mesaj}\n\n{bb_ctx}" if bb_ctx else mesaj
                 else:
-                    _msg = mesaj
+                    _msg = build_domain_message(guclendirilmis_brief, key, name, rag, base_message=mesaj, max_tokens=200)
                 gorev_a.append((ak, _msg, gecmis[ak], None))
                 _gorev_keys.append(ak)
 
@@ -1233,12 +1230,14 @@ def _feedback_loop_core(brief, guclendirilmis_brief, aktif_alanlar, max_tur, mod
         _osc_params = ", ".join(_convergence["oscillating"][:5])
         _conv_note = f"\nWARNING: Oscillating parameters: {_osc_params}"
 
+    _rag_final = build_final_report_context(guclendirilmis_brief, rag)
+    _rag_final_note = f"\n\n{_rag_final}" if _rag_final else ""
     _domains_str = ", ".join(alan_isimleri)
     final = ajan_calistir("final_rapor",
         f"Analysis in {len(tur_ozeti)} round(s). Domains: {_domains_str}\n"
         f"PROBLEM: {guclendirilmis_brief}\nOBSERVER: {gozlemci_cevabi}\n"
         f"QUESTIONS: {soru_cevap}\nALTERNATIVES: {alt_cevap}\nSYNTHESIS: {sentez_cevap}\n\n"
-        f"STRUCTURED ANALYSIS SUMMARY:\n{_bb_final}{_conv_note}\n\n"
+        f"STRUCTURED ANALYSIS SUMMARY:\n{_bb_final}{_conv_note}{_rag_final_note}\n\n"
         f"Report: full technical findings per domain, conflicts, observer, recommendations. English only.",
         gecmis=shared_ctx)
 
@@ -1259,7 +1258,8 @@ def _feedback_loop_core(brief, guclendirilmis_brief, aktif_alanlar, max_tur, mod
     kaydet(brief, mod, final, alan_isimleri, tur_ozeti,
            gozlemci_full=gozlemci_cevabi,
            capraz_full=capraz_cevap,
-           blackboard_summary=_bb_final)
+           blackboard_summary=_bb_final,
+           parameters_json=bb.export_parameters())
     return final
 
 # =============================================================
@@ -1282,7 +1282,10 @@ def tekli_analiz(brief):
 
     # ── GRUP A: Tüm domain ajanları paralel ────────────────────
     print(f"\n--- GRUP A: {len(aktif_alanlar)} domain ajanı paralel çalışıyor ---")
-    gorev_a = [(f"{key}_a", guclendirilmis_brief, None, None) for key, _ in aktif_alanlar]
+    gorev_a = [
+        (f"{key}_a", build_domain_message(guclendirilmis_brief, key, name, rag), None, None)
+        for key, name in aktif_alanlar
+    ]
     sonuc_a = _ajan_paralel(gorev_a, max_workers=6)
 
     tum_ciktilar_parts = [
@@ -1326,11 +1329,13 @@ def tekli_analiz(brief):
     print(f"{'*'*60}")
 
     _bb_summary = bb.to_summary()
+    _rag_final = build_final_report_context(guclendirilmis_brief, rag)
+    _rag_final_note = f"\n\n{_rag_final}" if _rag_final else ""
     _domains_str = ", ".join(alan_isimleri)
     final = ajan_calistir("final_rapor",
         f"Single-agent analysis. Domains: {_domains_str}\n"
         f"PROBLEM: {guclendirilmis_brief}\nOBSERVER: {gozlemci_cevabi}\nQUESTIONS: {soru_cevap}\n\n"
-        f"STRUCTURED ANALYSIS SUMMARY:\n{_bb_summary}\n\n"
+        f"STRUCTURED ANALYSIS SUMMARY:\n{_bb_summary}{_rag_final_note}\n\n"
         f"Report: technical findings, cross-domain links, recommendations. English only.\n"
         f"Note: Single-perspective analysis. Recommend dual or full analysis for critical decisions.",
         gecmis=shared_ctx)
@@ -1338,7 +1343,8 @@ def tekli_analiz(brief):
     kaydet(brief, 1, final, alan_isimleri,
            gozlemci_full=gozlemci_cevabi,
            capraz_full=capraz_cevap,
-           blackboard_summary=bb.to_summary())
+           blackboard_summary=bb.to_summary(),
+           parameters_json=bb.export_parameters())
     return final
 
 
@@ -1363,9 +1369,10 @@ def cift_ajan_analiz(brief):
     # ── GRUP A: Tüm domain A+B ajanları paralel ─────────────────
     print(f"\n--- GRUP A: {len(aktif_alanlar)} domain × 2 ajan paralel çalışıyor ---")
     gorev_a = []
-    for key, _ in aktif_alanlar:
-        gorev_a.append((f"{key}_a", guclendirilmis_brief, None, None))
-        gorev_a.append((f"{key}_b", guclendirilmis_brief, None, None))
+    for key, name in aktif_alanlar:
+        _msg = build_domain_message(guclendirilmis_brief, key, name, rag)
+        gorev_a.append((f"{key}_a", _msg, None, None))
+        gorev_a.append((f"{key}_b", _msg, None, None))
     sonuc_a = _ajan_paralel(gorev_a, max_workers=6)
 
     tum_ciktilar_parts = []
@@ -1430,20 +1437,23 @@ def cift_ajan_analiz(brief):
     print(f"{'*'*60}")
 
     _bb_summary = bb.to_summary()
+    _rag_final = build_final_report_context(guclendirilmis_brief, rag)
+    _rag_final_note = f"\n\n{_rag_final}" if _rag_final else ""
     _domains_str = ", ".join(alan_isimleri)
     final = ajan_calistir("final_rapor",
         f"Dual-agent analysis (A=theoretical, B=practical). Domains: {_domains_str}\n"
         f"PROBLEM: {guclendirilmis_brief}\nOBSERVER: {gozlemci_cevabi}\n"
         f"CONFLICT RESOLUTION: {celiski_cevap}\nQUESTIONS: {soru_cevap}\n"
         f"ALTERNATIVES: {alt_cevap}\n\n"
-        f"STRUCTURED ANALYSIS SUMMARY:\n{_bb_summary}\n\n"
+        f"STRUCTURED ANALYSIS SUMMARY:\n{_bb_summary}{_rag_final_note}\n\n"
         f"Report: distinguish theoretical vs practical perspectives. English only.",
         gecmis=shared_ctx)
 
     kaydet(brief, 2, final, alan_isimleri,
            gozlemci_full=gozlemci_cevabi,
            capraz_full=capraz_cevap,
-           blackboard_summary=bb.to_summary())
+           blackboard_summary=bb.to_summary(),
+           parameters_json=bb.export_parameters())
     return final
 
 

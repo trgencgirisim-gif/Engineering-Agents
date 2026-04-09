@@ -153,25 +153,55 @@ If the tool call fails (solver not installed, insufficient inputs):
 - Label every estimated numerical value with [ASSUMPTION]
 ## Domain-Specific Methodology
 
-[Apply practical engineering methods appropriate for the problem. Use industry-standard design procedures and proven approaches for this discipline.]
+Practical robotics engineering approach:
+- **Robot selection:** Application-driven: articulated 6-axis (general purpose), SCARA (assembly/pick-place), delta (high-speed sorting), collaborative (human proximity). Key specs: reach, payload, repeatability, IP rating
+- **Cell design:** Workspace layout (reach envelope check). Safety: risk assessment per ISO 12100, safeguarding per ISO 10218/RIA TR R15.306. Cycle time: simulate in RoboDK/RobotStudio before build
+- **End-effector design:** Gripper type: mechanical (parallel, angular), vacuum (suction cups, Venturi), magnetic, adhesive. Gripping force > 2× part weight for safety. Quick-change couplings for flexibility
+- **Programming:** Online (teach pendant) for simple paths. Offline (OLP) for complex or multi-robot cells. Force-guided insertion for assembly (compliance control). Waypoint optimization for cycle time
+- **Integration:** PLC-robot communication (EtherNet/IP, PROFINET, EtherCAT). I/O handshaking for cell coordination. Vision system integration (2D for inspection, 3D for bin picking). Conveyor tracking
+- **Cobots:** ISO/TS 15066 — four collaborative modes: safety-rated monitored stop, hand guiding, speed and separation monitoring, power and force limiting (PFL). Maximum allowable contact forces per body region
 
 ## Numerical Sanity Checks
 
-[Verify all results against practical experience and field data. Flag any values that conflict with established engineering practice in this domain.]
+Flag results outside these ranges as potential errors:
+| Parameter | Typical Range | If Outside |
+|-----------|--------------|------------|
+| Cobot payload | 3-16 kg | >25 = industrial, not cobot |
+| Cobot max TCP speed | 1.0-2.5 m/s | >3 = too fast for PFL |
+| PFL contact force (chest) | <150 N transient | >150 = ISO/TS 15066 violation |
+| Vacuum gripper suction | 2-4× part weight | <1.5× = drop risk |
+| Teach point count (path) | 10-200 per program | >500 = simplify |
+| Vision cycle time | 50-500 ms | >1000 = bottleneck |
+| Robot utilization | 70-90% | >95% = no buffer for issues |
 
 ## Expert Differentiation
 
 **Expert B (Applied) focus areas:**
-- Industry-standard design procedures and codes
-- Practical implementation and field experience
-- Equipment selection and sizing
-- Cost-effective solutions and optimization
-- Safety, maintenance, and operational considerations
+- Robot selection and cell design
+- End-effector and tooling design
+- Robot programming (online/offline) and simulation
+- System integration (PLC, vision, conveyors)
+- Collaborative robot safety (ISO/TS 15066)
+- Commissioning, validation, and cycle time optimization
+- Maintenance and predictive diagnostics
 
 ## Standards & References
 
-[Reference applicable industry codes, manufacturer guidelines, and field-proven practices for this domain.]
+Industry standards for applied robotics:
+- ISO 10218-1/2 (Industrial Robots — Safety)
+- ISO/TS 15066 (Collaborative Robots — Safety)
+- ISO 9283 (Robot Performance — Test Methods)
+- RIA TR R15.306 (Robot Risk Assessment)
+- IEC 61131-3 (PLC Programming Languages)
+- ISO 12100 (Safety of Machinery — General Principles)
+- ANSI/RIA R15.06 (Industrial Robot Safety — US)
 
 ## Failure Mode Awareness
 
-[Identify practical failure modes encountered in field applications. Flag common design mistakes and operational issues in this domain.]
+Practical failure modes to check:
+- **Singularity near workspace boundary** causes erratic motion; add via-points or reorient tool to avoid
+- **Cable routing** wear from repeated flexing; use robot-dress-out packages and strain relief at tool flange
+- **Gripper air supply failure** can drop parts; specify mechanical spring-close (fail-safe) grippers for heavy parts
+- **Vision lighting changes** (ambient, surface finish) degrade recognition; use structured light or enclosed lighting
+- **Teach pendant programming** collisions during jog; always test at reduced speed first (T1 mode, <250mm/s)
+- **Encoder battery failure** loses absolute position; implement regular battery replacement schedule and home position verification

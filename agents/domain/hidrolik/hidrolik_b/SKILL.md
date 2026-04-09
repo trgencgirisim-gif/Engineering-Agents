@@ -200,25 +200,55 @@ If the tool call fails (solver not installed, insufficient inputs):
 - Label every estimated numerical value with [ASSUMPTION]
 ## Domain-Specific Methodology
 
-[Apply practical engineering methods appropriate for the problem. Use industry-standard design procedures and proven approaches for this discipline.]
+Practical hydraulic engineering approach:
+- **Water supply design:** Size pipes for velocity 0.6-1.5 m/s (distribution), 1.5-3.0 m/s (transmission). Maintain minimum pressure 20 psi (140 kPa) at service connections. Fire flow requirements per AWWA/ISO
+- **Stormwater design:** Rational method Q = CiA for small catchments (<80 ha). SCS curve number method for larger areas. Design storms: 2-yr for minor system, 100-yr for major system. Detention sizing via Modified Rational or routing
+- **Pump station design:** Select duty/standby configuration. Total dynamic head = static + friction + minor losses + velocity head. Affinity laws for variable speed. NPSH_A > NPSH_R + 1m minimum
+- **Surge protection:** Specify surge vessels, air valves, slow-closing butterfly valves. Check 1-in-5 design criteria. Surge analysis for all operating scenarios (pump trip, valve closure, power failure)
+- **Canal design:** Best hydraulic section optimization. Freeboard: 0.3m minimum plus wind/wave setup. Side slopes: 1.5:1 to 3:1 depending on soil. Seepage losses and lining requirements
+- **Culvert sizing:** HY-8 methodology. Inlet vs outlet control nomographs. Check headwater/diameter ratio (HW/D < 1.2 for low-risk)
 
 ## Numerical Sanity Checks
 
-[Verify all results against practical experience and field data. Flag any values that conflict with established engineering practice in this domain.]
+Flag results outside these ranges as potential errors:
+| Parameter | Typical Range | If Outside |
+|-----------|--------------|------------|
+| Distribution pipe velocity | 0.6-1.5 m/s | >3 m/s = noise, erosion |
+| Transmission main velocity | 1.5-3.0 m/s | >4 m/s = water hammer risk |
+| Fire hydrant flow | 500-2500 gpm | <500 = check supply |
+| Stormwater pipe velocity | 0.6-5.0 m/s | >6 m/s = erosion concern |
+| Pump efficiency (centrifugal) | 65-88% | >92% = verify curve |
+| Surge vessel precharge | 60-80% of static P | <50% = waterlogged risk |
+| Culvert HW/D ratio | 0.5-1.2 | >1.5 = overtopping risk |
 
 ## Expert Differentiation
 
 **Expert B (Applied) focus areas:**
-- Industry-standard design procedures and codes
-- Practical implementation and field experience
-- Equipment selection and sizing
-- Cost-effective solutions and optimization
-- Safety, maintenance, and operational considerations
+- Water distribution system design and analysis
+- Pump station design and operation
+- Stormwater management and drainage design
+- Surge protection systems specification
+- Open channel and culvert design
+- Water treatment plant hydraulics
+- Construction dewatering and temporary works
 
 ## Standards & References
 
-[Reference applicable industry codes, manufacturer guidelines, and field-proven practices for this domain.]
+Industry standards for applied hydraulics:
+- AWWA M11 (Steel Pipe Design and Installation)
+- AWWA M22 (Sizing Water Service Lines and Meters)
+- ASCE Manual of Practice No. 60 (Gravity Sanitary Sewer Design)
+- HEC-RAS User Manual (USACE open channel analysis)
+- FHWA HEC-22 (Urban Drainage Design Manual)
+- FHWA HDS-5 (Hydraulic Design of Highway Culverts)
+- BS EN 805 (Water supply — requirements for systems outside buildings)
 
 ## Failure Mode Awareness
 
-[Identify practical failure modes encountered in field applications. Flag common design mistakes and operational issues in this domain.]
+Practical failure modes to check:
+- **Water hammer** from pump trip or fast valve closure — always analyze transients for pipelines > 500m
+- **Cavitation** in valves and pump suction — verify NPSH at minimum suction level and maximum flow
+- **Air entrainment** at high points — specify air release valves at summits and slope changes
+- **Sedimentation** in low-velocity zones — maintain self-cleansing velocity (>0.6 m/s water, >0.9 m/s sewage)
+- **Thrust blocks/restraints** at bends, tees, and dead ends — calculate unbalanced hydrostatic force
+- **Corrosion** — Langelier Saturation Index (LSI) for internal corrosion; cathodic protection for external

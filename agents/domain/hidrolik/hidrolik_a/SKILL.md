@@ -194,25 +194,55 @@ If the tool call fails (solver not installed, insufficient inputs):
 - Label every estimated numerical value with [ASSUMPTION]
 ## Domain-Specific Methodology
 
-[Apply domain-specific method selection based on problem type. Use established analytical frameworks and standard procedures for this engineering discipline.]
+Decision tree for hydraulic analysis approach:
+- **Flow classification:** Internal (pipes, ducts) vs external (open channel, weirs). Steady vs unsteady (water hammer, surge). Single-phase vs multiphase
+- **Pipe hydraulics:** Darcy-Weisbach (ΔP = fLρV²/2D) with Colebrook-White for f. Hazen-Williams for water systems (C = 120-150). Minor losses: K-factor method or equivalent length method
+- **Network analysis:** Hardy-Cross iterative method for looped systems. Newton-Raphson for general networks. Kirchhoff analogy: ΣQ_node = 0, ΣΔH_loop = 0
+- **Open channel theory:** Saint-Venant equations (1D unsteady). Gradually varied flow (GVF) profiles: M1, M2, M3, S1, S2, S3 curves. Specific energy diagram E = y + V²/2g
+- **Water hammer:** Method of characteristics (MOC) for transient analysis. Joukowsky equation: ΔP = ρcV for instantaneous closure. Wave speed c = √(K/ρ)/(1 + KD/Ee) for elastic pipes
+- **Groundwater:** Darcy's law q = -K∇h. Dupuit assumption for unconfined aquifers. Theis/Cooper-Jacob for well hydraulics
+- **Dimensional analysis:** Buckingham Pi theorem for hydraulic model scaling. Froude scaling for free-surface flows, Reynolds scaling for closed conduits
 
 ## Numerical Sanity Checks
 
-[Check all calculated values against known physical limits and typical engineering ranges. Flag any result that falls outside expected bounds for this domain.]
+Flag results outside these ranges as potential errors:
+| Parameter | Typical Range | If Outside |
+|-----------|--------------|------------|
+| Pipe friction factor f | 0.008-0.05 | >0.1 = very rough or low Re |
+| Hazen-Williams C | 80-150 | >150 = new smooth pipe only |
+| Froude number (river) | 0.1-0.8 (subcritical) | >1.0 = supercritical flow |
+| Manning's n (natural channel) | 0.025-0.060 | >0.1 = heavy vegetation |
+| Hydraulic conductivity K (sand) | 10⁻⁵ to 10⁻³ m/s | check soil classification |
+| Water hammer ΔP | ρcV (c ≈ 1000-1400 m/s) | >100 bar = check valve closure time |
+| Specific energy minimum | y_c = (q²/g)^(1/3) | E < E_min = impossible flow |
 
 ## Expert Differentiation
 
 **Expert A (Theoretical) focus areas:**
-- Governing equations and fundamental theory
-- Analytical methods and closed-form solutions
-- Mathematical modeling and simulation methodology
-- Derivation from first principles
-- Theoretical limitations and assumptions
+- Saint-Venant equations and method of characteristics
+- Open channel flow theory (gradually/rapidly varied flow)
+- Pipe network analysis (Hardy-Cross, Newton-Raphson)
+- Water hammer and transient analysis theory
+- Groundwater flow equations (confined/unconfined)
+- Dimensional analysis and hydraulic similitude
+- Sediment transport mechanics (Shields, Einstein, Meyer-Peter-Müller)
 
 ## Standards & References
 
-[Reference applicable industry standards, codes, and established engineering references for this domain.]
+Mandatory references for hydraulic analysis:
+- Chaudhry, M.H., "Applied Hydraulic Transients" — water hammer reference
+- Chow, V.T., "Open-Channel Hydraulics" — definitive open channel text
+- Chadwick, Morfett & Borthwick, "Hydraulics in Civil and Environmental Engineering"
+- Streeter & Wylie, "Fluid Transients in Systems" — transient analysis
+- Bear, J., "Hydraulics of Groundwater" — groundwater flow
+- Henderson, F.M., "Open Channel Flow" — theoretical approach
 
 ## Failure Mode Awareness
 
-[Identify known limitations of standard analysis methods in this domain. Flag edge cases where common assumptions break down.]
+Known limitations and edge cases:
+- **Hazen-Williams** only valid for water at normal temperatures (4-25°C) and turbulent flow; use Darcy-Weisbach for other fluids
+- **Manning's equation** assumes uniform flow; invalid near transitions, contractions, or rapidly varied flow regions
+- **Rigid column theory** for water hammer inaccurate for long pipelines; must use elastic theory (MOC)
+- **Steady-state assumption** misses transient surges that can exceed 10× normal pressure
+- **Froude scaling** distorts Reynolds number; viscous effects may not scale properly in small models
+- **1D Saint-Venant** invalid for wide floodplains where 2D effects dominate

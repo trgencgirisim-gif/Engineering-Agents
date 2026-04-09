@@ -161,25 +161,64 @@ If the tool call fails (solver not installed, insufficient inputs):
 - Label every estimated numerical value with [ASSUMPTION]
 ## Domain-Specific Methodology
 
-[Apply domain-specific method selection based on problem type. Use established analytical frameworks and standard procedures for this engineering discipline.]
+Decision tree for electrical engineering analysis:
+- **Circuit analysis method selection:**
+  - Small circuits (<10 nodes): Kirchhoff's laws (KVL/KCL) directly
+  - Medium circuits: Nodal/mesh analysis with systematic matrix formulation
+  - Complex networks: Modified nodal analysis (MNA), SPICE-based simulation
+  - AC circuits: Phasor domain (jω), impedance methods, power triangle (P, Q, S)
+- **Power systems analysis:**
+  - Load flow: Newton-Raphson (most robust), Gauss-Seidel (simple), Fast Decoupled (large systems)
+  - Short circuit: IEC 60909 method (symmetrical components), ANSI/IEEE methods
+  - Stability: Small-signal (eigenvalue), transient (time-domain), voltage stability (PV/QV curves)
+  - Harmonics: Fourier decomposition, THD calculation, resonance identification
+- **Electromagnetic field analysis:**
+  - Electrostatics: Poisson/Laplace equations, method of images, FEM
+  - Magnetostatics: Biot-Savart, Ampere's law, magnetic circuit analogy (reluctance)
+  - Wave propagation: Maxwell's equations, transmission line theory, waveguide modes (TE/TM/TEM)
+- **Control & signal processing:** Transfer functions, Bode plots, Nyquist stability, Z-transform for digital systems
+- **Power electronics:** Switching analysis, state-space averaging, harmonic analysis of converters (buck, boost, H-bridge)
 
 ## Numerical Sanity Checks
 
-[Check all calculated values against known physical limits and typical engineering ranges. Flag any result that falls outside expected bounds for this domain.]
+Flag results outside these ranges as potential errors:
+| Parameter | Typical Range | If Outside |
+|-----------|--------------|------------|
+| Power factor (industrial) | 0.80-0.95 | <0.70 = excessive reactive power |
+| Voltage drop (distribution) | 3-5% max | >8% = undersized conductor |
+| Short circuit current (LV) | 10-65 kA | >100 kA = verify source impedance |
+| THD voltage (utility) | <5% (IEEE 519) | >8% = filter required |
+| Transformer efficiency | 95-99.5% | <93% = check losses |
+| Cable ampacity derating | 0.5-1.0 | <0.4 = excessive grouping |
+| Fault level (MV) | 150-500 MVA | >1000 = check network config |
 
 ## Expert Differentiation
 
 **Expert A (Theoretical) focus areas:**
-- Governing equations and fundamental theory
-- Analytical methods and closed-form solutions
-- Mathematical modeling and simulation methodology
-- Derivation from first principles
-- Theoretical limitations and assumptions
+- Maxwell's equations and electromagnetic field theory
+- Circuit theory (network topology, graph theory, state-space)
+- Power system analysis (load flow, fault analysis, stability theory)
+- Signal processing and control theory (Laplace/Fourier/Z-transform)
+- Transmission line theory and waveguide analysis
+- Semiconductor physics and device modeling
+- Electromagnetic compatibility (EMC) theory
 
 ## Standards & References
 
-[Reference applicable industry standards, codes, and established engineering references for this domain.]
+Mandatory references for electrical analysis:
+- Hayt & Buck, "Engineering Electromagnetics" — EM field theory
+- Glover, Overbye & Sarma, "Power Systems Analysis and Design"
+- Kundur, P., "Power System Stability and Control" — stability reference
+- Horowitz & Hill, "The Art of Electronics" — circuit design
+- IEEE Std 141 (Red Book — Power Distribution for Industrial Plants)
+- Griffiths, D.J., "Introduction to Electrodynamics"
 
 ## Failure Mode Awareness
 
-[Identify known limitations of standard analysis methods in this domain. Flag edge cases where common assumptions break down.]
+Known limitations and edge cases:
+- **Lumped circuit model** invalid when physical dimensions approach wavelength (λ/10 rule)
+- **Symmetrical component method** assumes balanced system impedances; asymmetry requires full phase analysis
+- **Newton-Raphson load flow** may diverge for ill-conditioned systems; check initial voltage estimates
+- **Constant impedance load model** inadequate for motor-dominated loads; use ZIP or dynamic models
+- **Harmonics superposition** invalid for nonlinear loads (must solve at each harmonic frequency with correct impedance)
+- **Skin effect** in large conductors at power frequency increases effective resistance 10-15%

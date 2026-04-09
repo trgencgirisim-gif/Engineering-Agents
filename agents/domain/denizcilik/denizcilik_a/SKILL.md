@@ -166,25 +166,62 @@ If the tool call fails (solver not installed, insufficient inputs):
 - Label every estimated numerical value with [ASSUMPTION]
 ## Domain-Specific Methodology
 
-[Apply domain-specific method selection based on problem type. Use established analytical frameworks and standard procedures for this engineering discipline.]
+Decision tree for marine/naval engineering analysis:
+- **Hydrostatics:**
+  - Buoyancy: Archimedes' principle Δ = ρgV. Displacement = lightweight + deadweight. Draft from hydrostatic tables/curves
+  - Stability: GM = KB + BM - KG. BM = I_WP/∇. GZ curve (righting arm) via cross-curves of stability. IMO stability criteria (A.749)
+  - Trim: LCB = LCG at equilibrium. Moment to trim 1cm = Δ×GML/100L. Trim by stern/bow calculation
+  - Damage stability: Floodable length curves, permeability factors (μ = 0.60-0.95). Probabilistic damage stability (SOLAS Chapter II-1, Part B-1)
+- **Hydrodynamics:**
+  - Resistance: Froude's method — separate wave (Rw) and frictional (Rf) components. ITTC 1957 friction line. Residuary resistance from model tests or Holtrop-Mennen regression
+  - Propulsion: Propeller theory — momentum (actuator disk), blade element. Wageningen B-series for preliminary design. Kt, Kq, J, η₀ curves. Cavitation check: σ = (P₀ - Pv)/(½ρV²)
+  - Seakeeping: Strip theory (Salvesen-Tuck-Faltinsen) for ship motions in waves. RAOs (Response Amplitude Operators). Significant wave height H_s, modal period Tp. Motion sickness incidence (MSI)
+  - Maneuvering: Nomoto model (1st/2nd order). Zigzag test, turning circle. Rudder force F = ½ρAV²CL. IMO standards for maneuverability (MSC.137(76))
+- **Structural (hull):**
+  - Longitudinal strength: Still-water bending moment + wave-induced bending moment. Section modulus requirement per classification rules. Sagging vs hogging
+  - Local strength: Plate thickness for hydrostatic/dynamic pressure (classification society formulae). Stiffener sizing (tripping, lateral buckling)
+  - Fatigue: S-N curves per DNVGL-RP-C203. Spectral fatigue analysis for wave-loaded structures. Hot-spot stress method
 
 ## Numerical Sanity Checks
 
-[Check all calculated values against known physical limits and typical engineering ranges. Flag any result that falls outside expected bounds for this domain.]
+Flag results outside these ranges as potential errors:
+| Parameter | Typical Range | If Outside |
+|-----------|--------------|------------|
+| GM (cargo ship) | 0.15-1.5 m | <0.15 = insufficient stability |
+| Cb (block coefficient) | 0.60-0.85 (cargo) | >0.90 = very full form |
+| Froude number Fn | 0.15-0.30 (cargo) | >0.40 = high-speed craft |
+| Propulsive efficiency ηD | 0.55-0.75 | >0.80 = verify |
+| Specific fuel consumption | 160-180 g/kWh (2-stroke) | >200 = older engine |
+| Hull plate thickness | 10-30 mm (bulk carrier) | >50 = ice class? |
+| Speed-power margin | 15-25% sea margin | <10% = insufficient |
 
 ## Expert Differentiation
 
 **Expert A (Theoretical) focus areas:**
-- Governing equations and fundamental theory
-- Analytical methods and closed-form solutions
-- Mathematical modeling and simulation methodology
-- Derivation from first principles
-- Theoretical limitations and assumptions
+- Ship hydrostatics and stability theory
+- Resistance and propulsion (Froude, ITTC, propeller theory)
+- Seakeeping and wave-ship interaction (strip theory, RAOs)
+- Structural mechanics of ship hulls (longitudinal/transverse strength)
+- Maneuvering dynamics and control theory
+- Computational marine hydrodynamics (RANS-based CFD)
+- Ocean wave theory and statistics (Pierson-Moskowitz, JONSWAP)
 
 ## Standards & References
 
-[Reference applicable industry standards, codes, and established engineering references for this domain.]
+Mandatory references for marine analysis:
+- Molland, Turnock & Hudson, "Ship Resistance and Propulsion"
+- Lewis, E.V. (ed.), "Principles of Naval Architecture" (SNAME, 3 vols)
+- Faltinsen, O.M., "Sea Loads on Ships and Offshore Structures"
+- Rawson & Tupper, "Basic Ship Theory"
+- ITTC Recommended Procedures (model testing, resistance prediction)
+- IMO Conventions (SOLAS, MARPOL, Load Lines)
 
 ## Failure Mode Awareness
 
-[Identify known limitations of standard analysis methods in this domain. Flag edge cases where common assumptions break down.]
+Known limitations and edge cases:
+- **Strip theory** inaccurate for short waves (λ/L < 0.5) and at zero/very low speed; use 3D panel methods
+- **Holtrop-Mennen** regression valid for conventional hull forms; inaccurate for multihulls, planing hulls, or unconventional sterns
+- **Intact stability criteria (IMO A.749)** based on static GZ curve; does not capture parametric rolling or broaching
+- **2D section approach** for local strength misses 3D effects at discontinuities (hatch corners, engine room boundaries)
+- **Propeller cavitation** inception predicted from charts may miss sheet/tip vortex cavitation; model tests recommended for critical applications
+- **Quasi-static wave bending moment** underestimates dynamic effects in heavy seas; whipping/springing loads can add 20-30%

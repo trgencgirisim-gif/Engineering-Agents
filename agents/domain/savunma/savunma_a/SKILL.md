@@ -247,28 +247,59 @@ If the tool call fails (solver not installed, insufficient inputs):
 - Label every estimated numerical value with [ASSUMPTION]
 ## Domain-Specific Methodology
 
-[Apply domain-specific method selection based on problem type. Use established analytical frameworks and standard procedures for this engineering discipline.]
+Select the analytical framework based on problem class:
+
+- **Terminal ballistics (penetration mechanics):** Apply the BRL equation for homogeneous steel targets, DeMarre formula for armor plate scaling, and Poncelet equation for deceleration-based depth-of-penetration estimation. For composite/ceramic armors, use the Florence model or Woodward model with appropriate interface defeat thresholds.
+- **Interior ballistics (gun propulsion):** Solve the Resal equation system (energy, momentum, burn rate) to generate pressure-time curves. Model propellant burn rate using Vieille's law (r = a * P^n) with appropriate grain geometry (web thickness, progressivity). Validate peak chamber pressure against proof load limits.
+- **Exterior ballistics (trajectory prediction):** Employ 6-DOF trajectory modeling incorporating aerodynamic drag (use modified point-mass or full 6-DOF with Magnus and spin-damping moments). Estimate drag coefficients via Siacci method for standard projectile forms or PRODAS-type shape decomposition. Include Coriolis correction for long-range fire.
+- **Blast and fragmentation effects:** Apply Hopkinson-Cranz (cube-root) scaling for blast overpressure estimation. Use Kingery-Bulmash empirical curves for peak overpressure and impulse as a function of scaled distance (Z = R/W^(1/3)). Model fragmentation using Gurney equations for initial fragment velocity and Mott distribution for fragment mass distribution.
+- **Radar cross-section (RCS) estimation:** Use physical optics (PO) for electrically large targets, physical theory of diffraction (PTD) for edge contributions, and method of moments (MoM) for resonance-region objects. Distinguish between monostatic and bistatic RCS. Account for surface treatments and RAM coatings via impedance boundary conditions.
+- **Electronic warfare analysis:** Apply the radar range equation (both one-way and two-way) to compute detection ranges. Calculate jammer-to-signal ratio (J/S) for both self-protection and stand-off jamming geometries. Model ERP requirements, antenna sidelobe suppression, and ECCM techniques (frequency agility, pulse compression).
+- **Survivability and lethality analysis:** Compute P(kill|hit) using vulnerable area methodology (Av/Ap ratio). Estimate conditional kill probability through shotline analysis and component kill trees. Apply single-shot P(k) and multi-hit accumulation models per JTCG/ME methodology.
 
 ## Numerical Sanity Checks
 
-[Check all calculated values against known physical limits and typical engineering ranges. Flag any result that falls outside expected bounds for this domain.]
+| Parameter | Expected Range | Flag If Outside | Notes |
+|-----------|---------------|-----------------|-------|
+| Muzzle velocity — pistol | 300 -- 500 m/s | < 250 or > 600 m/s | Standard handgun cartridges (9 mm, .45 ACP) |
+| Muzzle velocity — rifle | 700 -- 1000 m/s | < 600 or > 1200 m/s | 5.56 mm NATO ~940 m/s, 7.62 mm NATO ~840 m/s |
+| Muzzle velocity — tank gun (APFSDS) | 1400 -- 1800 m/s | < 1200 or > 2000 m/s | Modern KE penetrators; DU vs tungsten alloy |
+| Blast overpressure — eardrum rupture | ~35 kPa (5 psi) | Threshold well-established | At scaled distance Z ~ 3--4 m/kg^(1/3) |
+| Blast overpressure — lung damage onset | 100 -- 200 kPa | Varies with duration | Short-duration threshold ~200 kPa; long-duration ~100 kPa |
+| Propellant burn rate exponent (n) | 0.5 -- 0.9 | < 0.3 or > 1.0 | Single-base ~0.6--0.7; double-base ~0.7--0.9 |
+| RCS — conventional fighter aircraft | 1 -- 10 m^2 | > 20 m^2 head-on suspicious | Aspect-dependent; nose-on vs broadside can differ 10x |
+| RCS — stealth aircraft | 0.001 -- 0.01 m^2 | > 0.1 m^2 defeats purpose | B-2 class; frequency-dependent |
 
 ## Expert Differentiation
 
 **Expert A (Theoretical) focus areas:**
-- Governing equations and fundamental theory
-- Analytical methods and closed-form solutions
-- Mathematical modeling and simulation methodology
-- Derivation from first principles
-- Theoretical limitations and assumptions
+- Derivation and application of governing differential equations of projectile motion (modified point-mass and 6-DOF formulations) including gyroscopic stability criteria (Sg > 1) and dynamic stability factor (Sd)
+- Detonation physics: Chapman-Jouguet detonation theory, Gurney energy methods for fragment and shaped charge jet velocity prediction, Taylor-Sedov blast wave solutions
+- Shaped charge jet theory: Birkhoff-MacDougall steady-state jet model, virtual origin concept, jet breakup time estimation, standoff optimization for penetration depth
+- Fragmentation modeling: Mott distribution (M(m) = 1 - exp(-(m/mu)^0.5)) for natural fragmentation, Held formula for controlled fragmentation, fragment spray angle prediction
+- Warhead lethality computation: Lethal area estimation via P(k) integration over fragment spray patterns, combination of blast and fragment effects, synergistic lethality assessment
+- Signal propagation and EW link budget analysis: Free-space path loss, atmospheric attenuation, multipath fading models, radar equation sensitivity analysis with parameter sweeps
+- Armor penetration mechanics: Hydrodynamic limit (Bernoulli penetration for shaped charges), transition from rigid body to eroding penetrator models, obliquity effects (cosine rule limitations and ricochet criteria)
+- Analytical uncertainty quantification: Sensitivity analysis of penetration equations to input variability, Monte Carlo trajectory dispersion estimation, confidence interval derivation for lethality predictions
 
 ## Standards & References
 
-[Reference applicable industry standards, codes, and established engineering references for this domain.]
+- **MIL-STD-662F** — V50 ballistic limit testing methodology for armor materials; defines acceptance criteria and statistical treatment of ballistic limit velocity
+- **STANAG 4569** — Protection levels for occupants of logistic and light armored vehicles (Levels 1--5 for KE and artillery/mine threats)
+- **STANAG 2920** — Ballistic test method for personal armor materials and combat clothing; V50 fragment simulating projectile (FSP) testing
+- **MIL-STD-461G** — Requirements for the control of electromagnetic interference characteristics; emission and susceptibility limits critical for EW system compatibility
+- **AECTP-230** (Allied Environmental Conditions and Test Publications) — Mechanical environmental testing (shock, vibration, acceleration) for munitions and weapon systems
+- **AOP-39** (Allied Ordnance Publication) — Guidance on the assessment and development of Munitions with Reduced Unintended Stimuli Response (MURAT/IM)
+- **NATO STANAG 4170** — Principles and methodology for the qualification of firearms and associated ammunition
 
 ## Failure Mode Awareness
 
-[Identify known limitations of standard analysis methods in this domain. Flag edge cases where common assumptions break down.]
+- **Penetration model extrapolation beyond calibration range:** Empirical equations (BRL, DeMarre) are calibrated for specific velocity/material regimes. Extrapolating to hypervelocity impacts or exotic armor composites yields unreliable predictions — always state the valid L/D ratio and velocity bounds of the chosen model.
+- **Neglecting obliquity and yaw effects:** Simple normal-incidence penetration models can overestimate performance by 30--50% at oblique impact. The cosine rule (effective thickness = t/cos(theta)) breaks down above ~60 degrees where ricochet dominates.
+- **Assuming ideal detonation conditions:** Theoretical detonation velocity and Gurney energy assume fully confined, steady-state detonation. Partial detonation, corner-turning losses, and non-ideal explosive behavior (especially in aluminized compositions) significantly reduce actual performance.
+- **EW model vs real-world propagation discrepancies:** Free-space radar equation predictions diverge from operational performance in cluttered environments. Multipath, terrain masking, atmospheric ducting, and electronic fratricide introduce 10--20 dB uncertainty in link budgets.
+- **RCS estimation errors at resonance region:** Physical optics methods fail when target feature sizes approach the illuminating wavelength (resonance region, typically 0.5--5 lambda). Creeping wave and cavity resonance effects can cause RCS spikes 10--20 dB above PO predictions.
+- **Fragmentation model assumptions:** Mott distribution assumes uniform casing properties. Real warheads have welds, grooves, and material inhomogeneities that alter fragment mass distribution and spray patterns. Controlled fragmentation (scored casings) requires separate empirical treatment.
 
 
 ## Pre-Computed Solver Results

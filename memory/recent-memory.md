@@ -19,6 +19,17 @@ Each entry follows:
 
 ## Entries
 
+### [2026-04-05 12:00] Token Efficiency — 3 Improvements COMPLETE
+- **Decision/Action:** Implemented all 3 token efficiency improvements across 6 commits:
+  1. `blackboard.py` — `export_parameters()` for structured param export
+  2. `rag/store.py` — `parameters_json` storage, `get_parameters_for_domain()`, `get_analysis_template()`
+  3. `shared/rag_context.py` — NEW shared module: `build_domain_message()`, `build_final_report_context()`, `build_prompt_engineer_message()`
+  4. `main.py` — All 3 modes (tekli/cift/full_loop) now inject RAG into domain agents (Round 1) + final report
+  5. `app.py` — Replaced ~40 lines of inline RAG with shared module calls
+  6. `orchestrator.py` — All 3 modes now inject RAG, kaydet() passes parameters_json
+- **Context:** All 3 entry points now consistently learn from past analyses. Expected 15-40% token savings on repeat/similar problems.
+- **Status:** completed
+
 ### [2026-03-18 19:50] Caching System Improvements
 - **Decision/Action:** Fixed 4 caching issues: (1) cache key now hashes full history content instead of just length, (2) upgraded from FIFO to LRU eviction via OrderedDict, (3) standardized prompt cache TTL to 1h across all entry points, (4) corrected Opus threshold comment (4096 not 2048)
 - **Context:** Audit revealed cache key collisions when same message sent with different history of equal length; FIFO eviction was suboptimal; TTL was inconsistent (5min default vs 1h in app.py)

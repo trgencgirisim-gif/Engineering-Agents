@@ -240,25 +240,55 @@ If the tool call fails (solver not installed, insufficient inputs):
 - Label every estimated numerical value with [ASSUMPTION]
 ## Domain-Specific Methodology
 
-[Apply practical engineering methods appropriate for the problem. Use industry-standard design procedures and proven approaches for this discipline.]
+Practical optical engineering approach:
+- **Lens system design:** Specify requirements first — FOV, resolution (MTF spec), distortion limit, spectral range, environmental (temperature, vibration). Start with known forms (double Gauss, Cooke triplet, telephoto) and optimize
+- **Illumination design:** Source selection (LED, laser, lamp) based on étendue, spectrum, power. Non-imaging optics: CPC, TIR collimators, freeform reflectors. Uniformity target: ±10% typical, ±5% for metrology
+- **Fiber optic systems:** Link budget: P_received = P_source - α·L - connector losses - splice losses - margin (3-6 dB). Bandwidth: limited by dispersion (modal, chromatic). Single-mode for >1 km or >1 Gbps
+- **Coating design:** Specify reflectance/transmittance vs wavelength. AR coatings: MgF₂ (simple), multi-layer broadband. HR mirrors: dielectric stack (R > 99.9%). Filters: edge, bandpass, notch. Environmental durability per MIL-C-48497
+- **Detector/sensor systems:** Signal chain: optical power → detector → preamp → ADC. SNR analysis: shot noise, dark current, read noise, thermal noise. Integration time optimization
+- **Metrology:** Interferometry for surface figure (λ/10 typical for precision optics). MTF testing for imaging quality. Spectrophotometry for coatings. Wavefront sensing (Shack-Hartmann)
 
 ## Numerical Sanity Checks
 
-[Verify all results against practical experience and field data. Flag any values that conflict with established engineering practice in this domain.]
+Flag results outside these ranges as potential errors:
+| Parameter | Typical Range | If Outside |
+|-----------|--------------|------------|
+| MTF at Nyquist (good system) | 30-60% | <10% = system limited |
+| Surface figure (precision) | λ/4 to λ/20 | <λ/100 = very expensive |
+| Surface roughness (polished) | 1-5 nm RMS | >20 nm = scatter issue |
+| Fiber connector loss | 0.1-0.5 dB | >1.0 = dirty/damaged |
+| LED luminous efficacy | 100-220 lm/W | >300 = verify |
+| Camera sensor pixel size | 1-10 μm | <0.5μm = diffraction limited |
+| Optical system transmission | 50-95% | <30% = too many surfaces |
 
 ## Expert Differentiation
 
 **Expert B (Applied) focus areas:**
-- Industry-standard design procedures and codes
-- Practical implementation and field experience
-- Equipment selection and sizing
-- Cost-effective solutions and optimization
-- Safety, maintenance, and operational considerations
+- Optical system design and optimization (Zemax/Code V)
+- Illumination system design (non-imaging optics)
+- Fiber optic system design and link budget analysis
+- Thin film coating design and specification
+- Optical testing and metrology
+- Optomechanical design (lens mounting, athermalization)
+- Manufacturing tolerances and producibility
 
 ## Standards & References
 
-[Reference applicable industry codes, manufacturer guidelines, and field-proven practices for this domain.]
+Industry standards for applied optical engineering:
+- ISO 10110 (Optics and Photonics — Preparation of drawings)
+- ISO 9211 (Optical coatings)
+- MIL-PRF-13830 (Optical Components)
+- IEC 60825 (Safety of Laser Products)
+- ISO 11146 (Lasers — Beam widths and propagation)
+- ISO 15529 (Optics — Optical transfer function measurement)
+- TIA-568 (Telecommunications cabling — fiber optic)
 
 ## Failure Mode Awareness
 
-[Identify practical failure modes encountered in field applications. Flag common design mistakes and operational issues in this domain.]
+Practical failure modes to check:
+- **Thermal defocus** in unathermalized systems — specify CTD (coefficient of thermal defocus) and compensate with material pairing or active focus
+- **Ghost reflections** from uncoated or poorly coated surfaces create flare; analyze in non-sequential ray trace
+- **Laser damage threshold** of coatings limits peak power; specify LIDT and test per ISO 21254
+- **Stray light** from scattering and reflections degrades contrast; baffle and specify surface treatments
+- **Fiber bend loss** increases sharply below minimum bend radius (typically 15-30mm for SMF); specify routing constraints
+- **Moisture/contamination** on optical surfaces degrades performance; specify sealing (hermetic or desiccant) and cleanroom assembly level

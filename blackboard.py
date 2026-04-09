@@ -751,3 +751,88 @@ class Blackboard:
             raw = _extract_param_value(val)
             lines.append(f"  {name}: {raw} [{latest.source_agent}]")
         return "\n".join(lines)
+
+    # ─────────────────────────────────────────────────────────
+    # SERIALIZATION — for session persistence
+    # ─────────────────────────────────────────────────────────
+
+    def to_dict(self) -> dict:
+        """Serialize blackboard state to a JSON-safe dict.
+        Excludes threading primitives (_lock) and caches."""
+        def _entry_to_dict(entry: BlackboardEntry) -> dict:
+            return {
+                "value": entry.value,
+                "source_agent": entry.source_agent,
+                "round_num": entry.round_num,
+                "timestamp": entry.timestamp,
+                "confidence": entry.confidence,
+            }
+
+        return {
+            "parameters": {
+                name: [_entry_to_dict(e) for e in entries]
+                for name, entries in self.parameters.items()
+            },
+            "conflicts": list(self.conflicts),
+            "assumptions": list(self.assumptions),
+            "cross_domain_flags": {
+                k: list(v) for k, v in self.cross_domain_flags.items()
+            },
+            "risk_register": list(self.risk_register),
+            "open_questions": list(self.open_questions),
+            "observer_directives": dict(self.observer_directives),
+            "round_history": list(self.round_history),
+        }
+
+    def export_parameters(self) -> list:
+        """Export latest parameters as a JSON-safe list for RAG storage.
+
+        Returns a list of dicts, each containing:
+            name, value, source_agent, confidence, round_num
+        Only the most recent entry per parameter is included.
+        """
+        result = []
+        for name, entries in self.parameters.items():
+            if not entries:
+                continue
+            latest = entries[-1]
+            # Extract raw value — handle both str and numeric
+            val = latest.value
+            if isinstance(val, str):
+                # Try to extract numeric portion for cleaner storage
+                val = val.strip()
+            result.append({
+                "name": name,
+                "value": val,
+                "source_agent": latest.source_agent,
+                "confidence": latest.confidence,
+                "round_num": latest.round_num,
+            })
+        return result
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Blackboard":
+        """Reconstruct a Blackboard from a dict produced by to_dict().
+        Creates fresh lock and caches."""
+        if not data:
+            return cls()
+        bb = cls()
+        for name, entries in data.get("parameters", {}).items():
+            bb.parameters[name] = []
+            for e in entries:
+                entry = BlackboardEntry(
+                    value=e["value"],
+                    source_agent=e["source_agent"],
+                    round_num=e["round_num"],
+                    confidence=e.get("confidence", "MEDIUM"),
+                )
+                entry.timestamp = e.get("timestamp", 0)
+                bb.parameters[name].append(entry)
+        bb.conflicts = data.get("conflicts", [])
+        bb.assumptions = data.get("assumptions", [])
+        bb.cross_domain_flags = data.get("cross_domain_flags", {})
+        bb.risk_register = data.get("risk_register", [])
+        bb.open_questions = data.get("open_questions", [])
+        bb.observer_directives = data.get("observer_directives", {})
+        bb.round_history = data.get("round_history", [])
+        return bb

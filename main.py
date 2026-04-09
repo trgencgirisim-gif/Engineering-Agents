@@ -17,6 +17,11 @@ from pathlib import Path
 
 import hashlib
 from collections import OrderedDict
+from shared.rag_context import (
+    build_domain_message,
+    build_final_report_context,
+    build_prompt_engineer_message,
+)
 import anthropic
 import requests as req_lib
 from dotenv import load_dotenv
@@ -105,6 +110,16 @@ def _make_cache_key(ajan_key: str, mesaj: str, gecmis: list) -> str:
 # ─── Session Yönetimi ─────────────────────────────────────────
 sessions: dict = {}   # sid → Session
 
+# ─── Session Persistence ─────────────────────────────────────
+_session_store = None
+
+def _get_session_store():
+    global _session_store
+    if _session_store is None:
+        from shared.session_store import SessionStore
+        _session_store = SessionStore()
+    return _session_store
+
 # ─── Ajan İçe Aktarımı ────────────────────────────────────────
 try:
     from config.agents_config import AGENTS, DESTEK_AJANLARI
@@ -113,6 +128,11 @@ except ImportError:
     AGENTS_LOADED = False
     AGENTS = {}
     DESTEK_AJANLARI = {}
+
+from shared.agent_runner import (
+    resolve_agent, build_system_blocks, build_messages,
+    api_call, api_call_stream, extract_response, _make_error_result, _make_result,
+)
 
 # ─── RAG ──────────────────────────────────────────────────────
 _rag = None
@@ -172,50 +192,29 @@ class Session:
     def emit(self, etype: str, data: dict):
         self.queue.put({"type": etype, "data": data})
 
-    # ── Ajan çalıştır ─────────────────────────────────────────
+    # ── Checkpoint: persist state to SQLite ──────────────────
+    def _checkpoint(self):
+        """Save current state to SQLite. Best-effort, never kills analysis."""
+        try:
+            _get_session_store().save(self)
+        except Exception:
+            pass
+
+    # ── Ajan çalıştır (uses shared/agent_runner.py) ──────────
     def ajan_calistir(self, ajan_key: str, mesaj: str,
                       gecmis: list = None, cache_context: str = None) -> str:
         if gecmis is None:
             gecmis = []
 
-        ajan = AGENTS.get(ajan_key) or DESTEK_AJANLARI.get(ajan_key)
+        # ── Resolve agent via shared runner ──
+        ajan = resolve_agent(ajan_key, self.domain_model)
         if not ajan:
             return f"ERROR: Agent '{ajan_key}' not found."
 
-        # Domain model override — app.py sidebar toggle ile uyumlu
-        ajan = dict(ajan)  # shallow copy — orijinali değiştirme
-        _is_domain = ajan_key in AGENTS
-        _protected = ajan_key in ("final_rapor", "sentez")
-        if _is_domain and not _protected:
-            if self.domain_model == "sonnet":
-                ajan["model"] = "claude-sonnet-4-6"
-            else:
-                ajan["model"] = "claude-opus-4-6"
-
-        # 2-block system prompt: CACHE_PREAMBLE cached once across all agents
-        if CACHE_PREAMBLE:
-            system_blocks = [
-                {"type": "text", "text": CACHE_PREAMBLE, "cache_control": {"type": "ephemeral", "ttl": "1h"}},
-                {"type": "text", "text": ajan["sistem_promptu"], "cache_control": {"type": "ephemeral"}},
-            ]
-        else:
-            system_blocks = [
-                {"type": "text", "text": ajan["sistem_promptu"], "cache_control": {"type": "ephemeral"}},
-            ]
-
-        # cache_context büyük bağlamı cache_control block olarak gönder
-        if cache_context and len(cache_context) > 800:
-            user_content = [
-                {"type": "text", "text": cache_context, "cache_control": {"type": "ephemeral"}},
-                {"type": "text", "text": mesaj}
-            ]
-        else:
-            user_content = mesaj
-
-        mesajlar = gecmis + [{"role": "user", "content": user_content}]
+        system_blocks = build_system_blocks(ajan, CACHE_PREAMBLE)
+        mesajlar = build_messages(mesaj, gecmis, cache_context)
         self.emit("agent_start", {"key": ajan_key, "name": ajan["isim"]})
 
-        # Thinking modu — sadece ilgili ajanlarda
         thinking_budget = ajan.get("thinking_budget", 0)
 
         # ── Local result cache check (skip for thinking-mode agents) ──
@@ -250,137 +249,61 @@ class Session:
                     brief=mesaj,
                     thinking_budget=thinking_budget,
                 )
-                cevap   = result["cevap"]
-                dusunce = result.get("dusunce", "")
-                actual_cost = result["cost"]
-                saved       = result["saved"]
-                inp   = result["inp"]
-                out   = result["out"]
-                c_cre = result["c_cre"]
-                c_rd  = result["c_rd"]
+                if result.get("cevap"):
+                    self._record_result(ajan_key, ajan, result, cache_key)
+                    return result["cevap"]
             except Exception as e:
                 self.emit("agent_error", {"key": ajan_key, "name": ajan["isim"],
                                           "error": f"Tool loop failed, falling back: {e}"})
-                # Fall through to standard path below
-                cevap = None
 
-            if cevap is not None:
-                # Skip the standard API call — tool loop already ran
-                with self._cost_lock:
-                    self.total_cost         += actual_cost
-                    self.total_input        += inp
-                    self.total_output       += out
-                    self.cache_write_tokens += c_cre
-                    self.cache_read_tokens  += c_rd
-                    self.cache_saved_usd    += saved
-                    self.agent_log.append({
-                        "key":     ajan_key,
-                        "name":    ajan["isim"],
-                        "model":   ajan["model"],
-                        "cost":    actual_cost,
-                        "output":  cevap[:3000],
-                        "thinking": dusunce[:2000] if dusunce else "",
-                    })
-                if cache_key:
-                    with _result_cache_lock:
-                        if len(_result_cache) >= _RESULT_CACHE_MAX:
-                            _result_cache.popitem(last=False)
-                        _result_cache[cache_key] = cevap
-                self.emit("agent_done", {
-                    "key":        ajan_key,
-                    "name":       ajan["isim"],
-                    "model":      ajan["model"],
-                    "cost":       round(actual_cost, 6),
-                    "total_cost": round(self.total_cost, 4),
-                    "cache_saved": round(self.cache_saved_usd, 4),
-                    "agent_count": len(self.agent_log),
-                })
-                return cevap
-
-        # ── C3: Streaming for sequential agents (observer, sentez, final_rapor) ──
+        # ── Streaming for sequential agents (observer, sentez, final_rapor) ──
         _STREAM_AGENTS = {"gozlemci", "sentez", "final_rapor", "capraz_dogrulama"}
-        _use_stream = ajan_key in _STREAM_AGENTS
+        if ajan_key in _STREAM_AGENTS:
+            def _on_token(text):
+                self.emit("agent_token", {"key": ajan_key, "token": text})
+            def _on_retry(deneme, bekleme):
+                self.emit("agent_wait", {"key": ajan_key, "name": ajan["isim"], "seconds": bekleme})
 
-        # ── Standard API call (no tool_use) ──────────────────────
-        extra_kwargs = {}
-        if thinking_budget:
-            extra_kwargs["thinking"] = {"type": "enabled", "budget_tokens": thinking_budget}
+            yanit, err = api_call_stream(
+                self.client, ajan, system_blocks, mesajlar,
+                on_token=_on_token, on_retry=_on_retry,
+            )
+        else:
+            # ── Standard non-streaming API call ──
+            def _on_retry(deneme, bekleme):
+                self.emit("agent_wait", {"key": ajan_key, "name": ajan["isim"], "seconds": bekleme})
 
-        if _use_stream:
-            # C3: Streaming path — emit token deltas via SSE
-            try:
-                collected_text = []
-                with self.client.messages.stream(
-                    model=ajan["model"],
-                    max_tokens=ajan.get("max_tokens", 2000),
-                    system=system_blocks,
-                    messages=mesajlar,
-                    **extra_kwargs,
-                ) as stream:
-                    for event in stream:
-                        if hasattr(event, 'type') and event.type == 'content_block_delta':
-                            delta = event.delta
-                            if hasattr(delta, 'text'):
-                                collected_text.append(delta.text)
-                                self.emit("agent_token", {"key": ajan_key, "token": delta.text})
-                    yanit = stream.get_final_message()
-            except Exception as e:
-                err_str = str(e)
-                if "stream" in err_str.lower() or "thinking" in err_str.lower():
-                    _use_stream = False  # Fall through to non-streaming below
-                else:
-                    self.emit("agent_error", {"key": ajan_key, "name": ajan["isim"], "error": err_str})
-                    raise
+            yanit, err = api_call(
+                self.client, ajan, system_blocks, mesajlar, on_retry=_on_retry,
+            )
 
-        if not _use_stream:
-            for deneme in range(5):
-                try:
-                    yanit = self.client.messages.create(
-                        model=ajan["model"],
-                        max_tokens=ajan.get("max_tokens", 2000),
-                        system=system_blocks,
-                        messages=mesajlar,
-                        **extra_kwargs,
-                    )
-                    break
-                except Exception as e:
-                    err_str = str(e)
-                    if "thinking" in err_str.lower() and thinking_budget:
-                        extra_kwargs = {}
-                        continue
-                    elif "rate_limit" in err_str.lower() or "429" in err_str:
-                        bekleme = 60 * (deneme + 1)
-                        self.emit("agent_wait", {"key": ajan_key, "name": ajan["isim"], "seconds": bekleme})
-                        time.sleep(bekleme)
-                    else:
-                        self.emit("agent_error", {"key": ajan_key, "name": ajan["isim"], "error": err_str})
-                        raise
-            else:
-                # All 5 retries exhausted
-                self.emit("agent_error", {"key": ajan_key, "name": ajan["isim"], "error": "Rate limit aşıldı"})
-                return "ERROR: Rate limit aşıldı."
+        if err:
+            self.emit("agent_error", {"key": ajan_key, "name": ajan["isim"], "error": err})
+            return f"ERROR: {err}"
 
-        # Thinking + text bloklarını ayır
-        text_blocks     = [b.text     for b in yanit.content if b.type == "text"]
-        thinking_blocks = [b.thinking for b in yanit.content
-                           if hasattr(b, "thinking") and b.type == "thinking"]
-        cevap   = "\n".join(text_blocks).strip()
-        dusunce = "\n".join(thinking_blocks).strip() if thinking_blocks else ""
+        # ── Extract response + cost via shared runner ──
+        result = extract_response(yanit)
+        actual_cost, saved = compute_cost(ajan["model"], result["inp"], result["out"],
+                                           result["c_cre"], result["c_rd"])
+        result["cost"] = actual_cost
+        result["saved"] = saved
 
-        usage = yanit.usage
-        inp   = usage.input_tokens
-        out   = usage.output_tokens
-        c_cre = getattr(usage, "cache_creation_input_tokens", 0) or 0
-        c_rd  = getattr(usage, "cache_read_input_tokens",     0) or 0
+        self._record_result(ajan_key, ajan, result, cache_key)
+        return result["cevap"]
 
-        actual_cost, saved = compute_cost(ajan["model"], inp, out, c_cre, c_rd)
+    def _record_result(self, ajan_key: str, ajan: dict, result: dict, cache_key: str = None):
+        """Thread-safe recording of agent results to session state + local cache."""
+        cevap = result["cevap"]
+        dusunce = result.get("dusunce", "")
+        actual_cost = result.get("cost", 0)
+        saved = result.get("saved", 0)
 
         with self._cost_lock:
             self.total_cost         += actual_cost
-            self.total_input        += inp
-            self.total_output       += out
-            self.cache_write_tokens += c_cre
-            self.cache_read_tokens  += c_rd
+            self.total_input        += result.get("inp", 0)
+            self.total_output       += result.get("out", 0)
+            self.cache_write_tokens += result.get("c_cre", 0)
+            self.cache_read_tokens  += result.get("c_rd", 0)
             self.cache_saved_usd    += saved
             self.agent_log.append({
                 "key":     ajan_key,
@@ -391,11 +314,10 @@ class Session:
                 "thinking": dusunce[:2000] if dusunce else "",
             })
 
-        # Store in local result cache (non-thinking agents only)
         if cache_key:
             with _result_cache_lock:
                 if len(_result_cache) >= _RESULT_CACHE_MAX:
-                    _result_cache.popitem(last=False)  # LRU eviction
+                    _result_cache.popitem(last=False)
                 _result_cache[cache_key] = cevap
 
         self.emit("agent_done", {
@@ -407,7 +329,6 @@ class Session:
             "cache_saved": round(self.cache_saved_usd, 4),
             "agent_count": len(self.agent_log),
         })
-        return cevap
 
     # ── Helpers ───────────────────────────────────────────────
     def kalite_puani_oku(self, metin: str) -> int:
@@ -544,7 +465,11 @@ class Session:
         bb = self.blackboard
 
         # ── GRUP A: Domain ajanları paralel ─────────────────
-        gorev_a = [(f"{key}_a", self.enhanced_brief, None, None) for key, _ in self.domains]
+        _rag = get_rag()
+        gorev_a = []
+        for key, name in self.domains:
+            _msg = build_domain_message(self.enhanced_brief, key, name, _rag) if _rag else self.enhanced_brief
+            gorev_a.append((f"{key}_a", _msg, None, None))
         sonuc_a = self._ajan_paralel(gorev_a, max_workers=6)
         parts = [f"{name.upper()} EXPERT:\n{sonuc_a[i]}" for i, (_, name) in enumerate(self.domains)]
         tum = "\n\n".join(parts)
@@ -571,10 +496,12 @@ class Session:
         self._update_blackboard("gozlemci", gozlemci, 1)
 
         _bb_summary = bb.to_summary()
+        _rag_final = build_final_report_context(self.enhanced_brief, _rag) if _rag else ""
+        _rag_final_note = f"\n\n{_rag_final}" if _rag_final else ""
         final = self.ajan_calistir("final_rapor",
             f"Single-agent analysis. Domains: {', '.join(alan_isimleri)}\n"
             f"PROBLEM: {self.enhanced_brief}\nOBSERVER: {gozlemci}\nQUESTIONS: {sorular}\n\n"
-            f"STRUCTURED ANALYSIS SUMMARY:\n{_bb_summary}\n\n"
+            f"STRUCTURED ANALYSIS SUMMARY:\n{_bb_summary}{_rag_final_note}\n\n"
             f"Domain findings are in the conversation history above. "
             f"Report: 70% technical (preserve numbers), 15% cross-domain, 15% recommendations.",
             gecmis=shared_ctx)
@@ -585,10 +512,12 @@ class Session:
         bb = self.blackboard
 
         # ── GRUP A: Domain A+B ajanları paralel ─────────────
+        _rag = get_rag()
         gorev_a = []
-        for key, _ in self.domains:
-            gorev_a.append((f"{key}_a", self.enhanced_brief, None, None))
-            gorev_a.append((f"{key}_b", self.enhanced_brief, None, None))
+        for key, name in self.domains:
+            _msg = build_domain_message(self.enhanced_brief, key, name, _rag) if _rag else self.enhanced_brief
+            gorev_a.append((f"{key}_a", _msg, None, None))
+            gorev_a.append((f"{key}_b", _msg, None, None))
         sonuc_a = self._ajan_paralel(gorev_a, max_workers=6)
         parts = []
         for i, (key, name) in enumerate(self.domains):
@@ -628,11 +557,13 @@ class Session:
         self._update_blackboard("celisiki_cozum", celiski, 1)
 
         _bb_summary = bb.to_summary()
+        _rag_final = build_final_report_context(self.enhanced_brief, _rag) if _rag else ""
+        _rag_final_note = f"\n\n{_rag_final}" if _rag_final else ""
         final = self.ajan_calistir("final_rapor",
             f"Dual-agent. Domains: {', '.join(alan_isimleri)}\n"
             f"PROBLEM: {self.enhanced_brief}\nOBSERVER: {gozlemci}\n"
             f"CONFLICTS: {celiski}\nQUESTIONS: {sorular}\nALTERNATIVES: {alternatif}\n\n"
-            f"STRUCTURED ANALYSIS SUMMARY:\n{_bb_summary}\n\n"
+            f"STRUCTURED ANALYSIS SUMMARY:\n{_bb_summary}{_rag_final_note}\n\n"
             f"Produce professional engineering report.",
             gecmis=shared_ctx)
         return final
@@ -647,6 +578,7 @@ class Session:
         gozlemci_cevabi = ""
         shared_ctx = []
         bb = self.blackboard
+        _rag = get_rag()
 
         # C1: Adaptive model selection — round 1 Sonnet, round 2+ low-scoring agents promoted to Opus
         _adaptive_model_enabled = (self.domain_model == "sonnet")
@@ -695,7 +627,8 @@ class Session:
                         bb_ctx = bb.get_context_for(ak, tur)
                         _msg = f"{mesaj}\n\n{bb_ctx}" if bb_ctx else mesaj
                     else:
-                        _msg = mesaj
+                        # Round 1: inject RAG domain context + parameters
+                        _msg = build_domain_message(mesaj, key, name, _rag) if _rag else mesaj
                     gorev_a.append((ak, _msg, gecmis[ak], None))
                     _gorev_keys.append(ak)
 
@@ -796,6 +729,7 @@ class Session:
             tur_ozeti.append({"tur": tur, "puan": puan})
             self.round_scores = tur_ozeti[:]
             self.emit("round_score", {"tur": tur, "puan": puan})
+            self._checkpoint()  # CP3: round complete with score
 
             # A4: Smart Group C skip — score >= 90
             if puan < 90:
@@ -845,11 +779,13 @@ class Session:
         if _convergence.get("oscillating"):
             _conv_note = f"\nWARNING: Oscillating parameters: {', '.join(_convergence['oscillating'][:5])}"
 
+        _rag_final = build_final_report_context(self.enhanced_brief, _rag) if _rag else ""
+        _rag_final_note = f"\n\n{_rag_final}" if _rag_final else ""
         final = self.ajan_calistir("final_rapor",
             f"Analysis in {len(tur_ozeti)} round(s). Domains: {', '.join(alan_isimleri)}\n"
             f"PROBLEM: {self.enhanced_brief}\nOBSERVER: {gozlemci_cevabi}\n"
             f"QUESTIONS: {soru}\nALTERNATIVES: {alt}\nSYNTHESIS: {sentez}\n\n"
-            f"STRUCTURED ANALYSIS SUMMARY:\n{_bb_final}{_conv_note}\n\n"
+            f"STRUCTURED ANALYSIS SUMMARY:\n{_bb_final}{_conv_note}{_rag_final_note}\n\n"
             f"Report: full technical findings per domain, conflicts, observer, recommendations. English only.",
             gecmis=shared_ctx)
 
@@ -900,16 +836,10 @@ class Session:
                     result = self.ajan_calistir("prompt_muhendisi", msg)
                     if "GÜÇLENDİRİLMİŞ BRIEF:" in result:
                         self.enhanced_brief = result.split("GÜÇLENDİRİLMİŞ BRIEF:")[-1].strip()
+                    self._checkpoint()  # CP2: QA answers received, brief enhanced
             else:
                 # Mod 1/2/4: Prompt Engineer → Domain Selector
-                rag_ctx = rag.benzer_getir(self.brief, n=2) if rag else ""
-                if rag_ctx:
-                    words = rag_ctx.split()
-                    if len(words) > 375:
-                        rag_ctx = " ".join(words[:375]) + "\n[RAG context truncated]"
-                    msg = f"{self.brief}\n\nRELEVANT PAST ANALYSES:\n{rag_ctx}"
-                else:
-                    msg = self.brief
+                msg = build_prompt_engineer_message(self.brief, rag) if rag else self.brief
                 result = self.ajan_calistir("prompt_muhendisi", msg)
                 if "GÜÇLENDİRİLMİŞ BRIEF:" in result:
                     self.enhanced_brief = result.split("GÜÇLENDİRİLMİŞ BRIEF:")[-1].strip()
@@ -925,6 +855,7 @@ class Session:
             # ── ANALYSIS ──
             self.status = "running"
             self.emit("step_running", {"mode": self.mode})
+            self._checkpoint()  # CP1: domains confirmed, analysis starting
 
             if self.mode == 1:
                 final = self.run_tekli()
@@ -956,6 +887,7 @@ class Session:
                                 if getattr(self, "round_scores", []) else None)
                     _bb_summary = self.blackboard.to_summary() if self.blackboard else ""
                     _bb_params = self.blackboard.get_parameter_table() if hasattr(self.blackboard, 'get_parameter_table') else ""
+                    _bb_export_params = self.blackboard.export_parameters() if self.blackboard else []
                     rag.save(
                         brief=self.brief,
                         domains=[n for _, n in self.domains],
@@ -970,6 +902,7 @@ class Session:
                         round_scores=getattr(self, "round_scores", []),
                         blackboard_summary=_bb_summary,
                         parameter_table=_bb_params,
+                        parameters_json=_bb_export_params,
                     )
                 except Exception:
                     pass
@@ -985,14 +918,88 @@ class Session:
                 "round_scores": self.round_scores,
                 "domains":      [{"key": k, "name": n} for k, n in self.domains],
             })
+            self._checkpoint()  # CP4: analysis complete
 
         except Exception as e:
             self.status = "error"
             self.error  = str(e)
             self.emit("step_error", {"error": str(e)})
+            self._checkpoint()  # CP5: error state persisted
 
         finally:
             self.emit("__end__", {})
+
+
+# ══════════════════════════════════════════════════════════════
+# SESSION PERSISTENCE — HYDRATION & STARTUP RESTORE
+# ══════════════════════════════════════════════════════════════
+
+def _hydrate_session(data: dict) -> Session:
+    """Reconstruct a completed Session from persisted data (read-only)."""
+    s = object.__new__(Session)  # Skip __init__ — no client/queue/locks needed
+    s.sid             = data["sid"]
+    s.brief           = data.get("brief", "")
+    s.enhanced_brief  = data.get("enhanced_brief", "")
+    s.domains         = [tuple(d) for d in data.get("domains", [])]
+    s.mode            = data.get("mode", 4)
+    s.max_rounds      = data.get("max_rounds", 3)
+    s.domain_model    = data.get("domain_model", "sonnet")
+    s.status          = data.get("status", "done")
+    s.error           = data.get("error", "")
+    s.total_cost      = data.get("total_cost", 0.0)
+    s.total_input     = data.get("total_input", 0)
+    s.total_output    = data.get("total_output", 0)
+    s.cache_write_tokens = data.get("cache_write_tokens", 0)
+    s.cache_read_tokens  = data.get("cache_read_tokens", 0)
+    s.cache_saved_usd    = data.get("cache_saved_usd", 0.0)
+    s.qa_questions    = data.get("qa_questions", [])
+    s.qa_answers      = data.get("qa_answers", {})
+    s.agent_log       = data.get("agent_log", [])
+    s.round_scores    = data.get("round_scores", [])
+    s.final_report    = data.get("final_report", "")
+    s.txt_output      = data.get("txt_output", "")
+    # Reconstruct blackboard from snapshot
+    bb_data = data.get("blackboard_json", {})
+    s.blackboard = Blackboard.from_dict(bb_data) if bb_data else Blackboard()
+    # Non-serializable stubs (not needed for completed sessions)
+    s.queue        = None
+    s.domain_event = None
+    s.qa_event     = None
+    s._cost_lock   = None
+    s.client       = None
+    return s
+
+
+def _session_to_api(sess) -> dict:
+    """Convert a live or hydrated Session to API response dict."""
+    return {
+        "sid":            sess.sid,
+        "brief":          sess.brief,
+        "enhanced_brief": sess.enhanced_brief,
+        "domains":        [{"key": k, "name": n} for k, n in sess.domains],
+        "mode":           sess.mode,
+        "status":         sess.status,
+        "total_cost":     round(sess.total_cost, 4),
+        "agent_log":      sess.agent_log,
+        "round_scores":   sess.round_scores,
+        "final_report":   sess.final_report,
+        "error":          sess.error,
+        "domain_model":   sess.domain_model,
+    }
+
+
+@app.on_event("startup")
+async def _restore_sessions():
+    """Load completed sessions from SQLite on server start."""
+    try:
+        store = _get_session_store()
+        store.cleanup(days=30)
+        for row in store.list_sessions(limit=200, status="done"):
+            full = store.load(row["sid"])
+            if full and full["sid"] not in sessions:
+                sessions[full["sid"]] = _hydrate_session(full)
+    except Exception:
+        pass  # Don't block startup if DB is unavailable
 
 
 # ══════════════════════════════════════════════════════════════
@@ -1115,6 +1122,12 @@ async def submit_qa(req: SubmitQARequest):
 @app.get("/api/download/{sid}")
 async def download(sid: str):
     sess = sessions.get(sid)
+    if not sess:
+        # Try loading from SQLite
+        data = _get_session_store().load(sid)
+        if data:
+            sess = _hydrate_session(data)
+            sessions[sid] = sess
     if not sess or not sess.txt_output:
         raise HTTPException(404, "Rapor henüz hazır değil.")
 
@@ -1132,6 +1145,11 @@ async def download(sid: str):
 @app.get("/api/download_docx/{sid}")
 async def download_docx(sid: str):
     sess = sessions.get(sid)
+    if not sess:
+        data = _get_session_store().load(sid)
+        if data:
+            sess = _hydrate_session(data)
+            sessions[sid] = sess
     if not sess or not sess.final_report:
         raise HTTPException(404, "Rapor henüz hazır değil.")
     if not PDF_OK:
@@ -1161,6 +1179,42 @@ async def download_docx(sid: str):
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         headers={"Content-Disposition": f'attachment; filename="{fname}"'}
     )
+
+
+# ── Session Persistence Endpoints ─────────────────────────────
+@app.get("/api/sessions")
+async def list_sessions(limit: int = 50, offset: int = 0, status: str = None):
+    """List past sessions, newest first."""
+    store = _get_session_store()
+    items = store.list_sessions(limit=limit, offset=offset, status=status)
+    total = store.count(status=status)
+    return {"sessions": items, "total": total}
+
+
+@app.get("/api/sessions/{sid}")
+async def get_session(sid: str):
+    """Get full session detail."""
+    # Check in-memory first (for active sessions)
+    sess = sessions.get(sid)
+    if sess:
+        return _session_to_api(sess)
+    # Fall back to SQLite
+    store = _get_session_store()
+    data = store.load(sid)
+    if not data:
+        raise HTTPException(404, "Session not found.")
+    return data
+
+
+@app.delete("/api/sessions/{sid}")
+async def delete_session(sid: str):
+    """Delete a persisted session."""
+    store = _get_session_store()
+    deleted = store.delete(sid)
+    sessions.pop(sid, None)
+    if not deleted:
+        raise HTTPException(404, "Session not found.")
+    return {"ok": True, "message": f"Session {sid} deleted."}
 
 
 # ── KB İstatistik ─────────────────────────────────────────────

@@ -158,25 +158,52 @@ If the tool call fails (solver not installed, insufficient inputs):
 - Label every estimated numerical value with [ASSUMPTION]
 ## Domain-Specific Methodology
 
-[Apply practical engineering methods appropriate for the problem. Use industry-standard design procedures and proven approaches for this discipline.]
+- **Test planning and sample size determination:** Use binomial/Poisson test plans — for zero-failure demonstration at confidence C and reliability R, minimum sample size n = ln(1-C) / ln(R); e.g., n = 22 for 90% confidence / 90% reliability (90/90). Select test-to-failure for Weibull parameter estimation or success-run testing for reliability demonstration
+- **HALT/HASS procedures:** Highly Accelerated Life Testing (HALT) uses step-stress in temperature and vibration to find design margins and failure modes — step temperature in 10°C increments from -40°C to +140°C (or destructor limit), vibration from 5 Grms stepped to 60+ Grms; HASS screens production units using profiles derived from HALT margins (typically 80% of destruct limits)
+- **Environmental Stress Screening (ESS):** Design thermal cycling screens per MIL-STD-810 / NAVMAT P-9492 — typical profile: -40°C to +70°C at 10-15°C/min rate, 8-20 cycles; combine with random vibration 6-10 Grms for 10 min/axis; goal is latent defect precipitation, not life consumption
+- **Reliability growth testing (Duane/AMSAA):** Track cumulative failures vs test time on log-log plot; growth slope (alpha) typically 0.3-0.6 for well-managed programs; use Crow-AMSAA model (NHPP power law) to project MTBF at end of growth phase; plan fix-effectiveness factors (0.5-0.9) for each corrective action
+- **Field data analysis:** Collect warranty returns, field failure reports, and maintenance logs; apply Crow-AMSAA tracking to field fleet data; account for reporting bias (typically 30-70% of failures reported); use Nelson-Aalen estimator for fleet reliability with staggered entry and varying operating hours
+- **Root cause analysis (RCA):** Apply structured methods — 8D for customer-facing issues, fishbone (Ishikawa) for brainstorming, 5-Why for rapid drill-down; always demand physical evidence from failure analysis before accepting root cause; validate corrective action with test-retest
+- **Design for reliability (DfR):** Apply component derating per NAVSEA TE000-AB-GTP-010 or manufacturer guidelines (typically 50% voltage, 70% current, 25°C margin on temperature); select redundancy architecture (active/standby/voting) based on mission profile; use thermal management to keep junction temperatures well below rated limits
 
 ## Numerical Sanity Checks
 
-[Verify all results against practical experience and field data. Flag any values that conflict with established engineering practice in this domain.]
+| Parameter | Typical Range | Flag If |
+|-----------|---------------|---------|
+| Zero-failure test sample size (90/90) | n = 22 units | Using n < 22 for 90/90 demonstration claim |
+| Zero-failure test sample size (95/90) | n = 29 units | Claiming 95% confidence with fewer samples |
+| Zero-failure test sample size (90/95) | n = 45 units | Insufficient samples for high-reliability claims |
+| HALT thermal step stress | -100°C to +160°C operating destruct range (electronics) | Stopping HALT before reaching destruct limits |
+| HALT vibration step stress | Design limit typically 20-40 Grms, destruct 40-60+ Grms | Testing below 20 Grms and claiming HALT was performed |
+| ESS thermal cycling rate | 10-15°C/min (MIL-grade chambers) | Rate < 5°C/min (ineffective screening) or > 20°C/min (exceeds most chamber capability) |
+| Reliability growth slope (alpha) | 0.3-0.6 (managed program) | alpha < 0.2 (no real growth) or alpha > 0.7 (unrealistic / data manipulation) |
+| Fix effectiveness factor (FEF) | 0.5-0.9 per corrective action (typical 0.7) | FEF = 1.0 assumed (no fix is 100% effective) |
+| Warranty return reporting rate | 30-70% of actual field failures reported | Assuming 100% reporting rate from warranty data |
 
 ## Expert Differentiation
 
 **Expert B (Applied) focus areas:**
-- Industry-standard design procedures and codes
-- Practical implementation and field experience
-- Equipment selection and sizing
-- Cost-effective solutions and optimization
-- Safety, maintenance, and operational considerations
+- Test fixture design and instrumentation — thermocouple placement, accelerometer mounting, strain gauge installation for reliability testing; ensuring test hardware does not introduce failure modes
+- Environmental chamber operation — thermal cycling chambers (air-to-air vs liquid-to-liquid), vibration shaker systems (electrodynamic vs hydraulic), combined environments (AGREE chambers); understanding chamber limitations and capability verification
+- Failure analysis techniques — visual inspection, stereomicroscopy, SEM/EDS for surface analysis, X-ray inspection for solder joints and internal features, cross-sectioning and metallographic preparation, dye-and-pry for BGA/solder joint assessment
+- Field return analysis workflow — receiving inspection, non-destructive evaluation, fault isolation, destructive analysis, failure mode classification, corrective action recommendation
+- Reliability demonstration test (RDT) design — selecting between fixed-time, sequential probability ratio (SPRT), and Bayesian test plans; balancing test duration, sample size, and accept/reject risks (alpha/beta)
+- FRACAS implementation — Failure Reporting, Analysis, and Corrective Action System design; defining failure categories, escalation triggers, closure criteria, and metrics tracking (open/closed/aging reports)
+- Practical derating and parts selection — applying voltage/current/temperature derating rules, managing obsolescence risk, qualifying alternate sources, screening incoming components
 
 ## Standards & References
 
-[Reference applicable industry codes, manufacturer guidelines, and field-proven practices for this domain.]
+- **MIL-STD-810H** — Environmental Engineering Considerations and Laboratory Tests (temperature, humidity, vibration, shock, altitude, sand/dust)
+- **JEDEC JESD22 series** — Semiconductor reliability test methods (JESD22-A104 thermal cycling, JESD22-A110 HAST, JESD22-B111 board-level drop)
+- **IEC 60068 series** — Environmental Testing procedures (Part 2-1 cold, 2-2 dry heat, 2-14 change of temperature, 2-6 vibration sinusoidal, 2-64 vibration random)
+- **SAE J1211** — Recommended Environmental Practices for Electronic Equipment Design in Heavy-Duty Vehicle Applications (corrosion and environmental robustness)
+- **RTCA DO-160G** — Environmental Conditions and Test Procedures for Airborne Equipment (sections 4-25 covering temperature, vibration, EMI, lightning, etc.)
+- **IPC-9592B** — Requirements for Power Conversion Devices — reliability qualification and performance testing for power electronics
 
 ## Failure Mode Awareness
 
-[Identify practical failure modes encountered in field applications. Flag common design mistakes and operational issues in this domain.]
+- **Insufficient test sample size:** Running HALT or ALT with 3-5 samples and extrapolating to fleet-level conclusions; small samples may miss failure modes with moderate occurrence rates — minimum 10-20 samples recommended for mode discovery
+- **Test-to-field correlation gaps:** Laboratory test conditions (clean power, controlled humidity, no contamination) rarely replicate field environment fully; apply correlation factors and validate with early field data; HALT destruct limits are NOT operating limits
+- **Overlooking failure modes in HALT:** Stopping HALT after finding the first 1-2 failure modes; best practice is to fix and continue through all stress dimensions (cold step, hot step, vibration, combined) to discover latent design weaknesses
+- **Warranty data reporting bias:** Field failure rates derived from warranty data undercount actual failures by 1.5-3x due to no-fault-found returns, unreported failures, and out-of-warranty failures; always apply reporting correction factors
+- **FRACAS implementation gaps:** Setting up FRACAS without management commitment, clear failure classification taxonomy, or closure accountability leads to open-loop corrective action — the system becomes a database of unresolved problems rather than a reliability improvement engine

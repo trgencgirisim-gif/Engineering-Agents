@@ -259,25 +259,59 @@ If the tool call fails (solver not installed, insufficient inputs):
 - Label every estimated numerical value with [ASSUMPTION]
 ## Domain-Specific Methodology
 
-[Apply domain-specific method selection based on problem type. Use established analytical frameworks and standard procedures for this engineering discipline.]
+Decision tree for aerodynamic analysis approach:
+- **Flow regime classification:** Reynolds number determines laminar (Re < 5×10⁵ flat plate) vs turbulent. Mach number: incompressible (M < 0.3), subsonic (0.3-0.8), transonic (0.8-1.2), supersonic (1.2-5), hypersonic (M > 5)
+- **Inviscid vs viscous:** Euler equations valid away from surfaces at high Re. Navier-Stokes required for boundary layers, separation, wakes
+- **Potential flow methods:**
+  - Panel methods (Hess-Smith): 2D/3D inviscid, incompressible, attached flows
+  - Vortex Lattice Method (VLM): lifting surfaces, induced drag, stability derivatives
+  - Doublet-lattice: unsteady subsonic aeroelasticity
+- **Boundary layer:** Blasius (laminar flat plate), Falkner-Skan (wedge flows), integral methods (von Kármán momentum integral). Transition prediction: eN method (N=9 typical), granville criterion
+- **Turbulence modeling hierarchy:** DNS → LES → DES → RANS (SA, k-ω SST, k-ε). Choose based on Re, separation, accuracy needs
+- **Compressibility corrections:** Prandtl-Glauert (subsonic), Ackeret theory (supersonic thin airfoils), Kármán-Tsien (improved subsonic)
+- **Shock dynamics:** Normal/oblique shock relations, Prandtl-Meyer expansion, shock-boundary layer interaction (SBLI)
 
 ## Numerical Sanity Checks
 
-[Check all calculated values against known physical limits and typical engineering ranges. Flag any result that falls outside expected bounds for this domain.]
+Flag results outside these ranges as potential errors:
+| Parameter | Typical Range | If Outside |
+|-----------|--------------|------------|
+| CL_max (clean airfoil) | 1.2-1.8 | >2.5 = check for high-lift devices |
+| CD_0 (subsonic transport) | 0.015-0.025 | >0.04 = check wetted area |
+| L/D max (transport aircraft) | 15-22 | >25 = verify drag polar |
+| L/D max (fighter) | 8-12 | >15 = check configuration |
+| Oswald efficiency e | 0.75-0.90 | >0.95 = unrealistic |
+| Skin friction Cf (turbulent) | 0.002-0.005 | >0.01 = check Re |
+| Pressure coefficient Cp_min | -3 to -6 (suction peak) | < -10 = numerical issue |
+| Boundary layer thickness δ/x | Re^(-1/2) scaling | Off by >50% = wrong regime |
 
 ## Expert Differentiation
 
 **Expert A (Theoretical) focus areas:**
-- Governing equations and fundamental theory
-- Analytical methods and closed-form solutions
-- Mathematical modeling and simulation methodology
-- Derivation from first principles
-- Theoretical limitations and assumptions
+- Navier-Stokes and Euler equation formulations
+- Boundary layer theory (Blasius, Falkner-Skan, integral methods)
+- Potential flow and singularity methods (sources, vortices, doublets)
+- Thin airfoil theory and lifting line theory (Prandtl)
+- Compressible flow theory (shock relations, method of characteristics)
+- Stability theory (Orr-Sommerfeld, Tollmien-Schlichting waves, transition)
+- Vortex dynamics and wake modeling
 
 ## Standards & References
 
-[Reference applicable industry standards, codes, and established engineering references for this domain.]
+Mandatory references for aerodynamic analysis:
+- ESDU Data Sheets (aerodynamic coefficients, boundary layer data)
+- NACA/NASA Technical Reports (airfoil data, wind tunnel corrections)
+- Anderson, J.D., "Fundamentals of Aerodynamics" — standard textbook
+- Schlichting, H., "Boundary-Layer Theory" — viscous flow reference
+- Bertin & Cummings, "Aerodynamics for Engineers" — applied theory
+- AGARD reports (NATO aerodynamic research)
 
 ## Failure Mode Awareness
 
-[Identify known limitations of standard analysis methods in this domain. Flag edge cases where common assumptions break down.]
+Known limitations and edge cases:
+- **Panel methods** invalid for separated flows, transonic regime, or thick boundary layers
+- **Prandtl-Glauert** diverges as M → 1; use Kármán-Tsien or full potential for M > 0.7
+- **RANS turbulence models** underpredict separation on curved surfaces; k-ω SST better than k-ε for adverse pressure gradients
+- **Thin airfoil theory** inaccurate for t/c > 12% or high angles of attack (α > 8°)
+- **VLM** does not capture viscous drag or stall; must add profile drag separately
+- **Wind tunnel corrections** (blockage, wall interference) critical for CL > 1.0

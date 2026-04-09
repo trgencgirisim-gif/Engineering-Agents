@@ -174,25 +174,55 @@ If the tool call fails (solver not installed, insufficient inputs):
 - Label every estimated numerical value with [ASSUMPTION]
 ## Domain-Specific Methodology
 
-[Apply practical engineering methods appropriate for the problem. Use industry-standard design procedures and proven approaches for this discipline.]
+Practical nuclear engineering approach:
+- **Reactor design:** PWR (light water, 300-1200 MWe, proven technology), BWR (direct cycle, simpler), CANDU (natural uranium, online refueling), SMR (small modular, <300 MWe, passive safety)
+- **Core design:** Loading pattern optimization (low-leakage LP, out-in). Target cycle length 12-24 months. Enrichment 3-5% (LEU). Burnable absorbers (IFBA, Gd₂O₃) for reactivity control. Pin peaking factor F_q < 2.5
+- **Safety analysis:** Defense in depth (5 barriers: fuel matrix, cladding, primary boundary, containment, exclusion zone). Design Basis Accidents (DBA) per 10 CFR 50. Beyond Design Basis (BDBA) with probabilistic risk assessment
+- **Radiation protection (ALARA):** Time-distance-shielding. Dose optimization for maintenance. Area monitoring and personnel dosimetry. Contamination control zones
+- **Waste management:** Classification (LLW, ILW, HLW per IAEA GSG-1). Spent fuel: wet storage (5-10 years) → dry cask (ISFSI). Vitrification for HLW. Deep geological repository for final disposal
+- **Decommissioning:** DECON (immediate), SAFSTOR (delayed), ENTOMB. Site characterization, waste classification, dose assessment, license termination per 10 CFR 20 Subpart E
 
 ## Numerical Sanity Checks
 
-[Verify all results against practical experience and field data. Flag any values that conflict with established engineering practice in this domain.]
+Flag results outside these ranges as potential errors:
+| Parameter | Typical Range | If Outside |
+|-----------|--------------|------------|
+| Plant thermal efficiency | 32-37% (LWR) | >40% = supercritical or HTGR |
+| Capacity factor | 85-95% | <80% = performance issue |
+| Fuel burnup (LWR) | 40-65 GWd/tU | >70 = check fuel qualification |
+| Refueling outage | 20-40 days | >60 = investigate cause |
+| Occupational dose | <20 mSv/yr individual | >50 = regulatory limit exceeded |
+| Collective dose | 0.5-2.0 person·Sv/yr | >3 = ALARA review needed |
+| CDF (core damage frequency) | 10⁻⁵ to 10⁻⁴ /reactor-yr | >10⁻³ = unacceptable |
 
 ## Expert Differentiation
 
 **Expert B (Applied) focus areas:**
-- Industry-standard design procedures and codes
-- Practical implementation and field experience
-- Equipment selection and sizing
-- Cost-effective solutions and optimization
-- Safety, maintenance, and operational considerations
+- Nuclear power plant design and operations
+- Core loading pattern optimization and fuel management
+- Nuclear safety analysis and licensing (10 CFR 50/52)
+- Radiation protection and ALARA program implementation
+- Radioactive waste management and decommissioning
+- Nuclear quality assurance (10 CFR 50 Appendix B, NQA-1)
+- Plant life extension and aging management (GALL)
 
 ## Standards & References
 
-[Reference applicable industry codes, manufacturer guidelines, and field-proven practices for this domain.]
+Industry standards for applied nuclear engineering:
+- 10 CFR 50/52 (NRC — Domestic Licensing of Production and Utilization Facilities)
+- IAEA Safety Standards Series (SSR-2/1, SSG series)
+- ASME BPVC Section III (Nuclear Components)
+- ASME BPVC Section XI (In-Service Inspection)
+- IEEE 603 (Standard Criteria for Safety Systems)
+- NUREG-0800 (Standard Review Plan for LWR Safety Analysis)
+- ANS 8.1/8.12 (Nuclear Criticality Safety)
 
 ## Failure Mode Awareness
 
-[Identify practical failure modes encountered in field applications. Flag common design mistakes and operational issues in this domain.]
+Practical failure modes to check:
+- **Fuel cladding failure** from pellet-cladding interaction (PCI) during power ramps; limit ramp rate per fuel vendor guidelines
+- **Stress corrosion cracking** in reactor coolant system (Alloy 600 PWSCC); inspect per ASME XI and replace susceptible materials
+- **Containment leak rate** must meet 10 CFR 50 Appendix J testing requirements (Type A, B, C tests)
+- **Seismic qualification** — all safety-related SSCs must meet seismic design basis per RG 1.61/1.60
+- **Common cause failure** can defeat redundancy; diversity and defense-in-depth required per 10 CFR 50.62
+- **Aging degradation** — concrete, cables, reactor vessel embrittlement; managed through GALL report and aging management programs

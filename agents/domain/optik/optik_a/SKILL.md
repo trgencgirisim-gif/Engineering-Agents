@@ -234,25 +234,62 @@ If the tool call fails (solver not installed, insufficient inputs):
 - Label every estimated numerical value with [ASSUMPTION]
 ## Domain-Specific Methodology
 
-[Apply domain-specific method selection based on problem type. Use established analytical frameworks and standard procedures for this engineering discipline.]
+Decision tree for optical engineering analysis:
+- **Regime selection:** Ray optics (feature >> λ), wave optics (feature ~ λ), quantum optics (single photons, nonlinear)
+- **Geometrical optics:**
+  - Paraxial (first-order): ABCD matrix formalism for lenses, mirrors, propagation. Cardinal points. Gaussian beam (w₀, z_R, divergence θ = λ/πw₀)
+  - Aberrations: Seidel (3rd order) — spherical, coma, astigmatism, field curvature, distortion. Zernike polynomial decomposition for wavefront analysis
+  - Ray tracing: Sequential (lens systems), non-sequential (illumination, stray light). Snell's law at each surface
+- **Wave optics:**
+  - Diffraction: Fraunhofer (far-field), Fresnel (near-field). Airy disk diameter d = 2.44λf/D. Resolution: Rayleigh criterion
+  - Interference: Thin film coatings (quarter-wave, multi-layer), Fabry-Perot cavities, interferometry (Michelson, Mach-Zehnder, Twyman-Green)
+  - Polarization: Jones calculus (coherent), Mueller/Stokes (partially coherent). Birefringence, dichroism, optical activity
+- **Photonics:**
+  - Fiber optics: Step-index (V-number, modes), graded-index, single-mode (cutoff wavelength). Attenuation, dispersion (modal, chromatic, PMD)
+  - Lasers: Rate equations, gain threshold, cavity modes, beam quality M². Gaussian beam propagation
+  - Detectors: Responsivity R = η·q/hν, NEP, D*, quantum efficiency. Photodiode (PIN, APD), photomultiplier, CMOS/CCD
+- **Radiometry/photometry:** Radiance (W/sr/m²), irradiance (W/m²), luminous flux (lm), illuminance (lux). Étendue conservation: n²AΩ = const
 
 ## Numerical Sanity Checks
 
-[Check all calculated values against known physical limits and typical engineering ranges. Flag any result that falls outside expected bounds for this domain.]
+Flag results outside these ranges as potential errors:
+| Parameter | Typical Range | If Outside |
+|-----------|--------------|------------|
+| f-number (camera) | f/1.0 to f/22 | <f/0.5 = exotic design |
+| Diffraction limit (visible) | Airy disk ~1-10 μm | <0.5μm = below λ |
+| Lens NA (microscope) | 0.1-1.4 (oil immersion) | >1.5 = check immersion medium |
+| Fiber attenuation (SMF-28) | 0.2 dB/km @1550nm | >0.5 = check wavelength |
+| AR coating reflectance | 0.1-1% per surface | >4% = uncoated |
+| Laser M² (TEM₀₀) | 1.0-1.3 | >3 = multimode |
+| Detector quantum efficiency | 20-95% | >100% = error |
 
 ## Expert Differentiation
 
 **Expert A (Theoretical) focus areas:**
-- Governing equations and fundamental theory
-- Analytical methods and closed-form solutions
-- Mathematical modeling and simulation methodology
-- Derivation from first principles
-- Theoretical limitations and assumptions
+- Maxwell's equations applied to optics (wave equation, coherence)
+- Fourier optics and diffraction theory
+- Aberration theory (Seidel, Zernike, wavefront analysis)
+- Laser physics (rate equations, resonator theory, mode structure)
+- Fiber optics theory (guided modes, dispersion, nonlinear effects)
+- Polarization optics (Jones/Mueller calculus)
+- Quantum optics fundamentals (photon statistics, squeezed states)
 
 ## Standards & References
 
-[Reference applicable industry standards, codes, and established engineering references for this domain.]
+Mandatory references for optical analysis:
+- Hecht, E., "Optics" — comprehensive optics text
+- Goodman, J.W., "Introduction to Fourier Optics" — diffraction and imaging
+- Born & Wolf, "Principles of Optics" — definitive wave optics reference
+- Saleh & Teich, "Fundamentals of Photonics" — photonics and lasers
+- Smith, W.J., "Modern Optical Engineering" — practical optical design
+- Bass, M. (ed.), "Handbook of Optics" (OSA) — comprehensive reference
 
 ## Failure Mode Awareness
 
-[Identify known limitations of standard analysis methods in this domain. Flag edge cases where common assumptions break down.]
+Known limitations and edge cases:
+- **Paraxial approximation** breaks down at NA > 0.5 or field angle > 15°; use exact ray tracing
+- **Scalar diffraction** invalid for features < 2λ or high NA; use vector diffraction (RCWA, FDTD)
+- **Thin lens model** ignores aberrations and thickness effects; use real lens data for analysis
+- **Geometric optics** cannot predict diffraction-limited spot size; always check Airy disk for imaging systems
+- **Single-mode fiber** becomes multimode above cutoff; verify V-number < 2.405 at operating wavelength
+- **Gaussian beam** model assumes TEM₀₀; real lasers may have M² >> 1 and non-Gaussian profiles

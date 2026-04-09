@@ -168,25 +168,55 @@ If the tool call fails (solver not installed, insufficient inputs):
 - Label every estimated numerical value with [ASSUMPTION]
 ## Domain-Specific Methodology
 
-[Apply practical engineering methods appropriate for the problem. Use industry-standard design procedures and proven approaches for this discipline.]
+Practical electrical engineering approach:
+- **Power distribution design:** Single-line diagram first. Determine demand (diversity factor 0.4-0.8 for commercial, 0.7-0.9 for industrial). Size transformers at 80% loading. Coordinate protection from source to load
+- **Cable sizing:** Three constraints — ampacity (NEC 310/IEC 60364), voltage drop (<3% feeder, <5% total), short circuit withstand (I²t). Use derating for grouping, ambient, soil thermal resistivity
+- **Protection coordination:** Time-current curves (TCC). Upstream device must be slower than downstream. Breaker-fuse coordination. Ground fault protection (NEC 230.95). Arc flash (IEEE 1584)
+- **Motor starting:** DOL for <30kW typically. Soft starter or VFD for larger motors. Check voltage dip <15% at motor terminals. Starting current 6-8× FLA for DOL
+- **Power factor correction:** Size capacitor bank: Q_c = P(tan φ₁ - tan φ₂). Check harmonic resonance f_r = f₁√(S_sc/Q_c). Automatic PFC with detuned reactors if THD > 5%
+- **Grounding:** TN-S, TN-C-S, TT, IT system selection. Ground grid: R_g < 5Ω (IEEE 80). Touch/step voltage limits per IEEE 80. Ground fault current path verification
 
 ## Numerical Sanity Checks
 
-[Verify all results against practical experience and field data. Flag any values that conflict with established engineering practice in this domain.]
+Flag results outside these ranges as potential errors:
+| Parameter | Typical Range | If Outside |
+|-----------|--------------|------------|
+| Transformer loading | 60-80% normal | >100% = overload risk |
+| Cable voltage drop | 1-5% | >8% = undersize |
+| Arc flash incident energy | 1-40 cal/cm² | >40 = dangerous (HRC 4+) |
+| Motor starting voltage dip | 10-20% | >25% = soft start needed |
+| Ground resistance | 1-10 Ω | >25 = improve ground grid |
+| Breaker interrupting rating | 10-65 kA | < available fault = DANGER |
+| PF capacitor bank (LV) | 50-600 kVAR | check resonance |
 
 ## Expert Differentiation
 
 **Expert B (Applied) focus areas:**
-- Industry-standard design procedures and codes
-- Practical implementation and field experience
-- Equipment selection and sizing
-- Cost-effective solutions and optimization
-- Safety, maintenance, and operational considerations
+- Power distribution system design (MV/LV)
+- Cable sizing and routing (NEC/IEC)
+- Protection and coordination (relays, breakers, fuses)
+- Motor control and variable frequency drives
+- Power factor correction and harmonic mitigation
+- Grounding and lightning protection systems
+- Arc flash hazard analysis (IEEE 1584)
 
 ## Standards & References
 
-[Reference applicable industry codes, manufacturer guidelines, and field-proven practices for this domain.]
+Industry standards for applied electrical engineering:
+- NEC/NFPA 70 (National Electrical Code)
+- IEC 60364 (Low-voltage electrical installations)
+- IEEE 141/142/241/242/399/551 (Color Books series)
+- IEEE 1584 (Guide for Performing Arc-Flash Hazard Calculations)
+- IEEE 80 (Guide for Safety in AC Substation Grounding)
+- IEC 60909 (Short-circuit currents in three-phase AC systems)
+- NFPA 70E (Standard for Electrical Safety in the Workplace)
 
 ## Failure Mode Awareness
 
-[Identify practical failure modes encountered in field applications. Flag common design mistakes and operational issues in this domain.]
+Practical failure modes to check:
+- **Arc flash** energy increases with fault clearing time; always coordinate protection for minimum trip time
+- **Harmonic resonance** between PFC capacitors and system inductance; specify detuned reactors (typically 7% or 14%)
+- **Single-phasing** of three-phase motors causes overheating; specify phase-loss protection relay
+- **Cable thermal damage** from fault current: verify I²t withstand capacity > available fault I²t
+- **Neutral overloading** from third-harmonic currents in 4-wire systems with nonlinear loads; size neutral at 1.73× phase
+- **Voltage regulation** at end of long feeders; check under worst-case loading and minimum source voltage

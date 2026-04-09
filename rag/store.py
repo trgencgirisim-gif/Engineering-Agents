@@ -9,6 +9,8 @@ Yenilikler v2:
 """
 
 import os
+import re
+import json
 import datetime
 import chromadb
 from chromadb.utils import embedding_functions
@@ -63,7 +65,8 @@ class RAGStore:
              crossval_full: str = "",
              round_scores: list = None,
              blackboard_summary: str = "",
-             parameter_table: str = "") -> str:
+             parameter_table: str = "",
+             parameters_json: list = None) -> str:
         """
         Analizi kaydet — geliştirme odaklı tam kayıt.
         quality_score: Observer son turu puanı (0-100)
@@ -126,6 +129,14 @@ class RAGStore:
                 if thinking:
                     thinking_logs[key] = thinking
 
+        # Serialize structured parameters for metadata storage
+        params_str = ""
+        if parameters_json:
+            try:
+                params_str = json.dumps(parameters_json, default=str)
+            except (TypeError, ValueError):
+                params_str = ""
+
         self.collection.add(
             ids=[doc_id],
             documents=[embed_metni],
@@ -138,6 +149,7 @@ class RAGStore:
                 "report_len":      len(final_report),
                 "quality_score":   quality_score or 0,
                 "has_open_q":      1 if open_questions else 0,
+                "parameters_json": params_str or "",
             }]
         )
 
@@ -184,6 +196,16 @@ class RAGStore:
             if parameter_table:
                 f.write(f"\n{SEP}\nPARAMETER TABLE\n{SEP}\n")
                 f.write(parameter_table + "\n")
+
+            # Structured parameters (JSON) for programmatic reuse
+            if parameters_json:
+                f.write(f"\n{SEP}\nSTRUCTURED PARAMETERS\n{SEP}\n")
+                for p in parameters_json:
+                    f.write(
+                        f"  {p.get('name','?')} = {p.get('value','?')} "
+                        f"[source: {p.get('source_agent','?')}, "
+                        f"confidence: {p.get('confidence','?')}]\n"
+                    )
 
             # ── Final rapor ───────────────────────────────────────
             f.write(f"\n{SEP}\nFINAL REPORT\n{SEP}\n")
@@ -374,6 +396,187 @@ class RAGStore:
             domain_filter=domain_name,
             max_tokens=max_tokens
         )
+
+    def get_parameters_for_domain(self, query: str, domain_name: str,
+                                   max_params: int = 10) -> str:
+        """Retrieve structured parameters from similar past analyses.
+
+        Queries ChromaDB for analyses matching the domain, extracts
+        parameters_json metadata, and formats a compact reference table.
+        Returns formatted string or empty string if no parameters found.
+        """
+        toplam = self.collection.count()
+        if toplam == 0:
+            return ""
+
+        n = min(3, toplam)
+        where_filter = {"domains": {"$contains": domain_name}}
+
+        try:
+            results = self.collection.query(
+                query_texts=[query],
+                n_results=n,
+                include=["metadatas", "distances"],
+                where=where_filter,
+            )
+        except Exception:
+            try:
+                results = self.collection.query(
+                    query_texts=[query],
+                    n_results=n,
+                    include=["metadatas", "distances"],
+                )
+            except Exception:
+                return ""
+
+        if not results["ids"][0]:
+            return ""
+
+        all_params = []
+        for metadata, distance in zip(
+            results["metadatas"][0], results["distances"][0]
+        ):
+            if distance > DIST_THRESHOLD:
+                continue
+            params_str = metadata.get("parameters_json", "")
+            if not params_str:
+                continue
+            try:
+                params = json.loads(params_str)
+            except (json.JSONDecodeError, TypeError):
+                continue
+
+            # Filter parameters from agents matching this domain
+            domain_key = domain_name.lower().replace(" ", "_")
+            similarity = round((1 - distance) * 100, 1)
+            for p in params:
+                source = p.get("source_agent", "")
+                # Include params from matching domain agents or general params
+                if domain_key in source or not source.endswith(("_a", "_b")):
+                    all_params.append({
+                        **p,
+                        "similarity": similarity,
+                    })
+
+        if not all_params:
+            return ""
+
+        # Deduplicate by name, keep highest confidence
+        seen = {}
+        conf_order = {"HIGH": 3, "MEDIUM": 2, "LOW": 1}
+        for p in all_params:
+            name = p["name"]
+            if name not in seen or conf_order.get(
+                p.get("confidence", ""), 0
+            ) > conf_order.get(seen[name].get("confidence", ""), 0):
+                seen[name] = p
+
+        # Take top N
+        params_list = list(seen.values())[:max_params]
+
+        lines = ["REFERENCE PARAMETERS FROM PAST ANALYSES:"]
+        lines.append("| Parameter | Value | Source | Confidence |")
+        lines.append("|-----------|-------|--------|------------|")
+        for p in params_list:
+            lines.append(
+                f"| {p['name']} | {p['value']} | "
+                f"{p.get('source_agent', '?')} | "
+                f"{p.get('confidence', '?')} |"
+            )
+        lines.append(
+            "\nINSTRUCTION: Verify applicability to current problem. "
+            "Flag deviations from these reference values."
+        )
+        return "\n".join(lines)
+
+    def get_analysis_template(self, query: str, min_score: int = 85,
+                               max_distance: float = 0.30) -> str:
+        """Find a high-quality similar analysis and extract its report structure.
+
+        Returns a template string with section headings and approximate
+        word counts, or empty string if no suitable match found.
+        Only triggers on high-similarity, high-quality past analyses.
+        """
+        toplam = self.collection.count()
+        if toplam == 0:
+            return ""
+
+        try:
+            results = self.collection.query(
+                query_texts=[query],
+                n_results=1,
+                include=["metadatas", "distances"],
+            )
+        except Exception:
+            return ""
+
+        if not results["ids"][0]:
+            return ""
+
+        doc_id = results["ids"][0][0]
+        metadata = results["metadatas"][0][0]
+        distance = results["distances"][0][0]
+
+        quality = metadata.get("quality_score", 0)
+        if distance > max_distance or quality < min_score:
+            return ""
+
+        # Read the full report
+        report_path = os.path.join(DB_PATH, f"{doc_id}_report.txt")
+        if not os.path.exists(report_path):
+            return ""
+
+        with open(report_path, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        # Extract FINAL REPORT section
+        sep = _REPORT_SEP
+        report_text = ""
+        if "FINAL REPORT" in content:
+            start = content.find("FINAL REPORT")
+            start = content.find("\n", start) + 1
+            # Find next major section separator
+            end = content.find(sep, start)
+            if end == -1:
+                end = len(content)
+            report_text = content[start:end].strip()
+
+        if not report_text:
+            return ""
+
+        # Extract section headings with word counts
+        # Match: ## Heading, # Heading, UPPERCASE HEADING, or 1. Heading
+        heading_pattern = re.compile(
+            r'^(#{1,4}\s+.+|[A-Z][A-Z &/]{4,}|\d+\.\s+[A-Z].+)$',
+            re.MULTILINE
+        )
+        headings = list(heading_pattern.finditer(report_text))
+
+        if len(headings) < 2:
+            return ""
+
+        similarity = round((1 - distance) * 100, 1)
+        lines = [
+            f"ANALYSIS TEMPLATE FROM SIMILAR PROBLEM "
+            f"(Score: {quality}/100, Similarity: {similarity}%):"
+        ]
+
+        for i, match in enumerate(headings):
+            heading = match.group().strip().lstrip("#").strip()
+            # Calculate word count until next heading
+            start = match.end()
+            end = headings[i + 1].start() if i + 1 < len(headings) else len(report_text)
+            section_text = report_text[start:end]
+            word_count = len(section_text.split())
+            lines.append(f"  {i+1}. {heading} (~{word_count} words)")
+
+        lines.append("")
+        lines.append(
+            "INSTRUCTION: Use this structure as a guide. Cover all sections. "
+            "Adjust depth based on this problem's specifics. "
+            "Do NOT copy conclusions — derive your own from analysis."
+        )
+        return "\n".join(lines)
 
     def get_full_report(self, doc_id: str) -> Optional[str]:
         """Tam raporu döndür (sidebar erişimi için)."""

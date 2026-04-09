@@ -136,44 +136,78 @@ def extract_response(yanit):
     }
 
 
-def run_agent(client, ajan_key: str, mesaj: str,
-              gecmis: list = None, cache_context: str = None,
-              cache_preamble: str = "", domain_model: str = None,
-              on_retry=None):
+def api_call_stream(client, ajan: dict, system_blocks: list, mesajlar: list,
+                    max_retries: int = 5, on_token=None, on_thinking=None,
+                    on_retry=None):
     """
-    Complete agent execution: resolve → build → call → extract → cost.
+    Streaming API call with retry + thinking fallback.
 
-    Returns dict with:
-      key, name, model, cevap, dusunce, cost, saved, inp, out, c_cre, c_rd
-      error (None on success)
+    on_token: optional callback(text_delta) for each text chunk.
+    on_thinking: optional callback(thinking_delta) for each thinking chunk.
+    on_retry: optional callback(deneme, bekleme) for logging retry events.
+
+    Returns (response, error_str). One of them is always None.
     """
-    ajan = resolve_agent(ajan_key, domain_model)
-    if not ajan:
-        return {
-            "key": ajan_key, "name": ajan_key, "model": "?",
-            "cevap": f"ERROR: Agent '{ajan_key}' not found.",
-            "dusunce": "", "cost": 0, "saved": 0,
-            "inp": 0, "out": 0, "c_cre": 0, "c_rd": 0,
-            "error": "not_found",
-        }
+    thinking_budget = ajan.get("thinking_budget", 0)
+    max_tokens = ajan.get("max_tokens", 2000)
 
-    system_blocks = build_system_blocks(ajan, cache_preamble)
-    mesajlar = build_messages(mesaj, gecmis, cache_context)
+    extra_kwargs = {}
+    if thinking_budget:
+        extra_kwargs["thinking"] = {"type": "enabled", "budget_tokens": thinking_budget}
 
-    yanit, err = api_call(client, ajan, system_blocks, mesajlar, on_retry=on_retry)
-    if err:
-        return {
-            "key": ajan_key, "name": ajan.get("isim", ajan_key), "model": ajan["model"],
-            "cevap": f"ERROR: {err}", "dusunce": "",
-            "cost": 0, "saved": 0,
-            "inp": 0, "out": 0, "c_cre": 0, "c_rd": 0,
-            "error": err,
-        }
+    for deneme in range(max_retries):
+        try:
+            with client.messages.stream(
+                model=ajan["model"],
+                max_tokens=max_tokens,
+                system=system_blocks,
+                messages=mesajlar,
+                **extra_kwargs,
+            ) as stream:
+                for event in stream:
+                    if hasattr(event, 'type') and event.type == 'content_block_delta':
+                        delta = event.delta
+                        if hasattr(delta, 'text') and on_token:
+                            on_token(delta.text)
+                        elif hasattr(delta, 'thinking') and on_thinking:
+                            on_thinking(delta.thinking)
+                yanit = stream.get_final_message()
+            return yanit, None
+        except Exception as e:
+            err = str(e)
+            if "thinking" in err.lower() and thinking_budget:
+                extra_kwargs = {}
+                continue
+            elif "rate_limit" in err.lower() or "429" in err:
+                bekleme = 60 * (deneme + 1)
+                if on_retry:
+                    on_retry(deneme, bekleme)
+                time.sleep(bekleme)
+            elif "stream" in err.lower():
+                # Streaming not supported — fall back to non-streaming
+                return api_call(client, ajan, system_blocks, mesajlar,
+                                max_retries - deneme, on_retry)
+            else:
+                return None, str(e)
+    return None, "Rate limit aşıldı, maksimum deneme sayısına ulaşıldı."
 
+
+def _make_error_result(ajan_key, name="?", model="?", error_msg=""):
+    """Build a standard error result dict."""
+    return {
+        "key": ajan_key, "name": name, "model": model,
+        "cevap": f"ERROR: {error_msg}" if error_msg else "ERROR",
+        "dusunce": "", "cost": 0, "saved": 0,
+        "inp": 0, "out": 0, "c_cre": 0, "c_rd": 0,
+        "error": error_msg,
+    }
+
+
+def _make_result(ajan_key, ajan, yanit):
+    """Build a standard success result dict from API response."""
     result = extract_response(yanit)
     actual_cost, saved = compute_cost(ajan["model"], result["inp"], result["out"],
                                        result["c_cre"], result["c_rd"])
-
     return {
         "key": ajan_key,
         "name": ajan.get("isim", ajan_key),
@@ -188,6 +222,31 @@ def run_agent(client, ajan_key: str, mesaj: str,
         "c_rd": result["c_rd"],
         "error": None,
     }
+
+
+def run_agent(client, ajan_key: str, mesaj: str,
+              gecmis: list = None, cache_context: str = None,
+              cache_preamble: str = "", domain_model: str = None,
+              on_retry=None):
+    """
+    Complete agent execution: resolve → build → call → extract → cost.
+
+    Returns dict with:
+      key, name, model, cevap, dusunce, cost, saved, inp, out, c_cre, c_rd
+      error (None on success)
+    """
+    ajan = resolve_agent(ajan_key, domain_model)
+    if not ajan:
+        return _make_error_result(ajan_key, error_msg=f"Agent '{ajan_key}' not found.")
+
+    system_blocks = build_system_blocks(ajan, cache_preamble)
+    mesajlar = build_messages(mesaj, gecmis, cache_context)
+
+    yanit, err = api_call(client, ajan, system_blocks, mesajlar, on_retry=on_retry)
+    if err:
+        return _make_error_result(ajan_key, ajan.get("isim", ajan_key), ajan["model"], err)
+
+    return _make_result(ajan_key, ajan, yanit)
 
 
 def run_agents_parallel(client, gorevler: list, max_workers: int = 6,
@@ -238,12 +297,6 @@ def run_agents_parallel(client, gorevler: list, max_workers: int = 6,
                     on_agent_done(idx, r)
             except Exception as e:
                 idx = futures[fut]
-                sonuclar[idx] = {
-                    "key": gorevler[idx][0], "name": gorevler[idx][0], "model": "?",
-                    "cevap": f"ERROR: {e}", "dusunce": "",
-                    "cost": 0, "saved": 0,
-                    "inp": 0, "out": 0, "c_cre": 0, "c_rd": 0,
-                    "error": str(e),
-                }
+                sonuclar[idx] = _make_error_result(gorevler[idx][0], error_msg=str(e))
 
     return sonuclar
