@@ -27,6 +27,7 @@ from shared.analysis_helpers import (
     update_blackboard,
     extract_quality_score,
 )
+from shared.analysis_modes import AnalysisIO, run_single_analysis, run_dual_analysis
 import anthropic
 import requests as req_lib
 from dotenv import load_dotenv
@@ -419,112 +420,26 @@ class Session:
         """Convert accumulated outputs to conversation history format."""
         return build_context_history(brief_msg, tum_ciktilar)
 
+    def _make_io(self):
+        """Create AnalysisIO adapter for shared analysis modes."""
+        return AnalysisIO(
+            run_agent=self.ajan_calistir,
+            run_parallel=self._ajan_paralel,
+            on_event=lambda t, d: self.emit(t, d) if hasattr(self, 'emit') else None,
+            rag_store=get_rag(),
+            checkpoint=self._checkpoint if hasattr(self, '_checkpoint') else lambda: None,
+            get_domain_model=lambda: self.domain_model,
+            set_domain_model=lambda m: setattr(self, 'domain_model', m),
+        )
+
     def run_tekli(self):
-        alan_isimleri = [n for _, n in self.domains]
-        bb = self.blackboard
-
-        # ── GRUP A: Domain ajanları paralel ─────────────────
-        _rag = get_rag()
-        gorev_a = []
-        for key, name in self.domains:
-            _msg = build_domain_message(self.enhanced_brief, key, name, _rag) if _rag else self.enhanced_brief
-            gorev_a.append((f"{key}_a", _msg, None, None))
-        sonuc_a = self._ajan_paralel(gorev_a, max_workers=6)
-        parts = [f"{name.upper()} EXPERT:\n{sonuc_a[i]}" for i, (_, name) in enumerate(self.domains)]
-        tum = "\n\n".join(parts)
-
-        # Blackboard: parse domain outputs
-        for i, (key, name) in enumerate(self.domains):
-            self._update_blackboard(f"{key}_a", sonuc_a[i], 1)
-
-        shared_ctx = self._build_ctx_history(self.enhanced_brief, tum)
-
-        # ── GRUP B: Capraz + Soru paralel ───────────────────
-        _bb_cv = bb.get_context_for("capraz_dogrulama", 1)
-        b = self._ajan_paralel([
-            ("capraz_dogrulama", f"Check all numerical values for physical and mathematical consistency.\n\n{_bb_cv}", shared_ctx, None),
-            ("soru_uretici", f"Problem: {self.enhanced_brief}\nList unanswered critical questions.", shared_ctx, None),
-        ], max_workers=2)
-        capraz, sorular = b
-        self._update_blackboard("capraz_dogrulama", capraz, 1)
-
-        _bb_obs = bb.get_context_for("gozlemci", 1)
-        gozlemci = self.ajan_calistir("gozlemci",
-            f"Problem: {self.enhanced_brief}\nDomains: {', '.join(alan_isimleri)}\nCROSS-VAL: {capraz}\n{_bb_obs}\nEvaluate. KALİTE PUANI: XX/100.",
-            gecmis=shared_ctx)
-        self._update_blackboard("gozlemci", gozlemci, 1)
-
-        _bb_summary = bb.to_summary()
-        _rag_final = build_final_report_context(self.enhanced_brief, _rag) if _rag else ""
-        _rag_final_note = f"\n\n{_rag_final}" if _rag_final else ""
-        final = self.ajan_calistir("final_rapor",
-            f"Single-agent analysis. Domains: {', '.join(alan_isimleri)}\n"
-            f"PROBLEM: {self.enhanced_brief}\nOBSERVER: {gozlemci}\nQUESTIONS: {sorular}\n\n"
-            f"STRUCTURED ANALYSIS SUMMARY:\n{_bb_summary}{_rag_final_note}\n\n"
-            f"Domain findings are in the conversation history above. "
-            f"Report: 70% technical (preserve numbers), 15% cross-domain, 15% recommendations.",
-            gecmis=shared_ctx)
+        io = self._make_io()
+        final, _ = run_single_analysis(self.enhanced_brief, self.domains, self.blackboard, io)
         return final
 
     def run_cift(self):
-        alan_isimleri = [n for _, n in self.domains]
-        bb = self.blackboard
-
-        # ── GRUP A: Domain A+B ajanları paralel ─────────────
-        _rag = get_rag()
-        gorev_a = []
-        for key, name in self.domains:
-            _msg = build_domain_message(self.enhanced_brief, key, name, _rag) if _rag else self.enhanced_brief
-            gorev_a.append((f"{key}_a", _msg, None, None))
-            gorev_a.append((f"{key}_b", _msg, None, None))
-        sonuc_a = self._ajan_paralel(gorev_a, max_workers=6)
-        parts = []
-        for i, (key, name) in enumerate(self.domains):
-            parts.append(f"{name.upper()} EXPERT A:\n{sonuc_a[i*2]}\n\n{name.upper()} EXPERT B:\n{sonuc_a[i*2+1]}")
-            self._update_blackboard(f"{key}_a", sonuc_a[i*2], 1)
-            self._update_blackboard(f"{key}_b", sonuc_a[i*2+1], 1)
-        tum = "\n\n".join(parts)
-        shared_ctx = self._build_ctx_history(self.enhanced_brief, tum)
-
-        # ── GRUP B: Validasyon paralel ───────────────────────
-        _bb_cv = bb.get_context_for("capraz_dogrulama", 1)
-        _bb_as = bb.get_context_for("varsayim_belirsizlik", 1)
-        b = self._ajan_paralel([
-            ("capraz_dogrulama", f"Check numerical consistency.\n\n{_bb_cv}", shared_ctx, None),
-            ("varsayim_belirsizlik", f"Identify hidden assumptions.\n\n{_bb_as}", shared_ctx, None),
-        ], max_workers=2)
-        capraz, varsayim = b
-        self._update_blackboard("capraz_dogrulama", capraz, 1)
-        self._update_blackboard("varsayim_belirsizlik", varsayim, 1)
-
-        _bb_obs = bb.get_context_for("gozlemci", 1)
-        gozlemci = self.ajan_calistir("gozlemci",
-            f"Problem: {self.enhanced_brief}\nDomains: {', '.join(alan_isimleri)}\n"
-            f"CROSS-VAL: {capraz}\nASSUMPTIONS: {varsayim}\n{_bb_obs}\n"
-            f"Evaluate. KALİTE PUANI: XX/100.",
-            gecmis=shared_ctx)
-        self._update_blackboard("gozlemci", gozlemci, 1)
-
-        # ── GRUP C: Çelişki + Soru + Alternatif paralel ─────
-        _bb_conf = bb.get_context_for("celisiki_cozum", 1)
-        c = self._ajan_paralel([
-            ("celisiki_cozum", f"OBSERVER:\n{gozlemci}\n\n{_bb_conf}\nResolve A vs B conflicts.", shared_ctx, None),
-            ("soru_uretici", f"Problem: {self.enhanced_brief}\nList critical questions.", shared_ctx, None),
-            ("alternatif_senaryo", f"Problem: {self.enhanced_brief}\nEvaluate 3 alternatives.", shared_ctx, None),
-        ], max_workers=3)
-        celiski, sorular, alternatif = c
-        self._update_blackboard("celisiki_cozum", celiski, 1)
-
-        _bb_summary = bb.to_summary()
-        _rag_final = build_final_report_context(self.enhanced_brief, _rag) if _rag else ""
-        _rag_final_note = f"\n\n{_rag_final}" if _rag_final else ""
-        final = self.ajan_calistir("final_rapor",
-            f"Dual-agent. Domains: {', '.join(alan_isimleri)}\n"
-            f"PROBLEM: {self.enhanced_brief}\nOBSERVER: {gozlemci}\n"
-            f"CONFLICTS: {celiski}\nQUESTIONS: {sorular}\nALTERNATIVES: {alternatif}\n\n"
-            f"STRUCTURED ANALYSIS SUMMARY:\n{_bb_summary}{_rag_final_note}\n\n"
-            f"Produce professional engineering report.",
-            gecmis=shared_ctx)
+        io = self._make_io()
+        final, _ = run_dual_analysis(self.enhanced_brief, self.domains, self.blackboard, io)
         return final
 
     def run_full_loop(self):

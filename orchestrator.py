@@ -23,6 +23,7 @@ from shared.analysis_helpers import (
     update_blackboard as _update_blackboard_shared,
     extract_quality_score,
 )
+from shared.analysis_modes import AnalysisIO, run_single_analysis, run_dual_analysis
 from blackboard import Blackboard
 from parser import parse_agent_output
 from shared.agent_runner import (
@@ -1227,6 +1228,17 @@ def _feedback_loop_core(brief, guclendirilmis_brief, aktif_alanlar, max_tur, mod
 #   Her alan için 1 ajan (A) → Hafif destek → Final Rapor
 #   Kullanım: Hızlı ilk bakış, tek perspektif
 # =============================================================
+def _make_cli_io():
+    """Create AnalysisIO adapter for CLI entry point."""
+    return AnalysisIO(
+        run_agent=ajan_calistir,
+        run_parallel=_ajan_paralel,
+        on_event=lambda t, d: print(f"--- {t} ---") if t else None,
+        rag_store=rag,
+        checkpoint=lambda: None,
+    )
+
+
 def tekli_analiz(brief):
     print(f"\n{'*'*60}")
     print("MOD 1 — TEKLİ AJAN ANALİZİ")
@@ -1238,70 +1250,10 @@ def tekli_analiz(brief):
     print(f"\n✅ Aktif alanlar: {', '.join(alan_isimleri)}")
 
     bb = Blackboard()
-
-    # ── GRUP A: Tüm domain ajanları paralel ────────────────────
-    print(f"\n--- GRUP A: {len(aktif_alanlar)} domain ajanı paralel çalışıyor ---")
-    gorev_a = [
-        (f"{key}_a", build_domain_message(guclendirilmis_brief, key, name, rag), None, None)
-        for key, name in aktif_alanlar
-    ]
-    sonuc_a = _ajan_paralel(gorev_a, max_workers=6)
-
-    tum_ciktilar_parts = [
-        f"{name.upper()} EXPERT:\n{sonuc_a[i]}"
-        for i, (_, name) in enumerate(aktif_alanlar)
-    ]
-    tum_ciktilar = "\n\n".join(tum_ciktilar_parts)
-
-    # Blackboard: parse domain outputs
-    for i, (key, name) in enumerate(aktif_alanlar):
-        _update_blackboard(bb, f"{key}_a", sonuc_a[i], 1)
-
-    shared_ctx = _build_ctx_history(guclendirilmis_brief, tum_ciktilar)
-
-    # ── GRUP B: Capraz + Soru paralel ───────────────────────────
-    print(f"\n--- GRUP B: Validasyon + Soru paralel çalışıyor ---")
-    _bb_cv = bb.get_context_for("capraz_dogrulama", 1)
-    b_sonuc = _ajan_paralel([
-        ("capraz_dogrulama",
-         f"Check all numerical values for physical and mathematical consistency.\n\n{_bb_cv}",
-         shared_ctx, None),
-        ("soru_uretici",
-         f"Problem: {guclendirilmis_brief}\nList unanswered critical questions.",
-         shared_ctx, None),
-    ], max_workers=2)
-    capraz_cevap, soru_cevap = b_sonuc
-    _update_blackboard(bb, "capraz_dogrulama", capraz_cevap, 1)
-
-    print(f"\n--- OBSERVER ---")
-    _bb_obs = bb.get_context_for("gozlemci", 1)
-    _domains_str = ", ".join(alan_isimleri)
-    gozlemci_cevabi = ajan_calistir("gozlemci",
-        f"Problem: {guclendirilmis_brief}\nDomains: {_domains_str}\n"
-        f"CROSS-VAL: {capraz_cevap}\n{_bb_obs}\n"
-        f"Evaluate. KALİTE PUANI: XX/100.",
-        gecmis=shared_ctx)
-    _update_blackboard(bb, "gozlemci", gozlemci_cevabi, 1)
-
-    print(f"\n{'*'*60}")
-    print("FINAL RAPOR OLUŞTURULUYOR...")
-    print(f"{'*'*60}")
-
-    _bb_summary = bb.to_summary()
-    _rag_final = build_final_report_context(guclendirilmis_brief, rag)
-    _rag_final_note = f"\n\n{_rag_final}" if _rag_final else ""
-    _domains_str = ", ".join(alan_isimleri)
-    final = ajan_calistir("final_rapor",
-        f"Single-agent analysis. Domains: {_domains_str}\n"
-        f"PROBLEM: {guclendirilmis_brief}\nOBSERVER: {gozlemci_cevabi}\nQUESTIONS: {soru_cevap}\n\n"
-        f"STRUCTURED ANALYSIS SUMMARY:\n{_bb_summary}{_rag_final_note}\n\n"
-        f"Report: technical findings, cross-domain links, recommendations. English only.\n"
-        f"Note: Single-perspective analysis. Recommend dual or full analysis for critical decisions.",
-        gecmis=shared_ctx)
+    io = _make_cli_io()
+    final, _ = run_single_analysis(guclendirilmis_brief, aktif_alanlar, bb, io)
 
     kaydet(brief, 1, final, alan_isimleri,
-           gozlemci_full=gozlemci_cevabi,
-           capraz_full=capraz_cevap,
            blackboard_summary=bb.to_summary(),
            parameters_json=bb.export_parameters())
     return final
@@ -1324,93 +1276,10 @@ def cift_ajan_analiz(brief):
     print(f"\n✅ Aktif alanlar: {', '.join(alan_isimleri)}")
 
     bb = Blackboard()
-
-    # ── GRUP A: Tüm domain A+B ajanları paralel ─────────────────
-    print(f"\n--- GRUP A: {len(aktif_alanlar)} domain × 2 ajan paralel çalışıyor ---")
-    gorev_a = []
-    for key, name in aktif_alanlar:
-        _msg = build_domain_message(guclendirilmis_brief, key, name, rag)
-        gorev_a.append((f"{key}_a", _msg, None, None))
-        gorev_a.append((f"{key}_b", _msg, None, None))
-    sonuc_a = _ajan_paralel(gorev_a, max_workers=6)
-
-    tum_ciktilar_parts = []
-    for i, (key, name) in enumerate(aktif_alanlar):
-        cevap_a = sonuc_a[i * 2]
-        cevap_b = sonuc_a[i * 2 + 1]
-        tum_ciktilar_parts.append(
-            f"{name.upper()} EXPERT A:\n{cevap_a}\n\n"
-            f"{name.upper()} EXPERT B:\n{cevap_b}"
-        )
-        _update_blackboard(bb, f"{key}_a", cevap_a, 1)
-        _update_blackboard(bb, f"{key}_b", cevap_b, 1)
-    tum_ciktilar = "\n\n".join(tum_ciktilar_parts)
-
-    shared_ctx = _build_ctx_history(guclendirilmis_brief, tum_ciktilar)
-
-    # ── GRUP B: Validasyon katmanı paralel ───────────────────────
-    print(f"\n--- GRUP B: Validasyon ajanları paralel çalışıyor ---")
-    _bb_cv = bb.get_context_for("capraz_dogrulama", 1)
-    _bb_as = bb.get_context_for("varsayim_belirsizlik", 1)
-    b_sonuc = _ajan_paralel([
-        ("capraz_dogrulama",
-         f"Check numerical consistency.\n\n{_bb_cv}",
-         shared_ctx, None),
-        ("varsayim_belirsizlik",
-         f"Identify hidden assumptions.\n\n{_bb_as}",
-         shared_ctx, None),
-    ], max_workers=2)
-    capraz_cevap, varsayim_cevap = b_sonuc
-    _update_blackboard(bb, "capraz_dogrulama", capraz_cevap, 1)
-    _update_blackboard(bb, "varsayim_belirsizlik", varsayim_cevap, 1)
-
-    print(f"\n--- OBSERVER ---")
-    _bb_obs = bb.get_context_for("gozlemci", 1)
-    _domains_str = ", ".join(alan_isimleri)
-    gozlemci_cevabi = ajan_calistir("gozlemci",
-        f"Problem: {guclendirilmis_brief}\nDomains: {_domains_str}\n"
-        f"CROSS-VAL: {capraz_cevap}\nASSUMPTIONS: {varsayim_cevap}\n{_bb_obs}\n"
-        f"Evaluate. KALİTE PUANI: XX/100. Identify key A vs B conflicts.",
-        gecmis=shared_ctx)
-    _update_blackboard(bb, "gozlemci", gozlemci_cevabi, 1)
-
-    # ── GRUP C: Çelişki + Soru + Alternatif paralel ─────────────
-    print(f"\n--- GRUP C: Çelişki + Soru + Alternatif paralel çalışıyor ---")
-    _bb_conf = bb.get_context_for("celisiki_cozum", 1)
-    c_sonuc = _ajan_paralel([
-        ("celisiki_cozum",
-         f"OBSERVER:\n{gozlemci_cevabi}\n\n{_bb_conf}\nResolve A vs B conflicts.",
-         shared_ctx, None),
-        ("soru_uretici",
-         f"Problem: {guclendirilmis_brief}\nList critical questions.",
-         shared_ctx, None),
-        ("alternatif_senaryo",
-         f"Problem: {guclendirilmis_brief}\nEvaluate 3 alternatives.",
-         shared_ctx, None),
-    ], max_workers=3)
-    celiski_cevap, soru_cevap, alt_cevap = c_sonuc
-    _update_blackboard(bb, "celisiki_cozum", celiski_cevap, 1)
-
-    print(f"\n{'*'*60}")
-    print("FINAL RAPOR OLUŞTURULUYOR...")
-    print(f"{'*'*60}")
-
-    _bb_summary = bb.to_summary()
-    _rag_final = build_final_report_context(guclendirilmis_brief, rag)
-    _rag_final_note = f"\n\n{_rag_final}" if _rag_final else ""
-    _domains_str = ", ".join(alan_isimleri)
-    final = ajan_calistir("final_rapor",
-        f"Dual-agent analysis (A=theoretical, B=practical). Domains: {_domains_str}\n"
-        f"PROBLEM: {guclendirilmis_brief}\nOBSERVER: {gozlemci_cevabi}\n"
-        f"CONFLICT RESOLUTION: {celiski_cevap}\nQUESTIONS: {soru_cevap}\n"
-        f"ALTERNATIVES: {alt_cevap}\n\n"
-        f"STRUCTURED ANALYSIS SUMMARY:\n{_bb_summary}{_rag_final_note}\n\n"
-        f"Report: distinguish theoretical vs practical perspectives. English only.",
-        gecmis=shared_ctx)
+    io = _make_cli_io()
+    final, _ = run_dual_analysis(guclendirilmis_brief, aktif_alanlar, bb, io)
 
     kaydet(brief, 2, final, alan_isimleri,
-           gozlemci_full=gozlemci_cevabi,
-           capraz_full=capraz_cevap,
            blackboard_summary=bb.to_summary(),
            parameters_json=bb.export_parameters())
     return final
