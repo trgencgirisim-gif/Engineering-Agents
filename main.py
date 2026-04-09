@@ -27,7 +27,7 @@ from shared.analysis_helpers import (
     update_blackboard,
     extract_quality_score,
 )
-from shared.analysis_modes import AnalysisIO, run_single_analysis, run_dual_analysis
+from shared.analysis_modes import AnalysisIO, run_single_analysis, run_dual_analysis, run_full_loop_analysis
 import anthropic
 import requests as req_lib
 from dotenv import load_dotenv
@@ -422,6 +422,11 @@ class Session:
 
     def _make_io(self):
         """Create AnalysisIO adapter for shared analysis modes."""
+        def _promote(keys):
+            orig = self.domain_model
+            self.domain_model = "opus"
+            return lambda: setattr(self, 'domain_model', orig)
+
         return AnalysisIO(
             run_agent=self.ajan_calistir,
             run_parallel=self._ajan_paralel,
@@ -430,6 +435,7 @@ class Session:
             checkpoint=self._checkpoint if hasattr(self, '_checkpoint') else lambda: None,
             get_domain_model=lambda: self.domain_model,
             set_domain_model=lambda m: setattr(self, 'domain_model', m),
+            on_model_promote=_promote if self.domain_model == "sonnet" else None,
         )
 
     def run_tekli(self):
@@ -443,232 +449,12 @@ class Session:
         return final
 
     def run_full_loop(self):
-        alan_isimleri = [n for _, n in self.domains]
-        alan_keyleri  = [k for k, _ in self.domains]
-        gecmis = {f"{k}_{ab}": [] for k in alan_keyleri for ab in ("a","b")}
-        tur_ozeti = []
-        gozlemci_notu = ""
-        tum = ""
-        gozlemci_cevabi = ""
-        shared_ctx = []
-        bb = self.blackboard
-        _rag = get_rag()
-
-        # C1: Adaptive model selection — round 1 Sonnet, round 2+ low-scoring agents promoted to Opus
-        _adaptive_model_enabled = (self.domain_model == "sonnet")
-        _promoted_agents = set()
-
-        # C2: Incremental execution — skip agents without directives
-        _skip_agents = set()
-
-        _CTX_WORD_LIMIT = 8000  # A3: Context compression threshold
-
-        for tur in range(1, self.max_rounds + 1):
-            self.emit("round_start", {"tur": tur})
-            mesaj = self.enhanced_brief if tur == 1 else f"{self.enhanced_brief}\n\nOBSERVER NOTES:\n{gozlemci_notu}"
-            son_tur = {}
-
-            # C2: Build skip list for tur 2+
-            if tur > 1:
-                _skip_agents.clear()
-                _agents_with_directives = set()
-                for agent_key, directive in bb.observer_directives.items():
-                    if isinstance(directive, dict) and directive.get("status") != "addressed":
-                        _agents_with_directives.add(agent_key)
-                for key in alan_keyleri:
-                    for ab in ("a", "b"):
-                        ak = f"{key}_{ab}"
-                        if ak not in _agents_with_directives:
-                            _skip_agents.add(ak)
-
-                # C1: Adaptive — low score → promote directive agents to Opus
-                if _adaptive_model_enabled and tur_ozeti:
-                    last_score = tur_ozeti[-1].get("puan", 70)
-                    if last_score and last_score < 70:
-                        _promoted_agents.update(_agents_with_directives)
-
-            # ── GRUP A: Domain ajanları paralel ─────────────
-            gorev_a = []
-            _gorev_keys = []
-            _skipped = set()
-            for key, name in self.domains:
-                for ab in ("a", "b"):
-                    ak = f"{key}_{ab}"
-                    if ak in _skip_agents:
-                        _skipped.add(ak)
-                        continue
-                    if tur > 1:
-                        bb_ctx = bb.get_context_for(ak, tur)
-                        _msg = f"{mesaj}\n\n{bb_ctx}" if bb_ctx else mesaj
-                    else:
-                        # Round 1: inject RAG domain context + parameters
-                        _msg = build_domain_message(mesaj, key, name, _rag) if _rag else mesaj
-                    gorev_a.append((ak, _msg, gecmis[ak], None))
-                    _gorev_keys.append(ak)
-
-            # C1: Adaptive model — run promoted agents with Opus, rest with default
-            if _promoted_agents and _adaptive_model_enabled and gorev_a:
-                _orig_model = self.domain_model
-                _promoted_gorevler = [(k, m, g, c) for k, m, g, c in gorev_a if k in _promoted_agents]
-                _normal_gorevler = [(k, m, g, c) for k, m, g, c in gorev_a if k not in _promoted_agents]
-                self.domain_model = "opus"
-                sonuc_promoted = self._ajan_paralel(_promoted_gorevler, max_workers=6) if _promoted_gorevler else []
-                self.domain_model = _orig_model
-                sonuc_normal = self._ajan_paralel(_normal_gorevler, max_workers=6) if _normal_gorevler else []
-                # Merge back in original order
-                _prom_keys = [g[0] for g in _promoted_gorevler]
-                _norm_keys = [g[0] for g in _normal_gorevler]
-                _prom_map = {k: sonuc_promoted[i] for i, k in enumerate(_prom_keys) if i < len(sonuc_promoted)}
-                _norm_map = {k: sonuc_normal[i] for i, k in enumerate(_norm_keys) if i < len(sonuc_normal)}
-                _sonuc_map = {**_prom_map, **_norm_map}
-            else:
-                sonuc_a = self._ajan_paralel(gorev_a, max_workers=6) if gorev_a else []
-                _sonuc_map = {k: sonuc_a[i] for i, k in enumerate(_gorev_keys) if i < len(sonuc_a)}
-
-            for key, name in self.domains:
-                for ab in ("a", "b"):
-                    ak = f"{key}_{ab}"
-                    if ak in _skipped:
-                        # C2: Keep previous output
-                        son_tur[ak] = gecmis[ak][-1]["content"] if gecmis[ak] else ""
-                    else:
-                        son_tur[ak] = _sonuc_map.get(ak, "")
-                        gecmis[ak] += [{"role": "user", "content": mesaj},
-                                       {"role": "assistant", "content": son_tur[ak]}]
-
-            # Blackboard: parse domain outputs (only non-skipped)
-            for key, name in self.domains:
-                for ab in ("a", "b"):
-                    ak = f"{key}_{ab}"
-                    if ak not in _skipped:
-                        self._update_blackboard(ak, son_tur[ak], tur)
-                        if tur > 1:
-                            bb.mark_directive_addressed(ak)
-
-            tum = "\n\n".join(
-                f"{n.upper()} EXPERT A:\n{son_tur[f'{k}_a']}\n\n{n.upper()} EXPERT B:\n{son_tur[f'{k}_b']}"
-                for k, n in self.domains
-            )
-
-            # A3: Context compression
-            if tur == 1:
-                shared_ctx = self._build_ctx_history(self.enhanced_brief, tum)
-            else:
-                _ctx_words = sum(len(m.get("content", "").split()) for m in shared_ctx)
-                if _ctx_words > _CTX_WORD_LIMIT:
-                    _bb_summary = bb.to_summary()
-                    shared_ctx = [
-                        {"role": "user", "content": f"Domain analysis request:\n{self.enhanced_brief}\n\n[Context compressed]\n\n{_bb_summary}"},
-                        {"role": "assistant", "content": tum},
-                    ]
-                else:
-                    shared_ctx = shared_ctx + [
-                        {"role": "user", "content": f"Round {tur} domain analysis:"},
-                        {"role": "assistant", "content": tum},
-                    ]
-
-            # ── GRUP B: Validasyon paralel ───────────────────
-            _bb_cv = bb.get_context_for("capraz_dogrulama", tur)
-            _bb_as = bb.get_context_for("varsayim_belirsizlik", tur)
-            b = self._ajan_paralel([
-                ("capraz_dogrulama", f"ROUND {tur}: Check numerical consistency.\n\n{_bb_cv}", shared_ctx, None),
-                ("varsayim_belirsizlik", f"ROUND {tur}: Identify hidden assumptions.\n\n{_bb_as}", shared_ctx, None),
-                ("varsayim_belirsizlik", f"ROUND {tur}: List missing/ambiguous/conflicting points.\n\n{_bb_as}", shared_ctx, None),
-                ("literatur_patent", f"ROUND {tur}: Check standards and references.", shared_ctx, None),
-            ], max_workers=4)
-            capraz, varsayim, belirsiz, literatur = b
-            self._update_blackboard("capraz_dogrulama", capraz, tur)
-            self._update_blackboard("varsayim_belirsizlik", varsayim, tur)
-
-            # A5: Assumption consistency check
-            _conflicting = bb.find_conflicting_assumptions()
-            _conflict_note = ""
-            if _conflicting:
-                _lines = ["CONFLICTING ASSUMPTIONS:"]
-                for ca in _conflicting[:5]:
-                    _lines.append(f"  {ca['agent_a']}: \"{ca['assumption_a']}\" vs {ca['agent_b']}: \"{ca['assumption_b']}\"")
-                _conflict_note = "\n".join(_lines)
-
-            _bb_obs = bb.get_context_for("gozlemci", tur)
-            gozlemci_cevabi = self.ajan_calistir("gozlemci",
-                f"Problem: {self.enhanced_brief}\nDomains: {', '.join(alan_isimleri)}\nROUND {tur}\n"
-                f"CROSS-VAL: {capraz}\nASSUMPTIONS: {varsayim}\nUNCERTAINTY: {belirsiz}\nLITERATURE: {literatur}\n"
-                f"{_conflict_note}\n{_bb_obs}\n"
-                f"Evaluate. KALİTE PUANI: XX/100. Specify corrections for next round.",
-                gecmis=shared_ctx)
-            self._update_blackboard("gozlemci", gozlemci_cevabi, tur)
-
-            puan = self.kalite_puani_oku(gozlemci_cevabi)
-            gozlemci_notu = gozlemci_cevabi
-            tur_ozeti.append({"tur": tur, "puan": puan})
-            self.round_scores = tur_ozeti[:]
-            self.emit("round_score", {"tur": tur, "puan": puan})
-            self._checkpoint()  # CP3: round complete with score
-
-            # A4: Smart Group C skip — score >= 90
-            if puan < 90:
-                _bb_risk = bb.get_context_for("risk_guvenilirlik", tur)
-                _bb_conf = bb.get_context_for("celisiki_cozum", tur)
-                c_sonuc = self._ajan_paralel([
-                    ("risk_guvenilirlik", f"ROUND {tur}: FMEA on all designs.\n\n{_bb_risk}", shared_ctx, None),
-                    ("celisiki_cozum", f"OBSERVER:\n{gozlemci_cevabi}\n\n{_bb_conf}\nResolve conflicts.", shared_ctx, None),
-                ], max_workers=2)
-                self._update_blackboard("risk_guvenilirlik", c_sonuc[0], tur)
-                self._update_blackboard("celisiki_cozum", c_sonuc[1], tur)
-
-            if puan >= 85:
-                self.emit("early_stop", {"tur": tur, "puan": puan})
-                break
-
-        # Post-loop
-        _bb_summary_post = bb.to_summary()
-        d = self._ajan_paralel([
-            ("soru_uretici", f"Problem: {self.enhanced_brief}\nList critical unanswered questions.\n\n{_bb_summary_post}", shared_ctx, None),
-            ("alternatif_senaryo", f"Problem: {self.enhanced_brief}\nEvaluate 3 alternatives.\n\n{_bb_summary_post}", shared_ctx, None),
-            ("kalibrasyon", f"Problem: {self.enhanced_brief}\nBenchmark comparison.\n\n{_bb_summary_post}", shared_ctx, None),
-            ("dogrulama_standartlar", f"Problem: {self.enhanced_brief}\nStandards compliance.", shared_ctx, None),
-            ("entegrasyon_arayuz", f"Problem: {self.enhanced_brief}\nInterface risks.", shared_ctx, None),
-            ("simulasyon_koordinator", f"Problem: {self.enhanced_brief}\nSimulation strategy.", shared_ctx, None),
-            ("maliyet_pazar", f"Problem: {self.enhanced_brief}\nCost estimation.", shared_ctx, None),
-            ("capraz_dogrulama", f"Problem: {self.enhanced_brief}\nData quality.\n\n{_bb_summary_post}", shared_ctx, None),
-        ], max_workers=6)
-        soru, alt, kalib, std, enteg, sim, mal, veri = d
-
-        _bb_final = bb.to_summary()
-        baglam = self.ajan_calistir("sentez",
-            f"Problem: {self.enhanced_brief}\nSummarize confirmed parameters.\n\n{_bb_final}",
-            gecmis=shared_ctx)
-
-        sentez = self.ajan_calistir("sentez",
-            f"Problem: {self.enhanced_brief}\nDomains: {', '.join(alan_isimleri)}\n"
-            f"OBSERVER: {gozlemci_cevabi}\nQUESTIONS: {soru}\nALTERNATIVES: {alt}\n"
-            f"CALIBRATION: {kalib}\nSTANDARDS: {std}\nINTEGRATION: {enteg}\n"
-            f"SIMULATION: {sim}\nCOST: {mal}\nDATA: {veri}\nCONTEXT: {baglam}\n\n"
-            f"STRUCTURED ANALYSIS SUMMARY:\n{_bb_final}\n\n"
-            f"Synthesize all. Summary for Final Report Writer.",
-            gecmis=shared_ctx)
-
-        _convergence = bb.check_convergence()
-        _conv_note = ""
-        if _convergence.get("oscillating"):
-            _conv_note = f"\nWARNING: Oscillating parameters: {', '.join(_convergence['oscillating'][:5])}"
-
-        _rag_final = build_final_report_context(self.enhanced_brief, _rag) if _rag else ""
-        _rag_final_note = f"\n\n{_rag_final}" if _rag_final else ""
-        final = self.ajan_calistir("final_rapor",
-            f"Analysis in {len(tur_ozeti)} round(s). Domains: {', '.join(alan_isimleri)}\n"
-            f"PROBLEM: {self.enhanced_brief}\nOBSERVER: {gozlemci_cevabi}\n"
-            f"QUESTIONS: {soru}\nALTERNATIVES: {alt}\nSYNTHESIS: {sentez}\n\n"
-            f"STRUCTURED ANALYSIS SUMMARY:\n{_bb_final}{_conv_note}{_rag_final_note}\n\n"
-            f"Report: full technical findings per domain, conflicts, observer, recommendations. English only.",
-            gecmis=shared_ctx)
-
-        # GRUP E
-        self._ajan_paralel([
-            ("ozet_ve_sunum", f"Report: {final}\nExecutive summary.", None, None),
-            ("dokumantasyon_hafiza", f"Problem: {self.enhanced_brief}\nReport: {final}\nLessons learned.", None, None),
-        ], max_workers=2)
-
+        io = self._make_io()
+        final, tur_ozeti = run_full_loop_analysis(
+            self.enhanced_brief, self.domains, self.blackboard, io,
+            max_rounds=self.max_rounds,
+        )
+        self.round_scores = tur_ozeti[:]
         return final
 
     # ── Ana İş Parçacığı ──────────────────────────────────────
