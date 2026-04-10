@@ -66,8 +66,24 @@
 - **Files modified:** blackboard.py, rag/store.py, shared/rag_context.py (new), main.py, app.py, orchestrator.py
 - **Commits:** e6ad5e7, 428f76c, 86d2efe, 410b214, 7035e01, a6fdac9
 
+### B2 — Shared Analysis Modes Module (DEBT-2)
+- **Status:** COMPLETE
+- **Branch:** `claude/add-skills-improve-caching-Yu7GY`
+- **Goal:** Deduplicate ~1,700 lines of near-identical analysis logic across 3 entry points
+- **Architecture:** Callback-based `AnalysisIO` dataclass + `FullLoopHooks` for entry-point specifics
+- **New files:**
+  - `shared/analysis_helpers.py` — `build_context_history()`, `update_blackboard()`, `extract_quality_score()`
+  - `shared/analysis_modes.py` — `AnalysisIO`, `FullLoopHooks`, `run_single_analysis()`, `run_dual_analysis()`, `run_full_loop_analysis()`
+- **Entry points now thin adapters:**
+  - `main.py`: `_make_io()` method + 3-6 line adapter functions
+  - `app.py`: `_make_app_io()` + hooks for quality gate (C5) + Streamlit round state
+  - `orchestrator.py`: `_make_cli_io()` + AGENTS-dict-based model promotion
+- **Net impact:** ~1,300 lines removed, ~600 added → ~700 lines eliminated
+- **Commits:** 1141a61, 40ab564, 5f806d6, 82df186, (Commit 6 pending)
+
 ## Recent Changes
 
+- [2026-04-10] B2: Shared analysis modes module — AnalysisIO/FullLoopHooks, ~700 lines eliminated across 3 entry points
 - [2026-03-26] DEBT-6: Session persistence layer (SQLite, checkpoints, API endpoints, Streamlit sidebar)
 - [2026-03-26] SKILL.md enrichment completed for all 56 files (28 domains × 2 experts)
 - [2026-03-26] Shared agent_runner integration into main.py and app.py

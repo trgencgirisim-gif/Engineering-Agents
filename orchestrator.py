@@ -18,11 +18,6 @@ from shared.rag_context import (
     build_final_report_context,
     build_prompt_engineer_message,
 )
-from shared.analysis_helpers import (
-    build_context_history,
-    update_blackboard as _update_blackboard_shared,
-    extract_quality_score,
-)
 from shared.analysis_modes import AnalysisIO, run_single_analysis, run_dual_analysis, run_full_loop_analysis
 from blackboard import Blackboard
 from parser import parse_agent_output
@@ -616,9 +611,6 @@ def ajan_calistir(ajan_key, mesaj, gecmis=None, cache_context: Optional[str] = N
 # ═════════════════════════════════════════════════════════════
 # HELPERS
 # ═════════════════════════════════════════════════════════════
-def kalite_puani_oku(metin):
-    return extract_quality_score(metin)
-
 
 def kaydet(brief, mod, sonuc, aktif_alanlar=[], tur_ozeti=[],
            quality_score=None, gozlemci_full="", capraz_full="",
@@ -901,17 +893,6 @@ def _ajan_paralel(gorevler: List[Tuple], max_workers: int = 6) -> List[str]:
                 sonuclar[idx] = f"ERROR: {e}"
 
     return sonuclar
-
-
-# ── Blackboard helper (module-level) ──────────────────────────
-def _update_blackboard(bb, agent_key, output, round_num):
-    """Parse agent output and write structured data to blackboard."""
-    _update_blackboard_shared(bb, agent_key, output, round_num)
-
-
-def _build_ctx_history(brief_msg, tum_ciktilar):
-    """Convert accumulated outputs to conversation history format."""
-    return build_context_history(brief_msg, tum_ciktilar)
 
 
 # ── Paylaşılan: Tam döngü çekirdeği (Mod 3 ve Mod 4) ─────────

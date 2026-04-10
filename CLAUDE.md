@@ -147,6 +147,9 @@ Round 2+:
 | `parser.py` | Hybrid regex + LLM fallback parser for agent output extraction |
 | `rag/store.py` | RAGStore class — save/query/delete analyses with ChromaDB |
 | `report_generator.py` | Academic DOCX report generation (cover, abstract, findings, appendices) |
+| `shared/analysis_helpers.py` | Extracted helpers: build_context_history, update_blackboard, extract_quality_score |
+| `shared/analysis_modes.py` | Shared analysis modes: AnalysisIO, FullLoopHooks, run_single/dual/full_loop_analysis |
+| `shared/rag_context.py` | Unified RAG context injection for all entry points |
 | `static/index.html` | Web UI for FastAPI backend (vanilla JS, SSE client) |
 | `memory/recent-memory.md` | Rolling 48hr context — inlined at session start |
 | `memory/long-term-memory.md` | Distilled facts, preferences, patterns — referenced by path |

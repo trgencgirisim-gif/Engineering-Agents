@@ -12,16 +12,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Tuple, Optional
 from config.agents_config import AGENTS, DESTEK_AJANLARI
 from rag.store import RAGStore
-from shared.rag_context import (
-    build_domain_message,
-    build_final_report_context,
-    build_prompt_engineer_message,
-)
-from shared.analysis_helpers import (
-    build_context_history,
-    update_blackboard as _update_blackboard_shared,
-    extract_quality_score,
-)
+from shared.rag_context import build_prompt_engineer_message
 from shared.analysis_modes import AnalysisIO, FullLoopHooks, run_single_analysis, run_dual_analysis, run_full_loop_analysis
 from blackboard import Blackboard
 from parser import parse_agent_output
@@ -1205,17 +1196,6 @@ def _get_or_create_blackboard() -> Blackboard:
     return st.session_state.blackboard
 
 
-def _update_blackboard(bb: Blackboard, agent_key: str, output: str, round_num: int):
-    """Parse agent output and write structured data to blackboard."""
-    _update_blackboard_shared(bb, agent_key, output, round_num)
-
-
-def _update_blackboard_batch(bb: Blackboard, agent_keys: list, outputs: list, round_num: int):
-    """Batch update blackboard from parallel agent results."""
-    for key, output in zip(agent_keys, outputs):
-        _update_blackboard(bb, key, output, round_num)
-
-
 # ═════════════════════════════════════════════════════════════
 # C5: QUALITY GATE — Haiku ile hızlı çıktı kalite kontrolü
 # ═════════════════════════════════════════════════════════════
@@ -1269,10 +1249,6 @@ def model_etiketi(model: str) -> str:
     if "sonnet" in model: return "Sonnet"
     if "haiku" in model:  return "Haiku"
     return model.split("-")[1].capitalize() if "-" in model else model
-
-def kalite_puani_oku(metin):
-    return extract_quality_score(metin)
-
 
 def prompt_engineer_auto(brief):
     mesaj = build_prompt_engineer_message(brief, get_rag())
@@ -1346,10 +1322,6 @@ def kaydet_txt(brief, mod, final, alan_isimleri, tur_ozeti):
 # ═════════════════════════════════════════════════════════════
 # ANALYSIS RUNNERS
 # ═════════════════════════════════════════════════════════════
-
-def _build_ctx_history(brief_msg: str, tum_ciktilar: str) -> list:
-    """Convert accumulated outputs to conversation history format."""
-    return build_context_history(brief_msg, tum_ciktilar)
 
 def _make_app_io(agent_runner=None):
     """Create AnalysisIO adapter for Streamlit entry point."""

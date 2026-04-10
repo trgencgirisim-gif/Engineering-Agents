@@ -72,6 +72,33 @@
 - `app.py` (MODIFY — replace inline RAG with shared module)
 - `orchestrator.py` (MODIFY — add RAG injection)
 
+### [2026-04-10] B2 — Shared Analysis Modes Module
+
+**Problem:** Three entry points (main.py, app.py, orchestrator.py) each implemented the same 3 analysis modes (tekli/cift/full_loop) independently, totaling ~1,700 lines of near-identical logic. The pipeline logic was identical; only the I/O layer differed (SSE emit vs Streamlit vs print).
+
+**Solution:** Callback-based `AnalysisIO` dataclass + pure-logic shared functions in `shared/analysis_modes.py`:
+- `AnalysisIO` carries callbacks: `run_agent`, `run_parallel`, `on_event`, `rag_store`, `checkpoint`, `get/set_domain_model`, `on_model_promote`
+- `FullLoopHooks` carries optional hooks: `quality_gate`, `quality_gate_retry`, `on_round_start`, `on_round_score`
+- Three shared functions: `run_single_analysis()`, `run_dual_analysis()`, `run_full_loop_analysis()`
+- `shared/analysis_helpers.py` holds previously-triplicated helpers: `build_context_history()`, `update_blackboard()`, `extract_quality_score()`
+
+**Key architectural insight — model promotion closure:**
+- main.py promotes adaptive model via `self.domain_model` attribute (all subsequent calls use it)
+- orchestrator.py promotes by mutating `AGENTS[ak]["model"]` dict entries per-agent
+- Solution: `on_model_promote(keys) -> restore_fn` callback — each entry point implements differently and returns a closure that reverts its own state
+
+**Quality gate (C5) integration:**
+- App.py-only feature; runs after GRUP A results in Round 1 only
+- Integrated via `FullLoopHooks.quality_gate` + `quality_gate_retry` — shared core calls them if provided, noop otherwise
+
+**Prep phase placement:**
+- Prompt engineering + domain selection stay in entry points (they differ significantly)
+- Shared functions only handle the analysis pipeline itself
+
+**Net impact:** ~700 lines eliminated. Each entry point's mode functions now 3-15 lines of adapter code.
+
+**Commits:** 1141a61, 40ab564, 5f806d6, 82df186, + Commit 6 (cleanup + memory + push)
+
 ### [2026-03-26] DEBT-6 Session Persistence
 - SQLite-based (stdlib, zero deps), WAL mode, thread-safe per-thread connections
 - 5 checkpoint points, startup restore, 3 API endpoints, Streamlit sidebar
