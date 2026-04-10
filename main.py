@@ -18,11 +18,6 @@ from pathlib import Path
 import hashlib
 from collections import OrderedDict
 from shared.rag_context import build_prompt_engineer_message
-from shared.analysis_helpers import (
-    build_context_history,
-    update_blackboard,
-    extract_quality_score,
-)
 from shared.analysis_modes import AnalysisIO, run_single_analysis, run_dual_analysis, run_full_loop_analysis
 import anthropic
 import requests as req_lib
@@ -333,9 +328,6 @@ class Session:
         })
 
     # ── Helpers ───────────────────────────────────────────────
-    def kalite_puani_oku(self, metin: str) -> int:
-        return extract_quality_score(metin)
-
     def domain_sec_ai(self, brief: str) -> list:
         sonuc = self.ajan_calistir("domain_selector", brief)
         m = re.search(r'SELECTED_DOMAINS:\s*[\[\(]?([\d,\s]+)[\]\)]?', sonuc)
@@ -406,15 +398,6 @@ class Session:
                     sonuclar[futures[fut]] = f"ERROR: {e}"
 
         return sonuclar
-
-    # ── Blackboard helpers ─────────────────────────────────────
-    def _update_blackboard(self, agent_key: str, output: str, round_num: int):
-        """Parse agent output and write structured data to blackboard."""
-        update_blackboard(self.blackboard, agent_key, output, round_num)
-
-    def _build_ctx_history(self, brief_msg: str, tum_ciktilar: str) -> list:
-        """Convert accumulated outputs to conversation history format."""
-        return build_context_history(brief_msg, tum_ciktilar)
 
     def _make_io(self):
         """Create AnalysisIO adapter for shared analysis modes."""

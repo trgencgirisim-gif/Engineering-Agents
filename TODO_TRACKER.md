@@ -11,7 +11,7 @@ When resuming after an interruption, read this file first to continue.
 |----|------|--------|-------|
 | A1-A6 | Port blackboard + features to main.py & orchestrator.py | DONE | Commit 2290934 |
 | B1 | Shared agent_runner module (lib/agent_runner.py) | DONE | shared/agent_runner.py, commit e8eb119 |
-| B2 | Shared analysis_modes module | NOT STARTED | High priority — dedup run_tekli/run_cift/run_full_loop |
+| B2 | Shared analysis_modes module | DONE | shared/analysis_modes.py + analysis_helpers.py; ~700 lines eliminated; commits 1141a61, 40ab564, 5f806d6, 82df186, 7316339 |
 | B3 | Split report_generator.py into report/ package | DONE | report/styles.py, charts.py, sections.py, builder.py |
 | B4-B6 | Parser regex, blackboard caching, RAG improvements | DONE | Commit e8eb119 |
 | C1 | Adaptive model selection | DONE | Ported to main.py + orchestrator.py |
@@ -45,16 +45,16 @@ When resuming after an interruption, read this file first to continue.
 | brightway2 | cevre | DONE |
 | opensim | biyomedikal | DONE |
 | febio | biyomedikal | DONE |
-| capytaine | denizcilik | IN PROGRESS (background agent) |
-| rayoptics | optik | IN PROGRESS (background agent) |
-| meep | optik | IN PROGRESS (background agent) |
-| openmc | nukleer | IN PROGRESS (background agent) |
-| openrocket | uzay, savunma | IN PROGRESS (background agent) |
-| openfoam | aerodinamik, akiskan | IN PROGRESS (background agent) |
-| openmodelica | hidrolik, sistem | IN PROGRESS (background agent) |
-| freecad | uretim | IN PROGRESS (background agent) |
-| dwsim | kimya | IN PROGRESS (background agent) |
-| sumo | otomotiv | IN PROGRESS (background agent) |
+| capytaine | denizcilik | DONE |
+| rayoptics | optik | DONE |
+| meep | optik | DONE |
+| openmc | nukleer | DONE |
+| openrocket | uzay, savunma | DONE |
+| openfoam | aerodinamik, akiskan | DONE |
+| openmodelica | hidrolik, sistem | DONE |
+| freecad | uretim | DONE |
+| dwsim | kimya | DONE |
+| sumo | otomotiv | DONE |
 
 ### Other Tool Integration
 
@@ -71,9 +71,10 @@ When resuming after an interruption, read this file first to continue.
 
 ## REMAINING WORK
 
-1. Wait for background agents to finish tier1 wrappers (10 remaining)
-2. B2: Shared analysis_modes module (dedup run_tekli/run_cift/run_full_loop)
-3. Commit and push all changes
+All PLAN.md items are complete. Only externally-blocked items remain:
+
+1. Tier 2: PyANSYS (blocked on license)
+2. Tier 3: MATLAB Engine API (blocked on license)
 
 ---
 
@@ -84,3 +85,12 @@ When resuming after an interruption, read this file first to continue.
   C3 streaming porting, tools.yaml activation (54 files), SKILL.md tool instructions
   (54 files), resilient tools/__init__.py. Background agents creating remaining
   tier1 wrappers.
+- 2026-03-26 session: DEBT-6 session persistence (SQLite), shared agent_runner
+  integration into main.py and app.py, SKILL.md enrichment for all 56 files,
+  memory layer created.
+- 2026-04-05 session: Token efficiency — 3 improvements (shared RAG context,
+  parameter persistence, template-based guidance) across all 3 entry points.
+- 2026-04-10 session: B2 shared analysis_modes module complete. AnalysisIO /
+  FullLoopHooks callback pattern; ~700 lines eliminated across main.py/app.py/
+  orchestrator.py. All 25 tier1 wrappers confirmed on disk. Dead helper
+  methods removed from main.py.
