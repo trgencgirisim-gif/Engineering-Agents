@@ -19,10 +19,11 @@ import hashlib
 from collections import OrderedDict
 from shared.rag_context import build_prompt_engineer_message
 from shared.analysis_modes import AnalysisIO, run_single_analysis, run_dual_analysis, run_full_loop_analysis
+from shared.logging_config import setup_logging, get_logger, set_correlation_id
 import anthropic
 import requests as req_lib
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, StreamingResponse, PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -53,6 +54,11 @@ except ImportError:
 
 load_dotenv()
 
+# ─── Logging ──────────────────────────────────────────────────
+_LOG_JSON = os.getenv("LOG_JSON", "true").lower() in ("true", "1", "yes")
+setup_logging(level=os.getenv("LOG_LEVEL", "INFO"), json_format=_LOG_JSON)
+logger = get_logger("engineering_ai.main")
+
 # ─── Config ───────────────────────────────────────────────────
 BASE_DIR   = Path(__file__).parent
 STATIC_DIR = BASE_DIR / "static"
@@ -70,8 +76,9 @@ async def _preload_rag():
     try:
         from rag.store import RAGStore
         RAGStore.preload_embedding()
-    except Exception:
-        pass  # RAG is optional
+        logger.info("RAG embedding model preloaded")
+    except Exception as exc:
+        logger.warning("RAG preload skipped (optional)", extra={"reason": str(exc)})
 
 # ─── Domain Listesi (shared module) ──────────────────────────
 from config.domains import DOMAINS
@@ -86,8 +93,9 @@ def get_kur():
             r = req_lib.get("https://api.frankfurter.app/latest?from=USD&to=TRY", timeout=3)
             _kur_cache["value"] = round(r.json()["rates"]["TRY"], 2)
             _kur_cache["ts"] = now
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Exchange rate fetch failed, using cached value",
+                           extra={"cached_value": _kur_cache["value"], "error": str(exc)})
     return _kur_cache["value"]
 
 # ─── Pricing (shared module) ─────────────────────────────────
@@ -140,7 +148,8 @@ def get_rag():
         try:
             from rag.store import RAGStore
             _rag = RAGStore()
-        except Exception:
+        except Exception as exc:
+            logger.warning("RAG store unavailable", extra={"error": str(exc)})
             _rag = None
     return _rag
 
@@ -194,8 +203,8 @@ class Session:
         """Save current state to SQLite. Best-effort, never kills analysis."""
         try:
             _get_session_store().save(self)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Checkpoint save failed", extra={"sid": self.sid, "error": str(exc)})
 
     # ── Ajan çalıştır (uses shared/agent_runner.py) ──────────
     def ajan_calistir(self, ajan_key: str, mesaj: str,
@@ -438,6 +447,8 @@ class Session:
 
     # ── Ana İş Parçacığı ──────────────────────────────────────
     def run(self):
+        set_correlation_id(self.sid)
+        logger.info("Session started", extra={"sid": self.sid, "mode": self.mode})
         try:
             # ── PREP: Prompt Engineer + Domain Selector ──
             self.status = "prep"
@@ -543,8 +554,8 @@ class Session:
                         parameter_table=_bb_params,
                         parameters_json=_bb_export_params,
                     )
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.error("RAG save failed", extra={"sid": self.sid, "error": str(exc)})
 
             kur = get_kur()
             self.status = "done"
@@ -633,12 +644,61 @@ async def _restore_sessions():
     try:
         store = _get_session_store()
         store.cleanup(days=30)
+        restored = 0
         for row in store.list_sessions(limit=200, status="done"):
             full = store.load(row["sid"])
             if full and full["sid"] not in sessions:
                 sessions[full["sid"]] = _hydrate_session(full)
-    except Exception:
-        pass  # Don't block startup if DB is unavailable
+                restored += 1
+        logger.info("Session restore complete", extra={"restored": restored})
+    except Exception as exc:
+        logger.warning("Session restore failed, continuing without history",
+                       extra={"error": str(exc)})
+
+
+# ══════════════════════════════════════════════════════════════
+# HEALTH ENDPOINTS
+# ══════════════════════════════════════════════════════════════
+
+@app.get("/health")
+async def health():
+    """Liveness probe — returns 200 if the server process is running."""
+    return {"status": "ok", "service": "engineering-ai"}
+
+
+@app.get("/ready")
+async def ready():
+    """Readiness probe — checks API key and optional RAG/DB availability."""
+    checks: dict = {}
+    all_ok = True
+
+    # API key present
+    api_key = os.getenv("ANTHROPIC_API_KEY", "")
+    checks["api_key"] = "ok" if api_key else "missing"
+    if not api_key:
+        all_ok = False
+
+    # RAG / ChromaDB (optional)
+    try:
+        rag = get_rag()
+        checks["rag"] = "ok" if rag is not None else "unavailable"
+    except Exception as exc:
+        checks["rag"] = f"error: {exc}"
+
+    # Session store (SQLite)
+    try:
+        _get_session_store()
+        checks["session_store"] = "ok"
+    except Exception as exc:
+        checks["session_store"] = f"error: {exc}"
+        all_ok = False
+
+    status_code = 200 if all_ok else 503
+    from fastapi.responses import JSONResponse
+    return JSONResponse(
+        status_code=status_code,
+        content={"status": "ready" if all_ok else "not_ready", "checks": checks},
+    )
 
 
 # ══════════════════════════════════════════════════════════════
@@ -864,7 +924,8 @@ async def kb_stats():
         return {"toplam": 0, "analizler": []}
     try:
         return rag.istatistik()
-    except Exception:
+    except Exception as exc:
+        logger.warning("KB stats failed", extra={"error": str(exc)})
         return {"toplam": 0, "analizler": []}
 
 

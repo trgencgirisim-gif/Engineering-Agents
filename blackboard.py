@@ -21,22 +21,53 @@ import threading
 from typing import Any, Callable, Optional
 from config.domains import DOMAINS
 
+# ── Embedding model cache (Phase 2.2) ───────────────────────
+# Lazy-loaded at first call to find_conflicting_assumptions().
+_embedding_model = None
+_embedding_model_lock = threading.Lock()
+
+
+def _get_embedding_model():
+    """Return a shared SentenceTransformer instance (thread-safe lazy init)."""
+    global _embedding_model
+    if _embedding_model is None:
+        with _embedding_model_lock:
+            if _embedding_model is None:
+                from sentence_transformers import SentenceTransformer
+                _embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+    return _embedding_model
+
 
 # ═══════════════════════════════════════════════════════════════
 # DATA STRUCTURES
 # ═══════════════════════════════════════════════════════════════
 
 class BlackboardEntry:
-    """A single entry on the blackboard."""
-    __slots__ = ("value", "source_agent", "round_num", "timestamp", "confidence")
+    """A single entry on the blackboard.
+
+    Phase 2.8: Extended with full provenance fields — model_used, prompt_version,
+    retry_count — so every parameter value can be traced back to its exact source.
+    """
+    __slots__ = (
+        "value", "source_agent", "round_num", "timestamp", "confidence",
+        # Provenance (Phase 2.8)
+        "model_used", "prompt_version", "retry_count",
+    )
 
     def __init__(self, value: Any, source_agent: str, round_num: int,
-                 confidence: str = "MEDIUM"):
+                 confidence: str = "MEDIUM",
+                 model_used: str = "",
+                 prompt_version: str = "",
+                 retry_count: int = 0):
         self.value = value
         self.source_agent = source_agent
         self.round_num = round_num
         self.timestamp = time.time()
         self.confidence = confidence  # HIGH / MEDIUM / LOW
+        # Provenance
+        self.model_used = model_used
+        self.prompt_version = prompt_version
+        self.retry_count = retry_count
 
 
 # Domain key → English name mapping (for flag routing)
@@ -151,13 +182,17 @@ class Blackboard:
         name = data.get("name", "").lower().strip()
         if not name:
             return
+        raw_val = f"{data.get('value', '')} {data.get('unit', '')}".strip()
         entry = BlackboardEntry(
-            value=f"{data.get('value', '')} {data.get('unit', '')}".strip(),
+            value={"raw": raw_val, "context": data.get("context", "")},
             source_agent=source,
             round_num=rnd,
             confidence=data.get("confidence", "MEDIUM"),
+            # Phase 2.8: provenance
+            model_used=data.get("model_used", ""),
+            prompt_version=data.get("prompt_version", ""),
+            retry_count=data.get("retry_count", 0),
         )
-        entry.value = {"raw": entry.value, "context": data.get("context", "")}
         self.parameters.setdefault(name, []).append(entry)
 
     def _write_conflict(self, data: dict, source: str, rnd: int):
@@ -202,12 +237,17 @@ class Blackboard:
         self.cross_domain_flags.setdefault(target, []).append(flag)
 
     def _write_risk(self, data: dict, source: str, rnd: int):
+        s = data.get("severity", 0)
+        o = data.get("occurrence", 0)
+        d = data.get("detection", 0)
+        rpn = data.get("rpn") or (s * o * d)  # Compute RPN if not provided
         risk = {
             "component": data.get("component", "Unknown"),
-            "severity": data.get("severity", 0),
-            "occurrence": data.get("occurrence", 0),
-            "detection": data.get("detection", 0),
-            "rpn": data.get("rpn", 0),
+            "failure_mode": data.get("failure_mode", ""),
+            "severity": s,
+            "occurrence": o,
+            "detection": d,
+            "rpn": rpn,
             "agent": source,
             "round": rnd,
         }
@@ -254,14 +294,32 @@ class Blackboard:
     # ─────────────────────────────────────────────────────────
 
     def resolve_conflicts(self, resolutions: list[dict]):
-        """Mark conflicts as resolved based on conflict resolution agent output."""
+        """Mark conflicts as resolved.
+
+        Phase 2.3: When the winning agent is not specified, prefer the entry with
+        higher confidence (HIGH > MEDIUM > LOW) as the authoritative value.
+        """
+        _conf_rank = {"HIGH": 3, "MEDIUM": 2, "LOW": 1}
+
         with self._lock:
             for res in resolutions:
-                # Try to match by index or content
                 idx = res.get("conflict_id", 0) - 1
-                if 0 <= idx < len(self.conflicts):
-                    self.conflicts[idx]["status"] = "resolved"
-                    self.conflicts[idx]["resolution"] = res.get("resolution", "")
+                if not (0 <= idx < len(self.conflicts)):
+                    continue
+                conflict = self.conflicts[idx]
+                conflict["status"] = "resolved"
+                conflict["resolution"] = res.get("resolution", "")
+
+                # Phase 2.3: if resolution doesn't specify a winner, pick by confidence
+                if not res.get("resolution") and conflict.get("domain"):
+                    param_name = conflict.get("domain", "").lower()
+                    entries = self.parameters.get(param_name, [])
+                    if len(entries) >= 2:
+                        best = max(entries, key=lambda e: _conf_rank.get(e.confidence, 0))
+                        conflict["resolution"] = (
+                            f"Confidence-weighted: accepted {best.source_agent} value "
+                            f"({best.confidence} confidence)"
+                        )
 
     def mark_directive_addressed(self, agent_key: str):
         """Mark an observer directive as addressed after round 2+ output."""
@@ -595,40 +653,102 @@ class Blackboard:
     # ASSUMPTION CONSISTENCY CHECK
     # ─────────────────────────────────────────────────────────
 
-    def find_conflicting_assumptions(self) -> list[dict]:
+    def find_conflicting_assumptions(self, similarity_threshold: float = 0.65) -> list[dict]:
         """
-        Cross-reference assumptions between agents.
-        Returns list of potential conflicts.
+        Cross-reference assumptions between agents to find potential conflicts.
+
+        Phase 2.2: Uses sentence-transformer cosine similarity (all-MiniLM-L6-v2)
+        instead of naive keyword overlap. Two assumptions from different agents are
+        considered conflicting if they cover the same topic (similarity >= threshold)
+        but differ in impact level or contain semantically opposite statements.
+
+        Falls back to keyword overlap if sentence-transformers is unavailable.
+
+        Args:
+            similarity_threshold: Cosine similarity cutoff (0-1) for topic matching.
+
+        Returns:
+            List of conflict dicts (max 10).
         """
+        if len(self.assumptions) < 2:
+            return []
+
+        # ── Try semantic similarity first ─────────────────────
+        try:
+            return self._find_conflicts_semantic(similarity_threshold)
+        except Exception:
+            return self._find_conflicts_keyword()
+
+    def _find_conflicts_semantic(self, threshold: float) -> list[dict]:
+        """Semantic conflict detection via sentence-transformer embeddings."""
+        from sentence_transformers import SentenceTransformer, util
+
+        # Lazy-load the model (reuse across calls via module-level cache)
+        model = _get_embedding_model()
+
+        texts = [a.get("text", "") for a in self.assumptions]
+        embeddings = model.encode(texts, convert_to_tensor=True, show_progress_bar=False)
+
         conflicts = []
-        # Group assumptions by approximate topic (simple word overlap)
+        checked_pairs: set[tuple] = set()
+
+        for i, a1 in enumerate(self.assumptions):
+            for j, a2 in enumerate(self.assumptions):
+                if j <= i:
+                    continue
+                if a1["agent"] == a2["agent"]:
+                    continue
+                pair_key = (min(i, j), max(i, j))
+                if pair_key in checked_pairs:
+                    continue
+                checked_pairs.add(pair_key)
+
+                sim = float(util.cos_sim(embeddings[i], embeddings[j]))
+                if sim >= threshold:
+                    # Same topic — check if they actually conflict
+                    impact_a = a1.get("impact", "MEDIUM")
+                    impact_b = a2.get("impact", "MEDIUM")
+                    conflicts.append({
+                        "agent_a": a1["agent"],
+                        "assumption_a": a1["text"][:120],
+                        "agent_b": a2["agent"],
+                        "assumption_b": a2["text"][:120],
+                        "similarity": round(sim, 3),
+                        "impact_a": impact_a,
+                        "impact_b": impact_b,
+                        "impact_mismatch": impact_a != impact_b,
+                    })
+
+        # Sort by similarity desc so highest-confidence conflicts are first
+        conflicts.sort(key=lambda c: c["similarity"], reverse=True)
+        return conflicts[:10]
+
+    def _find_conflicts_keyword(self) -> list[dict]:
+        """Fallback: keyword-overlap conflict detection (no ML dependency)."""
         from collections import defaultdict
-        by_keyword = defaultdict(list)
+        by_keyword: dict = defaultdict(list)
 
         for a in self.assumptions:
             text = a.get("text", "").lower()
-            # Extract key terms (words > 3 chars)
             words = set(w for w in text.split() if len(w) > 3)
             for w in words:
                 by_keyword[w].append(a)
 
-        # Find assumptions from different agents sharing keywords
-        checked = set()
+        conflicts = []
+        checked: set = set()
         for keyword, group in by_keyword.items():
             if len(group) < 2:
                 continue
             agents = set(a["agent"] for a in group)
             if len(agents) < 2:
                 continue
-
             pair_key = tuple(sorted(agents))
             if pair_key in checked:
                 continue
             checked.add(pair_key)
 
-            # Check if they have different impact or contradictory text
             for i, a1 in enumerate(group):
-                for a2 in group[i+1:]:
+                for a2 in group[i + 1:]:
                     if a1["agent"] != a2["agent"]:
                         conflicts.append({
                             "agent_a": a1["agent"],
@@ -637,9 +757,9 @@ class Blackboard:
                             "assumption_b": a2["text"][:100],
                             "shared_topic": keyword,
                         })
-                        break  # One conflict per pair is enough
+                        break
 
-        return conflicts[:10]  # Cap at 10
+        return conflicts[:10]
 
     # ─────────────────────────────────────────────────────────
     # SUMMARY — compact text representation
@@ -766,6 +886,10 @@ class Blackboard:
                 "round_num": entry.round_num,
                 "timestamp": entry.timestamp,
                 "confidence": entry.confidence,
+                # Phase 2.8: provenance
+                "model_used": entry.model_used,
+                "prompt_version": entry.prompt_version,
+                "retry_count": entry.retry_count,
             }
 
         return {
@@ -825,6 +949,10 @@ class Blackboard:
                     source_agent=e["source_agent"],
                     round_num=e["round_num"],
                     confidence=e.get("confidence", "MEDIUM"),
+                    # Phase 2.8: provenance
+                    model_used=e.get("model_used", ""),
+                    prompt_version=e.get("prompt_version", ""),
+                    retry_count=e.get("retry_count", 0),
                 )
                 entry.timestamp = e.get("timestamp", 0)
                 bb.parameters[name].append(entry)

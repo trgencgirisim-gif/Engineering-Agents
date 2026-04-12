@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "claude/**"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install ruff
+        run: pip install ruff
+      - name: Run ruff
+        run: ruff check . --select=E,W,F,I --ignore=E501,E402
+
+  test:
+    name: Tests (pytest)
+    runs-on: ubuntu-latest
+    env:
+      ANTHROPIC_API_KEY: "sk-ant-test-key-for-ci"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          # Install core deps only (skip heavy ML libs for CI speed)
+          pip install anthropic python-dotenv fastapi uvicorn pydantic pydantic-settings
+          pip install python-docx requests pytest pytest-mock
+          # Install project in editable mode
+          pip install -e . 2>/dev/null || true
+      - name: Run unit tests (no network)
+        run: pytest tests/ -v --tb=short -m "not slow and not integration"
+
+  typecheck:
+    name: Type check (pyright)
+    runs-on: ubuntu-latest
+    continue-on-error: true   # Advisory only until stubs are complete
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install pyright + stubs
+        run: |
+          pip install pyright
+          pip install anthropic python-dotenv fastapi uvicorn pydantic pydantic-settings
+      - name: Run pyright (src layout)
+        run: pyright shared/ config/ report/ --pythonversion 3.11

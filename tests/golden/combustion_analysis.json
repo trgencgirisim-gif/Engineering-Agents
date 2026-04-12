@@ -1,0 +1,12 @@
+{
+  "problem_id": "golden-001",
+  "description": "Combustion chamber pressure and temperature analysis",
+  "brief": "Analyze a combustion chamber operating at 150 bar, 450 K with 2.5 kg/s fuel flow rate. Evaluate pressure safety margins and thermal efficiency.",
+  "expected_domains": ["yanma", "termal"],
+  "expected_parameters": {
+    "pressure": {"min": 140, "max": 160, "unit": "bar"},
+    "temperature": {"min": 420, "max": 480, "unit": "K"}
+  },
+  "min_quality_score": 60,
+  "max_cost_usd": 0.50
+}

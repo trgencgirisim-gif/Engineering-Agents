@@ -1,0 +1,12 @@
+{
+  "problem_id": "golden-002",
+  "description": "Structural beam deflection under point load",
+  "brief": "Calculate maximum deflection and stress in a steel I-beam (W200x46) of 6 m span under a central point load of 50 kN. Verify against AISC LRFD code.",
+  "expected_domains": ["yapisal"],
+  "expected_parameters": {
+    "span": {"min": 5.5, "max": 6.5, "unit": "m"},
+    "load": {"min": 45, "max": 55, "unit": "kN"}
+  },
+  "min_quality_score": 60,
+  "max_cost_usd": 0.30
+}
